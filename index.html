@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>달려라 검단호수공원 호반써밋</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="top-bar">
+        <div class="brand-block">
+          <p class="eyebrow">경마 추첨 웹게임</p>
+          <h1>달려라 검단호수공원 호반써밋</h1>
+        </div>
+
+        <div class="race-toolbar" aria-label="레이스 조작">
+          <button id="settingsButton" type="button">설정</button>
+          <button id="resultButton" type="button">결과</button>
+          <button id="prepareButton" class="secondary" type="button">규칙 갱신</button>
+          <button id="startButton" class="primary" type="button">레이스 시작</button>
+          <button id="resetButton" type="button">새 레이스</button>
+          <button id="csvButton" type="button">CSV</button>
+        </div>
+
+        <p id="statusLine" class="status-line">준비 중</p>
+      </header>
+
+      <section class="race-panel" aria-label="레이스 화면">
+        <div class="race-header">
+          <div>
+            <p class="eyebrow">60초 레이스</p>
+            <h2 id="trackName">호수 순환 트랙</h2>
+            <p id="trackMeta"></p>
+          </div>
+          <div class="time-box">
+            <span id="timeValue">0초</span>
+            <div class="time-track">
+              <span id="timeBar"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="trackSurface" class="track-surface" data-terrain="lake">
+          <div class="stadium-scene" aria-hidden="true">
+            <span class="stand"></span>
+            <span class="lake-shape"></span>
+            <span class="tree-line"></span>
+          </div>
+          <div id="obstacleStrip" class="obstacle-strip" aria-label="장애물 지점"></div>
+          <div class="start-line" aria-hidden="true"><span>START</span></div>
+          <div id="lanes" class="lanes"></div>
+          <div class="finish-line" aria-hidden="true"><span>FINISH</span></div>
+        </div>
+      </section>
+
+      <div id="panelBackdrop" class="panel-backdrop" hidden></div>
+
+      <section id="settingsPanel" class="control-panel layer-panel settings-layer" aria-label="설정 패널" aria-hidden="true">
+        <div class="layer-head">
+          <div>
+            <p class="eyebrow">설정</p>
+            <h2>참가자와 규칙</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-panel aria-label="설정 닫기">×</button>
+        </div>
+
+        <div class="field-row">
+          <label for="participantInput">참가자</label>
+          <span id="participantCount" class="count-pill">0/800</span>
+        </div>
+        <textarea id="participantInput" spellcheck="false"></textarea>
+
+        <div class="quick-actions" aria-label="참가자 샘플 생성">
+          <button type="button" data-generate="80">80명</button>
+          <button type="button" data-generate="180">180명</button>
+          <button type="button" data-generate="800">800명</button>
+        </div>
+
+        <div class="field-group">
+          <label>트랙</label>
+          <div id="trackOptions" class="track-options"></div>
+        </div>
+
+        <div class="range-grid">
+          <label>
+            <span>통과 시작</span>
+            <input id="passStart" type="number" min="1" value="55" />
+          </label>
+          <label>
+            <span>통과 종료</span>
+            <input id="passEnd" type="number" min="1" value="155" />
+          </label>
+        </div>
+
+        <input id="seedInput" type="hidden" />
+
+        <label class="stacked-field">
+          <span>재생 속도 <strong id="speedValue">8x</strong></span>
+          <input id="speedInput" type="range" min="1" max="20" value="8" />
+        </label>
+
+        <div class="drawer-actions">
+          <button class="secondary" type="button" data-close-panel>닫기</button>
+          <button class="primary" type="button" data-apply-settings>규칙 갱신</button>
+        </div>
+      </section>
+
+      <aside id="resultPanel" class="result-panel layer-panel result-layer" aria-label="결과 패널" aria-hidden="true">
+        <div class="layer-head">
+          <div>
+            <p class="eyebrow">결과</p>
+            <h2>순위와 통과자</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-panel aria-label="결과 닫기">×</button>
+        </div>
+
+        <div class="stats-grid">
+          <div>
+            <span>참가</span>
+            <strong id="statParticipants">0</strong>
+          </div>
+          <div>
+            <span>통과</span>
+            <strong id="statPassers">0</strong>
+          </div>
+          <div>
+            <span>스킬</span>
+            <strong id="statSkills">0</strong>
+          </div>
+          <div>
+            <span>장애물</span>
+            <strong id="statObstacles">0 / 0</strong>
+          </div>
+        </div>
+
+        <section class="rank-section">
+          <h2>실시간 순위</h2>
+          <ol id="liveRank" class="live-rank"></ol>
+        </section>
+
+        <section class="rank-section">
+          <h2>통과자</h2>
+          <ol id="passersList" class="passers-list"></ol>
+        </section>
+
+        <section class="rank-section table-section">
+          <h2>최종 상위 40</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>이름</th>
+                <th>거리</th>
+                <th>장애물</th>
+                <th>스킬</th>
+              </tr>
+            </thead>
+            <tbody id="finalRank"></tbody>
+          </table>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

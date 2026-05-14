@@ -1,0 +1,5 @@
+.git
+.ai-work
+node_modules
+npm-debug.log
+*.log

@@ -1,0 +1,11 @@
+{
+  "name": "run-hoban-run",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 5174",
+    "test": "node --test",
+    "test:docker": "docker build -f Dockerfile.test -t run-hoban-run:test . && docker run --rm run-hoban-run:test"
+  }
+}
