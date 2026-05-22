@@ -35,6 +35,13 @@ type VisualRunner = {
   eliminated: boolean;
 };
 
+type LeaderboardItemParts = {
+  item: HTMLLIElement;
+  rank: HTMLSpanElement;
+  name: HTMLElement;
+  detail: HTMLElement;
+};
+
 type HorseMotionStyle = 'rush' | 'run' | 'walk' | 'stroll';
 
 type HorseLegParts = {
@@ -132,12 +139,6 @@ app.innerHTML = `
               <option value="muddy">불량</option>
             </select>
           </label>
-          <label class="camera-control">
-            <span>카메라</span>
-            <select id="camera-target">
-              <option value="leader">선두 따라가기</option>
-            </select>
-          </label>
         </div>
       </aside>
 
@@ -180,7 +181,6 @@ const winnerCountInput = query<HTMLInputElement>('#winner-count');
 const surfaceSelect = query<HTMLSelectElement>('#surface-select');
 const distanceSelect = query<HTMLSelectElement>('#distance-select');
 const conditionSelect = query<HTMLSelectElement>('#condition-select');
-const cameraTargetSelect = query<HTMLSelectElement>('#camera-target');
 const sample18Button = query<HTMLButtonElement>('#sample-18');
 const sample64Button = query<HTMLButtonElement>('#sample-64');
 const startButton = query<HTMLButtonElement>('#start-tournament');
@@ -246,6 +246,7 @@ const groundWidth = trackVisualWidth + 30;
 const startX = -raceLength / 2 + 8;
 const finishX = raceLength / 2 - 7;
 const horseBaseY = 1.45;
+const helicopterEntranceSeconds = 3;
 let raceElapsed = 0;
 let raceFinished = false;
 let raceStarted = false;
@@ -254,7 +255,9 @@ let currentRaceIndex = 0;
 let visualRunners: VisualRunner[] = [];
 let helicopterAsset: THREE.Group | null = null;
 let selectedCameraEntryId = 'leader';
+let cameraSelectionLocked = false;
 const cameraLookTarget = new THREE.Vector3();
+const leaderboardItems = new Map<string, LeaderboardItemParts>();
 
 const runnerLabels = document.createElement('div');
 runnerLabels.className = 'runner-labels';
@@ -527,7 +530,7 @@ function createHorse(profile: HorseProfile) {
 
   const legParts: HorseLegParts[] = [];
   const motionStyles: HorseMotionStyle[] = ['rush', 'run', 'walk', 'stroll'];
-  const motionStyle = motionStyles[(profile.stats.speed + profile.stats.power + profile.stats.guts) % motionStyles.length] ?? 'run';
+  const motionStyle = motionStyles[getStableIndex(profile.id, motionStyles.length)] ?? 'run';
 
   for (const x of [-0.78, 0.58]) {
     for (const z of [-0.38, 0.38]) {
@@ -719,19 +722,11 @@ function updateLaneGuides(count: number) {
   }
 }
 
-function updateCameraTargetOptions(race: RaceResult) {
+function updateCameraTargetSelection(race: RaceResult) {
   const previousValue = selectedCameraEntryId;
-  cameraTargetSelect.replaceChildren(new Option('선두 따라가기', 'leader'));
+  const hasPreviousEntry = race.placements.some((placement) => placement.entry.id === previousValue);
 
-  race.placements
-    .map((placement) => placement.entry)
-    .sort((left, right) => left.name.localeCompare(right.name, 'ko'))
-    .forEach((entry) => {
-      cameraTargetSelect.append(new Option(entry.name, entry.id));
-    });
-
-  selectedCameraEntryId = [...cameraTargetSelect.options].some((option) => option.value === previousValue) ? previousValue : 'leader';
-  cameraTargetSelect.value = selectedCameraEntryId;
+  selectedCameraEntryId = hasPreviousEntry ? previousValue : 'leader';
 }
 
 function setCurrentRace(index: number) {
@@ -750,7 +745,7 @@ function setCurrentRace(index: number) {
   raceFinished = false;
   clearVisualRunners();
   updateLaneGuides(race.placements.length);
-  updateCameraTargetOptions(race);
+  updateCameraTargetSelection(race);
 
   const lanePlacements = [...race.placements].sort((left, right) => left.entry.id.localeCompare(right.entry.id));
   lanePlacements.forEach((placement, indexInLane) => {
@@ -917,10 +912,7 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
 
   const targetPosition = getRunnerAimPoint(target);
   const orbit = Math.sin(raceElapsed * 1.8) * 1.2;
-  const firstEvent = getSortedHazardEvents(hazardEvents)[0] ?? hazardEvent;
-  const arrivalProgress = smoothStep(
-    clampNumber((raceElapsed - sequenceStart) / Math.max(1.2, firstEvent.triggerSeconds - sequenceStart - 0.8), 0, 1)
-  );
+  const arrivalProgress = smoothStep(clampNumber((raceElapsed - sequenceStart) / helicopterEntranceSeconds, 0, 1));
   const hoverPosition = getFinishHelicopterHoverPosition(orbit);
   const entryPosition = new THREE.Vector3(finishX + 26, 13.4, -(trackVisualWidth / 2 + 20));
   helicopterGroup.position.copy(entryPosition.lerp(hoverPosition, arrivalProgress));
@@ -955,8 +947,9 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
 }
 
 function setCameraControlLocked(locked: boolean) {
-  cameraTargetSelect.disabled = locked;
-  cameraTargetSelect.title = locked ? '헬리콥터 연출 중에는 카메라 대상을 바꿀 수 없습니다.' : '';
+  cameraSelectionLocked = locked;
+  leaderboardList.classList.toggle('camera-locked', locked);
+  leaderboardList.dataset.cameraLocked = locked ? 'true' : 'false';
 }
 
 function getFinishHelicopterHoverPosition(orbit: number) {
@@ -1389,7 +1382,7 @@ function buildResultItems(race: RaceResult, reveal: boolean) {
 
     rank.textContent = reveal ? String(placement.rank) : '-';
     name.textContent = placement.entry.name;
-    detail.textContent = reveal ? resultDetail(placement, race) : statLine(placement.entry.profile);
+    detail.textContent = reveal ? resultDetail(placement, race) : '동일 출발 / 20구간 랜덤 배속';
     body.append(name, detail);
     item.append(rank, body);
     item.classList.toggle('qualified', reveal && placement.qualified);
@@ -1406,10 +1399,6 @@ function resultDetail(placement: RacePlacement, race: RaceResult) {
   const skillText = placement.skillEvent ? ` / ${placement.skillEvent.skill.name}` : '';
   const advanceText = placement.qualified ? (race.isFinal ? '우승' : '진출') : '탈락';
   return `${placement.finishSeconds.toFixed(2)}초 / ${advanceText}${skillText}`;
-}
-
-function statLine(profile: HorseProfile) {
-  return `속도 ${profile.stats.speed} / 체력 ${profile.stats.stamina} / 거리 ${profile.aptitudes.distance}`;
 }
 
 function speedSegmentLine(placement: RacePlacement) {
@@ -1436,27 +1425,71 @@ function renderLeaderboard() {
         .sort((left, right) => right.mesh.position.x - left.mesh.position.x)
         .map((runner) => runner.placement);
 
-  leaderboardList.replaceChildren(
-    ...ranked.slice(0, 8).map((placement, index) => {
-      const runner = visualRunners.find((candidate) => candidate.placement === placement);
-      const activeSkill = runner?.skillActive && placement.skillEvent ? placement.skillEvent.skill.name : null;
-      const eliminated = runner?.eliminated || (raceFinished && placement.eliminatedByHelicopter);
-      const item = document.createElement('li');
-      const rank = document.createElement('span');
-      const name = document.createElement('strong');
-      const detail = document.createElement('small');
+  const visibleIds = new Set<string>();
 
-      rank.textContent = String(raceFinished ? placement.rank : index + 1);
-      name.textContent = placement.entry.name;
-      detail.textContent = eliminated
-        ? '헬기 탈락'
-        : activeSkill ?? (raceFinished ? resultDetail(placement, race) : speedSegmentLine(placement));
-      item.append(rank, name, detail);
-      item.classList.toggle('qualified', raceFinished && placement.qualified);
-      item.classList.toggle('eliminated', Boolean(eliminated));
-      return item;
-    })
-  );
+  ranked.slice(0, 8).forEach((placement, index) => {
+    const runner = visualRunners.find((candidate) => candidate.placement === placement);
+    const activeSkill = runner?.skillActive && placement.skillEvent ? placement.skillEvent.skill.name : null;
+    const eliminated = runner?.eliminated || (raceFinished && placement.eliminatedByHelicopter);
+    const selected = selectedCameraEntryId === placement.entry.id;
+    const parts = getLeaderboardItemParts(placement.entry.id);
+    const currentChild = leaderboardList.children[index] ?? null;
+
+    visibleIds.add(placement.entry.id);
+    parts.rank.textContent = String(raceFinished ? placement.rank : index + 1);
+    parts.name.textContent = placement.entry.name;
+    parts.detail.textContent = eliminated
+      ? '헬기 탈락'
+      : activeSkill ?? (raceFinished ? resultDetail(placement, race) : speedSegmentLine(placement));
+    parts.item.dataset.entryId = placement.entry.id;
+    parts.item.setAttribute('role', 'button');
+    parts.item.setAttribute('tabindex', cameraSelectionLocked ? '-1' : '0');
+    parts.item.setAttribute('aria-pressed', String(selected));
+    parts.item.classList.toggle('qualified', raceFinished && placement.qualified);
+    parts.item.classList.toggle('eliminated', Boolean(eliminated));
+    parts.item.classList.toggle('selected', selected);
+
+    if (currentChild !== parts.item) {
+      leaderboardList.insertBefore(parts.item, currentChild);
+    }
+  });
+
+  [...leaderboardItems.entries()].forEach(([entryId, parts]) => {
+    if (visibleIds.has(entryId)) {
+      return;
+    }
+
+    parts.item.remove();
+    leaderboardItems.delete(entryId);
+  });
+}
+
+function selectCameraEntry(entryId: string) {
+  if (cameraSelectionLocked || !entryId) {
+    return;
+  }
+
+  selectedCameraEntryId = selectedCameraEntryId === entryId ? 'leader' : entryId;
+  renderLeaderboard();
+}
+
+function getLeaderboardItemParts(entryId: string) {
+  const existing = leaderboardItems.get(entryId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const item = document.createElement('li');
+  const rank = document.createElement('span');
+  const name = document.createElement('strong');
+  const detail = document.createElement('small');
+  const parts = { item, rank, name, detail };
+
+  item.append(rank, name, detail);
+  leaderboardItems.set(entryId, parts);
+
+  return parts;
 }
 
 function startTournament() {
@@ -1555,6 +1588,16 @@ function lerpNumber(start: number, end: number, progress: number) {
 
 function smoothStep(progress: number) {
   return progress * progress * (3 - 2 * progress);
+}
+
+function getStableIndex(value: string, modulo: number) {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+
+  return modulo > 0 ? hash % modulo : 0;
 }
 
 function resize() {
@@ -1706,12 +1749,26 @@ sample64Button.addEventListener('click', () => {
 
 startButton.addEventListener('click', startTournament);
 randomSeedButton.addEventListener('click', rollSeed);
-cameraTargetSelect.addEventListener('change', () => {
-  if (cameraTargetSelect.disabled) {
+leaderboardList.addEventListener('click', (event) => {
+  const target = event.target instanceof Element ? event.target.closest<HTMLLIElement>('li[data-entry-id]') : null;
+
+  if (target) {
+    selectCameraEntry(target.dataset.entryId ?? '');
+  }
+});
+leaderboardList.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') {
     return;
   }
 
-  selectedCameraEntryId = cameraTargetSelect.value;
+  const target = event.target instanceof Element ? event.target.closest<HTMLLIElement>('li[data-entry-id]') : null;
+
+  if (!target) {
+    return;
+  }
+
+  event.preventDefault();
+  selectCameraEntry(target.dataset.entryId ?? '');
 });
 togglePanelsButton.addEventListener('click', () => setPanelsHidden(!raceStage.classList.contains('panels-hidden')));
 replayButton.addEventListener('click', () => {

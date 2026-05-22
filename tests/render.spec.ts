@@ -90,12 +90,12 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-stage')).not.toHaveClass(/panels-hidden/);
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await expect(page.locator('#race-summary')).toContainText('20구간');
-  await expect(page.locator('#camera-target')).toHaveValue('leader');
-  await expect(page.locator('#camera-target option')).toHaveCount(19);
-  const cameraTargetValue = await page.locator('#camera-target option').nth(2).getAttribute('value');
-  expect(cameraTargetValue).toBeTruthy();
-  await page.locator('#camera-target').selectOption(cameraTargetValue ?? 'leader');
-  await expect(page.locator('#camera-target')).toHaveValue(cameraTargetValue ?? 'leader');
+  await expect(page.locator('#camera-target')).toHaveCount(0);
+  await expect(page.locator('#leaderboard li')).toHaveCount(8);
+  await page.locator('#leaderboard li').nth(1).click();
+  await expect(page.locator('#leaderboard li.selected')).toHaveCount(1);
+  await page.locator('#leaderboard li.selected').click();
+  await expect(page.locator('#leaderboard li.selected')).toHaveCount(0);
   const previousSeed = await page.locator('#seed-input').inputValue();
   await page.locator('#random-seed').click();
   await expect(page.locator('#seed-input')).not.toHaveValue(previousSeed);
@@ -154,7 +154,7 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
     const stage = document.querySelector('#race-stage');
     return stage?.getAttribute('data-cinematic') === 'shot' || stage?.getAttribute('data-cinematic') === 'hit';
   }, undefined, { timeout: 95_000 });
-  await expect(page.locator('#camera-target')).toBeDisabled();
+  await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
 
   await expect(page.locator('.runner-tag.eliminated').first()).toBeVisible({ timeout: 12_000 });
 

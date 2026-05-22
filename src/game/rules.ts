@@ -1,28 +1,13 @@
 export type Surface = 'turf' | 'dirt';
 export type DistanceType = 'sprint' | 'mile' | 'medium' | 'long';
 export type TrackCondition = 'firm' | 'damp' | 'muddy';
-export type AptitudeGrade = 'S' | 'A' | 'B' | 'C' | 'D';
 export type Pattern = 'solid' | 'spots' | 'stripes' | 'socks';
 export type SkillPose = 'handstand' | 'dance' | 'lie-flat' | 'cheer';
-
-export type Stats = {
-  speed: number;
-  stamina: number;
-  power: number;
-  guts: number;
-  intelligence: number;
-};
-
-export type Aptitudes = {
-  surface: AptitudeGrade;
-  distance: AptitudeGrade;
-};
 
 export type SkillDefinition = {
   id: string;
   name: string;
   phase: 'start' | 'corner' | 'middle' | 'last';
-  boost: number;
   pose: SkillPose;
   effectColor: number;
   callout: string;
@@ -34,8 +19,6 @@ export type HorseProfile = {
   color: number;
   secondaryColor: number;
   pattern: Pattern;
-  stats: Stats;
-  aptitudes: Aptitudes;
 };
 
 export type RaceOptions = {
@@ -79,7 +62,6 @@ export type SpeedSegment = {
 export type RacePlacement = {
   entry: RaceEntry;
   rank: number;
-  score: number;
   finishSeconds: number;
   qualified: boolean;
   skillEvent: SkillEvent | null;
@@ -110,15 +92,15 @@ export type TournamentResult = {
 const SURFACES: Surface[] = ['turf', 'dirt'];
 const DISTANCES: DistanceType[] = ['sprint', 'mile', 'medium', 'long'];
 const PATTERNS: Pattern[] = ['solid', 'spots', 'stripes', 'socks'];
-const GRADES: AptitudeGrade[] = ['S', 'A', 'A', 'A', 'B', 'B', 'C', 'D'];
-const STAT_KEYS: Array<keyof Stats> = ['speed', 'stamina', 'power', 'guts', 'intelligence'];
+const BASE_FINISH_SECONDS = 92;
+const HELICOPTER_ENTRANCE_SECONDS = 3;
+const BULLET_FLIGHT_SECONDS = 0.9;
 
 export const SKILLS: SkillDefinition[] = [
   {
     id: 'rocket-start',
     name: '로켓 출발',
     phase: 'start',
-    boost: 0.7,
     pose: 'handstand',
     effectColor: 0xff6b35,
     callout: '출발대에서 폭발적으로 치고 나간다'
@@ -127,7 +109,6 @@ export const SKILLS: SkillDefinition[] = [
     id: 'corner-dance',
     name: '코너 댄스',
     phase: 'corner',
-    boost: 0.48,
     pose: 'dance',
     effectColor: 0xf2c94c,
     callout: '코너를 무대처럼 휘감아 돈다'
@@ -136,7 +117,6 @@ export const SKILLS: SkillDefinition[] = [
     id: 'flatout-glide',
     name: '납작 활주',
     phase: 'middle',
-    boost: 0.58,
     pose: 'lie-flat',
     effectColor: 0x56ccf2,
     callout: '낮게 엎드려 속도를 끌어올린다'
@@ -145,7 +125,6 @@ export const SKILLS: SkillDefinition[] = [
     id: 'finish-frenzy',
     name: '결승 광란',
     phase: 'last',
-    boost: 0.82,
     pose: 'cheer',
     effectColor: 0xff4d8d,
     callout: '결승 직선에서 거칠게 몰아친다'
@@ -154,7 +133,6 @@ export const SKILLS: SkillDefinition[] = [
     id: 'mud-splash',
     name: '진흙 튀기기',
     phase: 'middle',
-    boost: 0.5,
     pose: 'dance',
     effectColor: 0x8b5e34,
     callout: '뒤쪽으로 흙먼지를 크게 뿌린다'
@@ -163,7 +141,6 @@ export const SKILLS: SkillDefinition[] = [
     id: 'turf-slide',
     name: '잔디 미끄럼',
     phase: 'corner',
-    boost: 0.5,
     pose: 'lie-flat',
     effectColor: 0x6fcf97,
     callout: '잔디 위를 미끄러지듯 치고 나간다'
@@ -321,12 +298,7 @@ function createHorseProfile(participantName: string, index: number, seed: string
     participantName,
     color,
     secondaryColor,
-    pattern: pick(PATTERNS, rng),
-    stats: createStats(rng),
-    aptitudes: {
-      surface: pick(GRADES, rng),
-      distance: pick(GRADES, rng)
-    }
+    pattern: pick(PATTERNS, rng)
   };
 }
 
@@ -337,21 +309,18 @@ function simulateRace(
   const { options, round, group, isFinal } = context;
   const hazardDrafts = rollHelicopterHazards(entries, options, round, group);
   const hazardTargetIds = new Set(hazardDrafts.map((hazard) => hazard.targetEntryId));
-  const placements = entries.map((entry, index) => {
+  const placements = entries.map((entry) => {
     const rng = createRng(`${options.seed}:race:${round}:${group}:${entry.id}`);
     const assignedSkill = pick(SKILLS, rng);
     const skillEvent = rollSkillEvent(assignedSkill, options, rng);
     const speedSegments = rollHorseSpeedSegments(entry, options, round, group);
-    const score = calculateScore(entry.profile, options, skillEvent, rng);
-    const startDelay = (100 - entry.profile.stats.power) * 0.018 + rng() * 0.32;
     const segmentScale =
       speedSegments.reduce((sum, segment) => sum + 1 / Math.max(0.1, segment.multiplier), 0) / speedSegments.length;
-    const finishSeconds = clampNumber((117 - score * 0.096 + startDelay * 3.3 + index * 0.075) * segmentScale, 55, 114);
+    const finishSeconds = clampNumber(BASE_FINISH_SECONDS * segmentScale, 62, 118);
 
     return {
       entry,
       rank: 0,
-      score,
       finishSeconds,
       qualified: false,
       skillEvent,
@@ -363,8 +332,8 @@ function simulateRace(
   const leadPlacement = placements.reduce((lead, placement) => (placement.finishSeconds < lead.finishSeconds ? placement : lead), placements[0]);
   const leadFinishSeconds = leadPlacement?.finishSeconds ?? 0;
   const leadSegments = leadPlacement?.speedSegments ?? [];
-  const helicopterApproachSeconds = Number(getSegmentedTimeAtProgress(leadFinishSeconds, leadSegments, 1 / 3).toFixed(3));
   const firstShotSeconds = Number(getSegmentedTimeAtProgress(leadFinishSeconds, leadSegments, 0.5).toFixed(3));
+  const helicopterApproachSeconds = Number(Math.max(0, firstShotSeconds - HELICOPTER_ENTRANCE_SECONDS - BULLET_FLIGHT_SECONDS).toFixed(3));
   const shotSpacingSeconds = 2.4;
 
   const hazardEvents = hazardDrafts
@@ -506,34 +475,6 @@ function pickUnique<T>(items: T[], count: number, rng: () => number) {
   return selected;
 }
 
-function calculateScore(
-  profile: HorseProfile,
-  options: RaceOptions,
-  skillEvent: SkillEvent | null,
-  rng: () => number
-) {
-  const { speed, stamina, power, guts, intelligence } = profile.stats;
-  const distanceWeights = getDistanceWeights(options.distance);
-  const conditionWeight = options.condition === 'muddy' ? 0.92 : options.condition === 'damp' ? 0.96 : 1;
-  const surfaceBias = options.surface === 'dirt' ? power * 0.16 : speed * 0.14;
-  const aptitude = gradeModifier(profile.aptitudes.surface) * gradeModifier(profile.aptitudes.distance);
-  const skillBoost = skillEvent ? 13 + skillEvent.skill.boost * 18 : 0;
-  const raceNoise = (rng() - 0.5) * 10;
-
-  return (
-    (speed * distanceWeights.speed +
-      stamina * distanceWeights.stamina +
-      power * distanceWeights.power +
-      guts * distanceWeights.guts +
-      intelligence * distanceWeights.intelligence +
-      surfaceBias +
-      skillBoost +
-      raceNoise) *
-    aptitude *
-    conditionWeight
-  );
-}
-
 function rollSkillEvent(skill: SkillDefinition, options: RaceOptions, rng: () => number): SkillEvent | null {
   const surfaceBonus =
     (skill.id === 'mud-splash' && (options.surface === 'dirt' || options.condition === 'muddy')) ||
@@ -568,22 +509,6 @@ function getSkillTrigger(phase: SkillDefinition['phase'], rng: () => number) {
   return 0.48 + rng() * 0.16;
 }
 
-function createStats(rng: () => number): Stats {
-  const base = 42;
-  const budget = 370 - base * STAT_KEYS.length;
-  const weights = STAT_KEYS.map(() => 0.5 + rng());
-  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
-  const values = STAT_KEYS.map((_, index) => Math.round(base + (budget * weights[index]) / totalWeight));
-
-  return {
-    speed: values[0],
-    stamina: values[1],
-    power: values[2],
-    guts: values[3],
-    intelligence: values[4]
-  };
-}
-
 function makeBalancedGroups<T>(items: T[], fieldSize: number) {
   const groupCount = Math.ceil(items.length / fieldSize);
   const baseSize = Math.floor(items.length / groupCount);
@@ -598,42 +523,6 @@ function makeBalancedGroups<T>(items: T[], fieldSize: number) {
   }
 
   return groups;
-}
-
-function getDistanceWeights(distance: DistanceType) {
-  if (distance === 'sprint') {
-    return { speed: 1.55, stamina: 0.62, power: 1.26, guts: 0.68, intelligence: 0.72 };
-  }
-
-  if (distance === 'mile') {
-    return { speed: 1.28, stamina: 0.88, power: 1.02, guts: 0.78, intelligence: 0.84 };
-  }
-
-  if (distance === 'long') {
-    return { speed: 0.98, stamina: 1.38, power: 0.86, guts: 1.12, intelligence: 0.9 };
-  }
-
-  return { speed: 1.12, stamina: 1.12, power: 0.94, guts: 0.96, intelligence: 0.86 };
-}
-
-function gradeModifier(grade: AptitudeGrade) {
-  if (grade === 'S') {
-    return 1.075;
-  }
-
-  if (grade === 'A') {
-    return 1;
-  }
-
-  if (grade === 'B') {
-    return 0.965;
-  }
-
-  if (grade === 'C') {
-    return 0.92;
-  }
-
-  return 0.86;
 }
 
 function pick<T>(items: T[], rng: () => number) {
