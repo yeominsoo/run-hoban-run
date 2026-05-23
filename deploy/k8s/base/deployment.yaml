@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: run-hoban-run
+  labels:
+    app.kubernetes.io/name: run-hoban-run
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: run-hoban-run
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: run-hoban-run
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: app
+          image: ghcr.io/yeominsoo/run-hoban-run:master
+          ports:
+            - name: http
+              containerPort: 15173
+              hostPort: 15173
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

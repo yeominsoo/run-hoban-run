@@ -254,6 +254,7 @@ let tournament: TournamentResult | null = null;
 let currentRaceIndex = 0;
 let visualRunners: VisualRunner[] = [];
 let helicopterAsset: THREE.Group | null = null;
+let helicopterAssetLoadStarted = false;
 let selectedCameraEntryId = 'leader';
 let cameraSelectionLocked = false;
 const cameraLookTarget = new THREE.Vector3();
@@ -327,6 +328,12 @@ function makeRail(z: number) {
 }
 
 function loadHelicopterAsset() {
+  if (helicopterAssetLoadStarted) {
+    return;
+  }
+
+  helicopterAssetLoadStarted = true;
+
   const loader = new GLTFLoader();
   loader.load(
     '/models/helicopter.glb',
@@ -339,6 +346,26 @@ function loadHelicopterAsset() {
       installHelicopterVisual();
     }
   );
+}
+
+function scheduleHelicopterAssetLoad() {
+  installHelicopterVisual();
+
+  const startLoad = () => {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(() => loadHelicopterAsset(), { timeout: 2500 });
+      return;
+    }
+
+    globalThis.setTimeout(loadHelicopterAsset, 1000);
+  };
+
+  if (document.readyState === 'complete') {
+    startLoad();
+    return;
+  }
+
+  window.addEventListener('load', startLoad, { once: true });
 }
 
 function installHelicopterVisual() {
@@ -1781,6 +1808,6 @@ nextButton.addEventListener('click', () => {
 });
 window.addEventListener('resize', resize);
 
-loadHelicopterAsset();
+scheduleHelicopterAssetLoad();
 prepareTournament();
 animate();

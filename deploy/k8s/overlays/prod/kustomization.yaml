@@ -1,0 +1,10 @@
+namespace: run-hoban-run
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+images:
+  - name: ghcr.io/yeominsoo/run-hoban-run
+    newName: ghcr.io/yeominsoo/run-hoban-run
+    newTag: master
