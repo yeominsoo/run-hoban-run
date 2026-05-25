@@ -65,6 +65,12 @@ type FrenzyVortexParts = {
   dust: THREE.Mesh[];
 };
 
+type FrenzyFireParts = {
+  root: THREE.Group;
+  flames: THREE.Mesh[];
+  materials: THREE.MeshBasicMaterial[];
+};
+
 type SnortPuffParts = {
   mesh: THREE.Mesh;
   material: THREE.MeshBasicMaterial;
@@ -182,6 +188,14 @@ app.innerHTML = `
       <div class="hud hud-bottom">
         <ol id="leaderboard" class="leaderboard"></ol>
       </div>
+
+      <div class="race-minimap" id="race-minimap" aria-label="경주 진행도">
+        <div class="minimap-track">
+          <span class="minimap-start" aria-hidden="true"></span>
+          <span class="minimap-finish" aria-hidden="true"></span>
+          <div id="minimap-dots" class="minimap-dots"></div>
+        </div>
+      </div>
     </section>
   </main>
 `;
@@ -199,6 +213,7 @@ function query<T extends Element>(selector: string) {
 const raceCanvas = query<HTMLCanvasElement>('#race-canvas');
 const raceStage = query<HTMLElement>('#race-stage');
 const leaderboardList = query<HTMLOListElement>('#leaderboard');
+const minimapDotsLayer = query<HTMLDivElement>('#minimap-dots');
 const participantInput = query<HTMLTextAreaElement>('#participants');
 const seedInput = query<HTMLInputElement>('#seed-input');
 const fieldSizeInput = query<HTMLInputElement>('#field-size');
@@ -283,7 +298,7 @@ let currentRaceIndex = 0;
 let visualRunners: VisualRunner[] = [];
 let helicopterAsset: THREE.Group | null = null;
 let helicopterAssetLoadStarted = false;
-let selectedCameraEntryId = 'leader';
+let selectedCameraEntryId = 'overview';
 
 function createRaceRenderer(canvas: HTMLCanvasElement): RaceRenderer {
   try {
@@ -400,14 +415,118 @@ function drawFallbackRaceScene(canvas: HTMLCanvasElement, context: CanvasRenderi
       context.beginPath();
       context.arc(x, y, 28 + Math.sin(raceElapsed * 9) * 4, 0, Math.PI * 2);
       context.stroke();
+
+      context.fillStyle = '#ff8a00';
+      for (const offset of [-14, 0, 14]) {
+        context.beginPath();
+        context.moveTo(x + offset, y - 18 - Math.sin(raceElapsed * 18 + offset) * 4);
+        context.lineTo(x + offset - 6, y - 3);
+        context.lineTo(x + offset + 6, y - 3);
+        context.closePath();
+        context.fill();
+      }
     }
   });
 
+  drawFallbackHelicopter(context, width, trackTop, trackHeight, trackLeft, trackWidth, laneCount);
   context.restore();
+}
+
+function drawFallbackHelicopter(
+  context: CanvasRenderingContext2D,
+  width: number,
+  trackTop: number,
+  trackHeight: number,
+  trackLeft: number,
+  trackWidth: number,
+  laneCount: number
+) {
+  const race = getCurrentRace();
+  const hazardEvent = race ? getActiveHazardEvent(race.hazardEvents) : null;
+
+  if (!hazardEvent) {
+    return;
+  }
+
+  const target = visualRunners.find((runner) => runner.placement.entry.id === hazardEvent.targetEntryId);
+
+  if (!target) {
+    return;
+  }
+
+  const sequenceStart = getHazardSequenceStart(race?.hazardEvents ?? []);
+  const arrivalProgress = smoothStep(clampNumber((raceElapsed - sequenceStart) / helicopterEntranceSeconds, 0, 1));
+  const targetProgress = clampNumber((target.mesh.position.x - startX) / (finishX - startX), 0, 1);
+  const targetX = trackLeft + 28 + targetProgress * (trackWidth - 64);
+  const targetY = trackTop + (trackHeight / Math.max(laneCount, 1)) * (target.lane + 0.5);
+  const entryX = width * 0.9;
+  const hoverX = width * 0.72;
+  const entryY = Math.max(108, trackTop - 92);
+  const hoverY = Math.max(116, trackTop - 128);
+  const helicopterX = lerpNumber(entryX, hoverX, arrivalProgress);
+  const helicopterY = lerpNumber(entryY, hoverY, arrivalProgress) + Math.sin(raceElapsed * 3) * 5;
+  const shotTiming = getShotTiming(hazardEvent);
+  const shotActive = raceElapsed >= shotTiming.shotStart && raceElapsed <= shotTiming.impactEnd;
+
+  context.save();
+  context.translate(helicopterX, helicopterY);
+  context.rotate(Math.sin(raceElapsed * 2) * 0.08);
+
+  context.strokeStyle = 'rgba(17, 24, 39, 0.74)';
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(-54, 0);
+  context.lineTo(52, 0);
+  context.stroke();
+
+  context.fillStyle = '#c2413a';
+  context.beginPath();
+  context.ellipse(0, 20, 34, 15, 0, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = '#9ed8ff';
+  context.beginPath();
+  context.ellipse(24, 17, 14, 10, 0, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = '#c2413a';
+  context.fillRect(-52, 15, 42, 7);
+  context.strokeStyle = 'rgba(17, 24, 39, 0.8)';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(-62, 18);
+  context.lineTo(-72, 8);
+  context.moveTo(-62, 18);
+  context.lineTo(-72, 28);
+  context.stroke();
+
+  context.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(-34, 37);
+  context.lineTo(24, 37);
+  context.stroke();
+  context.restore();
+
+  if (!shotActive) {
+    return;
+  }
+
+  const muzzleX = helicopterX + 14;
+  const muzzleY = helicopterY + 30;
+  const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
+  const bulletX = lerpNumber(muzzleX, targetX, smoothStep(bulletProgress));
+  const bulletY = lerpNumber(muzzleY, targetY, smoothStep(bulletProgress));
+
+  context.strokeStyle = 'rgba(255, 241, 166, 0.9)';
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(muzzleX, muzzleY);
+  context.lineTo(bulletX, bulletY);
+  context.stroke();
 }
 let cameraSelectionLocked = false;
 const cameraLookTarget = new THREE.Vector3();
 const leaderboardItems = new Map<string, LeaderboardItemParts>();
+const minimapDots = new Map<string, HTMLSpanElement>();
 
 const runnerLabels = document.createElement('div');
 runnerLabels.className = 'runner-labels';
@@ -809,13 +928,72 @@ function createHorse(profile: HorseProfile) {
   const frenzyVortex = createFrenzyVortex(profile.secondaryColor);
   group.add(frenzyVortex.root);
 
+  const frenzyFire = createFrenzyFire();
+  group.add(frenzyFire.root);
+
   group.userData.rider = rider;
   group.userData.effect = effect;
   group.userData.legs = legParts;
   group.userData.motionStyle = motionStyle;
   group.userData.frenzyVortex = frenzyVortex;
+  group.userData.frenzyFire = frenzyFire;
 
   return group;
+}
+
+function createFrenzyFire(): FrenzyFireParts {
+  const root = new THREE.Group();
+  const flames: THREE.Mesh[] = [];
+  const materials: THREE.MeshBasicMaterial[] = [];
+  const positions = [
+    [-0.84, -1.02, -0.42, 0.42],
+    [-0.84, -1.02, 0.42, 0.42],
+    [0.62, -1.02, -0.42, 0.38],
+    [0.62, -1.02, 0.42, 0.38],
+    [riderMountX + 0.08, riderMountY + 1.08, 0, 0.68]
+  ] as const;
+
+  root.visible = false;
+
+  positions.forEach(([x, y, z, scale], index) => {
+    const material = new THREE.MeshBasicMaterial({
+      color: index === positions.length - 1 ? 0xff3b1f : 0xff8a00,
+      transparent: true,
+      opacity: 0.86,
+      depthWrite: false
+    });
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.62, 8), material);
+    flame.position.set(x, y, z);
+    flame.scale.setScalar(scale);
+    flame.userData.baseY = y;
+    flame.userData.baseScale = scale;
+    flame.userData.phase = index * 1.17;
+    flame.renderOrder = 8;
+    root.add(flame);
+    flames.push(flame);
+    materials.push(material);
+
+    if (index === positions.length - 1) {
+      const innerMaterial = new THREE.MeshBasicMaterial({
+        color: 0xfff06a,
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false
+      });
+      const innerFlame = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.44, 8), innerMaterial);
+      innerFlame.position.set(x + 0.02, y - 0.02, z);
+      innerFlame.scale.setScalar(scale * 0.86);
+      innerFlame.userData.baseY = y - 0.02;
+      innerFlame.userData.baseScale = scale * 0.86;
+      innerFlame.userData.phase = index * 1.17 + 0.64;
+      innerFlame.renderOrder = 9;
+      root.add(innerFlame);
+      flames.push(innerFlame);
+      materials.push(innerMaterial);
+    }
+  });
+
+  return { root, flames, materials };
 }
 
 function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
@@ -975,7 +1153,7 @@ function updateCameraTargetSelection(race: RaceResult) {
   const previousValue = selectedCameraEntryId;
   const hasPreviousEntry = race.placements.some((placement) => placement.entry.id === previousValue);
 
-  selectedCameraEntryId = hasPreviousEntry ? previousValue : 'leader';
+  selectedCameraEntryId = hasPreviousEntry ? previousValue : 'overview';
 }
 
 function setCurrentRace(index: number) {
@@ -1022,6 +1200,7 @@ function setCurrentRace(index: number) {
   updateHelicopterState(race.hazardEvents);
   renderRaceStaticState();
   renderLeaderboard();
+  updateMinimap();
   snapCameraToLeader();
 }
 
@@ -1064,12 +1243,14 @@ function updateRace(delta: number) {
       animateHorseStride(runner, 0, false, 1);
       applySkillPose(runner, false);
       updateFrenzyVortex(runner, false);
+      updateFrenzyFire(runner, false);
       updateRunnerLabel(runner, false);
     });
     updateHelicopterAnimation([]);
     updateFrenzySnorts(null);
     raceStage.dataset.frenzy = 'idle';
     updateCamera(null, null);
+    updateMinimap();
     positionRunnerLabels();
     return;
   }
@@ -1105,6 +1286,7 @@ function updateRace(delta: number) {
     animateHorseStride(runner, progress, eliminatedNow, frenzyActive ? raceProgress.multiplier * 1.7 : raceProgress.multiplier);
     applySkillPose(runner, activeSkill);
     updateFrenzyVortex(runner, frenzyActive);
+    updateFrenzyFire(runner, frenzyActive);
     updateRunnerLabel(runner, activeSkill);
   });
 
@@ -1120,6 +1302,7 @@ function updateRace(delta: number) {
   }
 
   updateCamera(activeHazard, activeFrenzyRunner);
+  updateMinimap();
   positionRunnerLabels();
 
   if (!raceFinished && raceElapsed >= maxFinish + 0.8) {
@@ -1142,8 +1325,14 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
     return;
   }
 
-  helicopterGroup.position.set(finishX + 22, 11.8, -(trackVisualWidth / 2 + 18));
+  const mobile = raceCanvas.clientWidth < 760;
+  helicopterGroup.position.set(
+    mobile ? finishX + 12 : finishX + 22,
+    mobile ? 9.8 : 11.8,
+    -(trackVisualWidth / 2 + (mobile ? 5.8 : 18))
+  );
   helicopterGroup.rotation.set(0, Math.PI / 2, 0);
+  helicopterGroup.scale.setScalar(mobile ? 1.18 : 1);
 }
 
 function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
@@ -1178,10 +1367,14 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
 
   const targetPosition = getRunnerAimPoint(target);
   const orbit = Math.sin(raceElapsed * 1.8) * 1.2;
+  const mobile = raceCanvas.clientWidth < 760;
   const arrivalProgress = smoothStep(clampNumber((raceElapsed - sequenceStart) / helicopterEntranceSeconds, 0, 1));
-  const hoverPosition = getFinishHelicopterHoverPosition(orbit);
-  const entryPosition = new THREE.Vector3(finishX + 26, 13.4, -(trackVisualWidth / 2 + 20));
+  const hoverPosition = getFinishHelicopterHoverPosition(orbit, mobile);
+  const entryPosition = mobile
+    ? new THREE.Vector3(finishX + 14, 10.2, -(trackVisualWidth / 2 + 7.2))
+    : new THREE.Vector3(finishX + 26, 13.4, -(trackVisualWidth / 2 + 20));
   helicopterGroup.position.copy(entryPosition.lerp(hoverPosition, arrivalProgress));
+  helicopterGroup.scale.setScalar(mobile ? 1.18 : 1);
   helicopterGroup.rotation.y = Math.PI / 2 + Math.sin(raceElapsed * 1.6) * 0.16;
   spinHelicopterRotors(helicopterGroup, raceElapsed);
   aimSniperRigAt(targetPosition);
@@ -1218,11 +1411,11 @@ function setCameraControlLocked(locked: boolean) {
   leaderboardList.dataset.cameraLocked = locked ? 'true' : 'false';
 }
 
-function getFinishHelicopterHoverPosition(orbit: number) {
+function getFinishHelicopterHoverPosition(orbit: number, mobile = false) {
   return new THREE.Vector3(
-    finishX - 3.8 + orbit * 0.45,
-    8.8 + Math.sin(raceElapsed * 3) * 0.22,
-    -(trackVisualWidth / 2 + 8.5)
+    finishX + (mobile ? -9.5 : -3.8) + orbit * 0.45,
+    (mobile ? 7.4 : 8.8) + Math.sin(raceElapsed * 3) * 0.22,
+    -(trackVisualWidth / 2 + (mobile ? 2.8 : 8.5))
   );
 }
 
@@ -1437,6 +1630,38 @@ function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
     const radius = 0.72 + (index % 6) * 0.13;
     particle.position.set(Math.cos(angle) * radius, 0.24 + ((index * 0.17 + raceElapsed * 1.8) % 1.72), Math.sin(angle) * radius);
     particle.scale.setScalar(0.9 + Math.sin(raceElapsed * 12 + phase) * 0.22);
+  });
+}
+
+function updateFrenzyFire(runner: VisualRunner, active: boolean) {
+  const fire = runner.mesh.userData.frenzyFire as FrenzyFireParts | undefined;
+
+  if (!fire) {
+    return;
+  }
+
+  fire.root.visible = active;
+
+  if (!active) {
+    fire.materials.forEach((material) => {
+      material.opacity = 0;
+    });
+    return;
+  }
+
+  fire.flames.forEach((flame, index) => {
+    const phase = Number(flame.userData.phase ?? 0);
+    const baseY = Number(flame.userData.baseY ?? flame.position.y);
+    const baseScale = Number(flame.userData.baseScale ?? 1);
+    const pulse = 1 + Math.sin(raceElapsed * 18 + phase) * 0.22;
+    flame.position.y = baseY + Math.sin(raceElapsed * 24 + phase) * 0.045;
+    flame.rotation.y = raceElapsed * (6.5 + index * 0.4) + phase;
+    flame.scale.set(baseScale * pulse * 0.88, baseScale * (1.08 + pulse * 0.18), baseScale * pulse * 0.88);
+
+    const material = flame.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = 0.66 + Math.sin(raceElapsed * 20 + phase) * 0.18;
+    }
   });
 }
 
@@ -1788,6 +2013,51 @@ function positionRunnerLabels() {
   });
 }
 
+function updateMinimap() {
+  const activeIds = new Set<string>();
+  const laneCount = Math.max(visualRunners.length, 1);
+
+  visualRunners.forEach((runner) => {
+    activeIds.add(runner.placement.entry.id);
+    const dot = getMinimapDot(runner);
+    const progress = clampNumber((runner.mesh.position.x - startX) / (finishX - startX), 0, 1);
+    const laneProgress = laneCount <= 1 ? 0.5 : runner.lane / (laneCount - 1);
+
+    dot.style.left = `${progress * 100}%`;
+    dot.style.top = `${12 + laneProgress * 76}%`;
+    dot.classList.toggle('eliminated', runner.eliminated);
+    dot.classList.toggle('frenzy', isFrenzySkillActive(runner.placement));
+    dot.classList.toggle('selected', selectedCameraEntryId === runner.placement.entry.id);
+  });
+
+  [...minimapDots.entries()].forEach(([entryId, dot]) => {
+    if (activeIds.has(entryId)) {
+      return;
+    }
+
+    dot.remove();
+    minimapDots.delete(entryId);
+  });
+}
+
+function getMinimapDot(runner: VisualRunner) {
+  const entryId = runner.placement.entry.id;
+  const existing = minimapDots.get(entryId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const dot = document.createElement('span');
+  dot.className = 'minimap-dot';
+  dot.title = runner.placement.entry.name;
+  dot.style.background = `#${runner.placement.entry.profile.color.toString(16).padStart(6, '0')}`;
+  dot.style.borderColor = `#${runner.placement.entry.profile.secondaryColor.toString(16).padStart(6, '0')}`;
+  minimapDots.set(entryId, dot);
+  minimapDotsLayer.appendChild(dot);
+  return dot;
+}
+
 function renderRaceStaticState() {
   const race = getCurrentRace();
 
@@ -1805,7 +2075,6 @@ function renderRaceStaticState() {
     summaryRow('주로', SURFACE_LABELS[race.options.surface]),
     summaryRow('거리', DISTANCE_LABELS[race.options.distance]),
     summaryRow('상태', CONDITION_LABELS[race.options.condition]),
-    summaryRow('말별속도', `${race.speedSegmentCount}구간`),
     summaryRow('헬기', race.hazardEvents.length > 0 ? `출격 x${race.hazardEvents.length}` : '없음'),
     summaryRow('시드', race.options.seed),
     summaryRow('전체', `${tournament.participantCount}명`)
@@ -1828,7 +2097,7 @@ function buildResultItems(race: RaceResult, reveal: boolean) {
 
     rank.textContent = reveal ? String(placement.rank) : '-';
     name.textContent = placement.entry.name;
-    detail.textContent = reveal ? resultDetail(placement, race) : '동일 출발 / 20구간 랜덤 배속';
+    detail.textContent = reveal ? resultDetail(placement, race) : '동일 출발 / 랜덤 페이스';
     body.append(name, detail);
     item.append(rank, body);
     item.classList.toggle('qualified', reveal && placement.qualified);
@@ -1853,13 +2122,11 @@ function speedSegmentLine(placement: RacePlacement) {
   }
 
   if (isFrenzySkillActive(placement)) {
-    return '광폭 질주 x3';
+    return '광폭 질주';
   }
 
   const raceProgress = getSegmentedRaceProgress(raceElapsed, placement, placement.speedSegments);
-  const segment = placement.speedSegments[raceProgress.segmentIndex];
-
-  return segment ? `${segment.index + 1}구간 ${segment.label} x${segment.multiplier.toFixed(2)}` : '속도 유지';
+  return `${Math.round(raceProgress.progress * 100)}% 지점`;
 }
 
 function renderLeaderboard() {
@@ -1868,6 +2135,9 @@ function renderLeaderboard() {
   if (!race) {
     return;
   }
+
+  raceStage.dataset.cameraMode = selectedCameraEntryId === 'overview' ? 'overview' : 'tracking';
+  leaderboardList.dataset.cameraMode = selectedCameraEntryId === 'overview' ? 'overview' : 'tracking';
 
   const ranked = raceFinished
     ? race.placements
@@ -1919,8 +2189,9 @@ function selectCameraEntry(entryId: string) {
     return;
   }
 
-  selectedCameraEntryId = selectedCameraEntryId === entryId ? 'leader' : entryId;
+  selectedCameraEntryId = selectedCameraEntryId === entryId ? 'overview' : entryId;
   renderLeaderboard();
+  updateMinimap();
 }
 
 function getLeaderboardItemParts(entryId: string) {
@@ -2091,14 +2362,15 @@ function resize() {
   const height = raceCanvas.clientHeight;
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
+  camera.fov = width < 760 ? 56 : 44;
   camera.updateProjectionMatrix();
 }
 
 function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunner | null) {
   const width = raceCanvas.clientWidth;
-  const leaderView = getLeaderCameraView(width);
-  const defaultPosition = leaderView.position;
-  const defaultTarget = leaderView.target;
+  const defaultView = getDefaultCameraView(width);
+  const defaultPosition = defaultView.position;
+  const defaultTarget = defaultView.target;
 
   if (!hazardEvent) {
     if (frenzyRunner) {
@@ -2128,9 +2400,12 @@ function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunne
 
   if (raceElapsed < shotTiming.shotStart) {
     const finishRouteCenter = targetPoint.clone().lerp(helicopterPoint, 0.62);
-    desiredPosition = finishRouteCenter.clone().add(new THREE.Vector3(-24, 13.5, 32));
-    desiredTarget = finishRouteCenter.clone().lerp(helicopterPoint, 0.22);
-    cameraAlpha = 0.07;
+    const mobile = width < 760;
+    desiredPosition = mobile
+      ? helicopterPoint.clone().add(new THREE.Vector3(-16, 10.8, 24))
+      : finishRouteCenter.clone().add(new THREE.Vector3(-24, 13.5, 32));
+    desiredTarget = mobile ? helicopterPoint.clone().lerp(targetPoint, 0.36) : finishRouteCenter.clone().lerp(helicopterPoint, 0.22);
+    cameraAlpha = mobile ? 0.09 : 0.07;
   } else if (raceElapsed < hazardEvent.triggerSeconds) {
     const muzzlePoint = getMuzzleWorldPosition();
     const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
@@ -2187,12 +2462,20 @@ function getFrenzyCameraView(runner: VisualRunner, width: number) {
   };
 }
 
-function getLeaderCameraView(width: number) {
+function getDefaultCameraView(width: number) {
+  if (selectedCameraEntryId === 'overview') {
+    return getOverviewCameraView(width);
+  }
+
+  return getFocusedCameraView(width);
+}
+
+function getFocusedCameraView(width: number) {
   const leadRunner = getCameraFocusRunner();
 
   if (!leadRunner) {
     return {
-      position: width < 760 ? new THREE.Vector3(0, 24, 42) : new THREE.Vector3(0, 18, 32),
+      position: width < 760 ? new THREE.Vector3(-18, 32, 54) : new THREE.Vector3(0, 18, 32),
       target: new THREE.Vector3(0, 0, 0)
     };
   }
@@ -2209,8 +2492,32 @@ function getLeaderCameraView(width: number) {
   };
 }
 
+function getOverviewCameraView(width: number) {
+  if (visualRunners.length === 0) {
+    return {
+      position: width < 760 ? new THREE.Vector3(0, 58, 86) : new THREE.Vector3(0, 42, 64),
+      target: new THREE.Vector3(0, 0, 0)
+    };
+  }
+
+  const runnerXs = visualRunners.map((runner) => runner.mesh.position.x);
+  const minRunnerX = Math.min(...runnerXs, startX);
+  const maxRunnerX = Math.max(...runnerXs, finishX);
+  const spanX = clampNumber(maxRunnerX - minRunnerX + 16, 56, finishX - startX + 24);
+  const centerX = clampNumber((minRunnerX + maxRunnerX) / 2, startX + 28, finishX - 18);
+  const mobile = width < 760;
+  const height = mobile ? 38 + spanX * 0.22 : 28 + spanX * 0.15;
+  const depth = mobile ? 54 + spanX * 0.26 : 39 + spanX * 0.2;
+  const back = mobile ? 18 + spanX * 0.08 : 14 + spanX * 0.06;
+
+  return {
+    position: new THREE.Vector3(centerX - back, height, depth),
+    target: new THREE.Vector3(centerX + (mobile ? 12 : 18), 0.8, 0)
+  };
+}
+
 function getCameraFocusRunner() {
-  if (selectedCameraEntryId !== 'leader') {
+  if (selectedCameraEntryId !== 'overview') {
     const selectedRunner = visualRunners.find((runner) => runner.placement.entry.id === selectedCameraEntryId);
 
     if (selectedRunner) {
@@ -2222,9 +2529,9 @@ function getCameraFocusRunner() {
 }
 
 function snapCameraToLeader() {
-  const leaderView = getLeaderCameraView(raceCanvas.clientWidth);
-  camera.position.copy(leaderView.position);
-  cameraLookTarget.copy(leaderView.target);
+  const view = getDefaultCameraView(raceCanvas.clientWidth);
+  camera.position.copy(view.position);
+  cameraLookTarget.copy(view.target);
   camera.lookAt(cameraLookTarget);
 }
 

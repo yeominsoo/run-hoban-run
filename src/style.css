@@ -93,7 +93,7 @@ button {
 h1 {
   margin: 0;
   color: #ffffff;
-  font-size: clamp(2rem, 5vw, 4.7rem);
+  font-size: 4.2rem;
   line-height: 0.95;
   letter-spacing: 0;
 }
@@ -424,6 +424,107 @@ textarea {
   white-space: nowrap;
 }
 
+.race-minimap {
+  position: absolute;
+  right: 20px;
+  bottom: 108px;
+  left: 20px;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.minimap-track {
+  position: relative;
+  width: min(720px, 82vw);
+  height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.12) 0,
+      rgba(255, 255, 255, 0.12) 1px,
+      transparent 1px,
+      transparent 7.5%
+    ),
+    linear-gradient(180deg, rgba(20, 42, 38, 0.58), rgba(9, 20, 18, 0.44));
+  box-shadow: 0 10px 28px rgba(8, 18, 20, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.minimap-track::before {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  left: 14px;
+  height: 2px;
+  content: "";
+  background: rgba(255, 255, 255, 0.48);
+  transform: translateY(-50%);
+}
+
+.minimap-start,
+.minimap-finish {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.minimap-start {
+  left: 12px;
+}
+
+.minimap-finish {
+  right: 12px;
+  background:
+    repeating-linear-gradient(180deg, #ffffff 0 5px, #111827 5px 10px);
+}
+
+.minimap-dots {
+  position: absolute;
+  inset: 9px 16px;
+}
+
+.minimap-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(10, 18, 24, 0.35),
+    0 3px 9px rgba(7, 13, 15, 0.42);
+  transform: translate(-50%, -50%);
+  transition:
+    width 120ms ease,
+    height 120ms ease,
+    opacity 120ms ease;
+}
+
+.minimap-dot.selected {
+  width: 17px;
+  height: 17px;
+  box-shadow:
+    0 0 0 2px rgba(86, 204, 242, 0.95),
+    0 0 18px rgba(86, 204, 242, 0.36);
+}
+
+.minimap-dot.frenzy {
+  box-shadow:
+    0 0 0 2px rgba(255, 138, 0, 0.95),
+    0 0 18px rgba(255, 65, 65, 0.5);
+}
+
+.minimap-dot.eliminated {
+  opacity: 0.42;
+  filter: grayscale(0.8);
+}
+
 .runner-labels {
   position: fixed;
   inset: 0;
@@ -501,6 +602,10 @@ textarea {
 }
 
 @media (max-width: 980px) {
+  h1 {
+    font-size: 2.7rem;
+  }
+
   .race-panel {
     display: none;
   }
@@ -519,41 +624,158 @@ textarea {
     top: 12px;
     right: 12px;
     left: 12px;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .eyebrow {
+    margin-bottom: 2px;
+    font-size: 0.66rem;
+  }
+
+  h1 {
+    font-size: 1.55rem;
+    line-height: 1;
+  }
+
+  .top-actions {
+    gap: 7px;
   }
 
   .control-panel {
-    top: 92px;
+    top: auto;
     right: 10px;
-    bottom: auto;
+    bottom: 112px;
     left: 10px;
     width: auto;
-    max-height: 238px;
+    max-height: min(56vh, 430px);
+    overflow: auto;
+  }
+
+  .race-stage.panels-hidden .control-panel {
+    transform: translateY(calc(100% + 132px));
   }
 
   .panel-section {
     padding: 10px;
   }
 
+  .section-title {
+    margin-bottom: 6px;
+    font-size: 0.68rem;
+  }
+
   textarea {
-    height: 82px;
+    height: 74px;
+  }
+
+  .option-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .seed-control {
+    grid-template-columns: minmax(0, 1fr) 62px;
+  }
+
+  .option-grid span,
+  .seed-control span {
+    font-size: 0.64rem;
+  }
+
+  .option-grid input,
+  .option-grid select,
+  .seed-control input,
+  .seed-control button {
+    min-height: 34px;
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+
+  .button-row {
+    grid-template-columns: 0.8fr 0.8fr 1fr;
+    gap: 7px;
+  }
+
+  .button-row button {
+    min-height: 34px;
   }
 
   .hud-bottom {
     right: 10px;
-    bottom: 10px;
+    bottom: 8px;
     left: 10px;
   }
 
   .leaderboard {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(112px, 1fr);
+    grid-template-columns: none;
+    grid-template-rows: repeat(2, minmax(34px, auto));
+    max-height: 90px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 6px;
+    scrollbar-width: none;
+  }
+
+  .leaderboard::-webkit-scrollbar {
+    display: none;
   }
 
   .leaderboard li {
-    padding: 6px 7px;
+    grid-template-columns: 22px minmax(0, 1fr);
+    min-height: 34px;
+    padding: 5px 6px;
+  }
+
+  .leaderboard span {
+    width: 22px;
+    height: 22px;
+    font-size: 0.72rem;
+  }
+
+  .leaderboard strong {
+    font-size: 0.76rem;
+  }
+
+  .leaderboard small {
+    display: none;
+  }
+
+  .race-minimap {
+    right: 10px;
+    bottom: 104px;
+    left: 10px;
+  }
+
+  .minimap-track {
+    width: 100%;
+    height: 44px;
+  }
+
+  .minimap-dots {
+    inset: 8px 14px;
+  }
+
+  .minimap-dot {
+    width: 10px;
+    height: 10px;
   }
 
   .icon-button {
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .icon-button span {
+    font-size: 1.35rem;
+  }
+
+  .runner-tag {
+    max-width: 128px;
+    min-width: 42px;
+    padding: 3px 6px;
+    font-size: 0.62rem;
   }
 }
