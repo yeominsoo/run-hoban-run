@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   createSampleParticipants,
+  FRENZY_SKILL_ID,
+  getRaceOptionBounds,
+  normalizeParticipants,
   runTournament,
   type HazardEvent,
   type HorseProfile,
@@ -54,6 +57,29 @@ type HorseLegParts = {
   hipBaseX: number;
   hipBaseY: number;
   phase: number;
+};
+
+type FrenzyVortexParts = {
+  root: THREE.Group;
+  rings: THREE.Mesh[];
+  dust: THREE.Mesh[];
+};
+
+type SnortPuffParts = {
+  mesh: THREE.Mesh;
+  material: THREE.MeshBasicMaterial;
+  burstIndex: number;
+  nostrilSide: number;
+};
+
+type RaceRenderer = {
+  shadowMap: {
+    enabled: boolean;
+    type: number;
+  };
+  setPixelRatio: (ratio: number) => void;
+  setSize: (width: number, height: number, updateStyle?: boolean) => void;
+  render: (scene: THREE.Scene, camera: THREE.Camera) => void;
 };
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -209,16 +235,13 @@ const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
 };
 
 participantInput.value = createSampleParticipants(18).join('\n');
+let lastFieldSizeMax = getRaceOptionBounds(18).fieldSize.max;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb8d9ff);
 scene.fog = new THREE.Fog(0xb8d9ff, 95, 360);
 
-const renderer = new THREE.WebGLRenderer({
-  canvas: raceCanvas,
-  antialias: true,
-  preserveDrawingBuffer: true
-});
+const renderer = createRaceRenderer(raceCanvas);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -246,6 +269,11 @@ const groundWidth = trackVisualWidth + 30;
 const startX = -raceLength / 2 + 8;
 const finishX = raceLength / 2 - 7;
 const horseBaseY = 1.45;
+const riderMountX = -0.08;
+const riderMountY = 1.36;
+const riderScale = 1.14;
+const riderLegZ = 0.5;
+const frenzyCutsceneLeadSeconds = 0.72;
 const helicopterEntranceSeconds = 3;
 let raceElapsed = 0;
 let raceFinished = false;
@@ -256,6 +284,127 @@ let visualRunners: VisualRunner[] = [];
 let helicopterAsset: THREE.Group | null = null;
 let helicopterAssetLoadStarted = false;
 let selectedCameraEntryId = 'leader';
+
+function createRaceRenderer(canvas: HTMLCanvasElement): RaceRenderer {
+  try {
+    return new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      preserveDrawingBuffer: true
+    });
+  } catch (error) {
+    console.warn('WebGL renderer unavailable. Falling back to 2D canvas rendering.', error);
+    return createFallbackRaceRenderer(canvas);
+  }
+}
+
+function createFallbackRaceRenderer(canvas: HTMLCanvasElement): RaceRenderer {
+  const context = canvas.getContext('2d');
+  let pixelRatio = 1;
+
+  return {
+    shadowMap: {
+      enabled: false,
+      type: THREE.PCFSoftShadowMap
+    },
+    setPixelRatio(ratio: number) {
+      pixelRatio = Math.max(1, ratio);
+    },
+    setSize(width: number, height: number, updateStyle = true) {
+      const scaledWidth = Math.max(1, Math.floor(width * pixelRatio));
+      const scaledHeight = Math.max(1, Math.floor(height * pixelRatio));
+
+      if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
+      }
+
+      if (updateStyle) {
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+      }
+    },
+    render() {
+      drawFallbackRaceScene(canvas, context, pixelRatio);
+    }
+  };
+}
+
+function drawFallbackRaceScene(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D | null, pixelRatio: number) {
+  if (!context) {
+    return;
+  }
+
+  const width = canvas.width / pixelRatio;
+  const height = canvas.height / pixelRatio;
+  const trackTop = height * 0.5;
+  const trackHeight = Math.max(160, height * 0.34);
+  const trackLeft = width * 0.08;
+  const trackWidth = width * 0.84;
+  const laneCount = Math.max(visualRunners.length, 8);
+
+  context.save();
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+
+  const skyGradient = context.createLinearGradient(0, 0, 0, height);
+  skyGradient.addColorStop(0, '#b8d9ff');
+  skyGradient.addColorStop(0.54, '#e8f6ff');
+  skyGradient.addColorStop(0.55, '#65aa5d');
+  skyGradient.addColorStop(1, '#347b43');
+  context.fillStyle = skyGradient;
+  context.fillRect(0, 0, width, height);
+
+  context.fillStyle = '#6f8551';
+  context.fillRect(trackLeft, trackTop, trackWidth, trackHeight);
+  context.strokeStyle = 'rgba(255, 255, 255, 0.64)';
+  context.lineWidth = 1;
+
+  for (let lane = 0; lane <= laneCount; lane += 1) {
+    const y = trackTop + (trackHeight / laneCount) * lane;
+    context.beginPath();
+    context.moveTo(trackLeft, y);
+    context.lineTo(trackLeft + trackWidth, y);
+    context.stroke();
+  }
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.78)';
+  context.fillRect(trackLeft + trackWidth - 12, trackTop, 6, trackHeight);
+
+  const runners = visualRunners.length > 0 ? visualRunners : [];
+
+  if (runners.length === 0) {
+    context.fillStyle = '#273443';
+    context.fillRect(trackLeft + 16, trackTop + trackHeight * 0.48, 56, 20);
+  }
+
+  runners.forEach((runner) => {
+    const progress = clampNumber((runner.mesh.position.x - startX) / (finishX - startX), 0, 1);
+    const x = trackLeft + 28 + progress * (trackWidth - 64);
+    const y = trackTop + (trackHeight / laneCount) * (runner.lane + 0.5);
+    const color = `#${runner.placement.entry.profile.color.toString(16).padStart(6, '0')}`;
+    const accent = `#${runner.placement.entry.profile.secondaryColor.toString(16).padStart(6, '0')}`;
+
+    context.fillStyle = runner.eliminated ? '#667085' : color;
+    context.beginPath();
+    context.ellipse(x, y, 18, 8, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = accent;
+    context.beginPath();
+    context.arc(x + 15, y - 6, 6, 0, Math.PI * 2);
+    context.fill();
+
+    if (isFrenzySkillActive(runner.placement)) {
+      context.strokeStyle = '#ff3030';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(x, y, 28 + Math.sin(raceElapsed * 9) * 4, 0, Math.PI * 2);
+      context.stroke();
+    }
+  });
+
+  context.restore();
+}
 let cameraSelectionLocked = false;
 const cameraLookTarget = new THREE.Vector3();
 const leaderboardItems = new Map<string, LeaderboardItemParts>();
@@ -273,10 +422,11 @@ const helicopterSniperRig = createHelicopterSniperRig();
 const bulletMesh = createBulletMesh();
 const muzzleFlash = createMuzzleFlash();
 const impactBurst = createImpactBurst();
+const frenzySnortGroup = createFrenzySnortGroup();
 helicopterGroup.visible = false;
 helicopterGroup.add(helicopterAssetSlot, helicopterSniperRig);
 scene.add(helicopterGroup);
-scene.add(bulletMesh, muzzleFlash, impactBurst);
+scene.add(bulletMesh, muzzleFlash, impactBurst, frenzySnortGroup);
 
 const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x4d9d55, roughness: 0.9 });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(groundLength, groundWidth), groundMaterial);
@@ -485,6 +635,30 @@ function createImpactBurst() {
   return burst;
 }
 
+function createFrenzySnortGroup() {
+  const group = new THREE.Group();
+  const puffs: SnortPuffParts[] = [];
+
+  for (let burstIndex = 0; burstIndex < 2; burstIndex += 1) {
+    for (const nostrilSide of [-1, 1]) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xf4fbff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false
+      });
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 10), material);
+      mesh.visible = false;
+      group.add(mesh);
+      puffs.push({ mesh, material, burstIndex, nostrilSide });
+    }
+  }
+
+  group.visible = false;
+  group.userData.puffs = puffs;
+  return group;
+}
+
 function createHorse(profile: HorseProfile) {
   const group = new THREE.Group();
   const bodyMaterial = new THREE.MeshStandardMaterial({ color: profile.color, roughness: 0.58 });
@@ -632,12 +806,59 @@ function createHorse(profile: HorseProfile) {
   effect.visible = false;
   group.add(effect);
 
+  const frenzyVortex = createFrenzyVortex(profile.secondaryColor);
+  group.add(frenzyVortex.root);
+
   group.userData.rider = rider;
   group.userData.effect = effect;
   group.userData.legs = legParts;
   group.userData.motionStyle = motionStyle;
+  group.userData.frenzyVortex = frenzyVortex;
 
   return group;
+}
+
+function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
+  const root = new THREE.Group();
+  const rings: THREE.Mesh[] = [];
+  const dust: THREE.Mesh[] = [];
+  const ringColors = [0xffffff, accentColor, 0xff4d4d];
+
+  root.position.y = 0.12;
+  root.visible = false;
+
+  for (let index = 0; index < 5; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: ringColors[index % ringColors.length] ?? 0xffffff,
+      transparent: true,
+      opacity: 0.58,
+      depthWrite: false,
+      depthTest: false
+    });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.92 + index * 0.2, 0.05, 8, 72), material);
+    ring.rotation.x = Math.PI / 2;
+    ring.rotation.y = index % 2 === 0 ? 0.34 : -0.34;
+    ring.rotation.z = index * 0.42;
+    ring.position.y = 0.04 + index * 0.28;
+    rings.push(ring);
+    root.add(ring);
+  }
+
+  for (let index = 0; index < 22; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index % 3 === 0 ? 0xffe9a6 : 0xffffff,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+      depthTest: false
+    });
+    const particle = new THREE.Mesh(new THREE.SphereGeometry(0.085 + (index % 4) * 0.018, 8, 6), material);
+    particle.userData.phase = index * 0.77;
+    dust.push(particle);
+    root.add(particle);
+  }
+
+  return { root, rings, dust };
 }
 
 function createRider(accentColor: number): RiderParts {
@@ -647,7 +868,8 @@ function createRider(accentColor: number): RiderParts {
   const accentMaterial = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.48 });
   const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.68 });
 
-  root.position.set(-0.08, 1.2, 0);
+  root.position.set(riderMountX, riderMountY, 0);
+  root.scale.setScalar(riderScale);
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.54, 5, 12), suitMaterial);
   torso.position.y = 0.28;
@@ -684,13 +906,13 @@ function createRider(accentColor: number): RiderParts {
   root.add(rightArm);
 
   const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.58, 4, 8), bootMaterial);
-  leftLeg.position.set(-0.1, -0.18, 0.22);
+  leftLeg.position.set(-0.1, -0.18, riderLegZ);
   leftLeg.rotation.z = -0.72;
   leftLeg.castShadow = true;
   root.add(leftLeg);
 
   const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.58, 4, 8), bootMaterial);
-  rightLeg.position.set(-0.1, -0.18, -0.22);
+  rightLeg.position.set(-0.1, -0.18, -riderLegZ);
   rightLeg.rotation.z = -0.72;
   rightLeg.castShadow = true;
   root.add(rightLeg);
@@ -774,12 +996,13 @@ function setCurrentRace(index: number) {
   updateLaneGuides(race.placements.length);
   updateCameraTargetSelection(race);
 
-  const lanePlacements = [...race.placements].sort((left, right) => left.entry.id.localeCompare(right.entry.id));
+  const lanePlacements = [...race.placements].sort((left, right) => left.laneIndex - right.laneIndex);
   lanePlacements.forEach((placement, indexInLane) => {
     const count = lanePlacements.length;
+    const laneIndex = placement.laneIndex;
     const mesh = createHorse(placement.entry.profile);
     const baseScale = count > 14 ? 0.58 : count > 10 ? 0.68 : count > 6 ? 0.82 : 1;
-    mesh.position.set(startX, horseBaseY, laneZ(indexInLane, count));
+    mesh.position.set(startX, horseBaseY, laneZ(laneIndex, count));
     mesh.rotation.y = 0;
     mesh.scale.setScalar(baseScale);
     scene.add(mesh);
@@ -788,7 +1011,7 @@ function setCurrentRace(index: number) {
       placement,
       mesh,
       label: makeLabel(placement.entry.name),
-      lane: indexInLane,
+      lane: laneIndex,
       phase: indexInLane * 0.7,
       baseScale,
       skillActive: false,
@@ -827,7 +1050,7 @@ function updateRace(delta: number) {
   const race = getCurrentRace();
 
   if (!race) {
-    updateCamera(null);
+    updateCamera(null, null);
     return;
   }
 
@@ -840,10 +1063,13 @@ function updateRace(delta: number) {
       runner.eliminated = false;
       animateHorseStride(runner, 0, false, 1);
       applySkillPose(runner, false);
+      updateFrenzyVortex(runner, false);
       updateRunnerLabel(runner, false);
     });
     updateHelicopterAnimation([]);
-    updateCamera(null);
+    updateFrenzySnorts(null);
+    raceStage.dataset.frenzy = 'idle';
+    updateCamera(null, null);
     positionRunnerLabels();
     return;
   }
@@ -864,7 +1090,8 @@ function updateRace(delta: number) {
     const bob = Math.sin(raceElapsed * 5.4 * raceProgress.multiplier + runner.phase) * 0.14;
     const laneSway = Math.sin(raceElapsed * 1.6 * raceProgress.multiplier + runner.phase) * 0.1;
     const activeSkill = !eliminatedNow && isSkillActive(runner.placement);
-    const skillPulse = activeSkill ? 1 + Math.sin(raceElapsed * 9) * 0.035 : 1;
+    const frenzyActive = !eliminatedNow && isFrenzySkillActive(runner.placement);
+    const skillPulse = frenzyActive ? 1 + Math.sin(raceElapsed * 16) * 0.065 : activeSkill ? 1 + Math.sin(raceElapsed * 9) * 0.035 : 1;
 
     runner.mesh.position.x = startX + progress * (finishX - startX);
     runner.mesh.position.z = laneZ(runner.lane, visualRunners.length) + (eliminatedNow ? 0 : laneSway);
@@ -875,13 +1102,24 @@ function updateRace(delta: number) {
     runner.skillActive = activeSkill;
     runner.eliminated = eliminatedNow;
 
-    animateHorseStride(runner, progress, eliminatedNow, raceProgress.multiplier);
+    animateHorseStride(runner, progress, eliminatedNow, frenzyActive ? raceProgress.multiplier * 1.7 : raceProgress.multiplier);
     applySkillPose(runner, activeSkill);
+    updateFrenzyVortex(runner, frenzyActive);
     updateRunnerLabel(runner, activeSkill);
   });
 
+  raceStage.dataset.frenzy = visualRunners.some((runner) => !runner.eliminated && isFrenzySkillActive(runner.placement)) ? 'active' : 'idle';
+  const activeHazard = getActiveHazardEvent(race.hazardEvents);
   updateHelicopterAnimation(race.hazardEvents);
-  updateCamera(getActiveHazardEvent(race.hazardEvents));
+  const activeFrenzyRunner = activeHazard ? null : getActiveFrenzyCinematicRunner();
+  updateFrenzySnorts(activeFrenzyRunner);
+
+  if (activeFrenzyRunner) {
+    raceStage.dataset.cinematic = 'frenzy';
+    setCameraControlLocked(true);
+  }
+
+  updateCamera(activeHazard, activeFrenzyRunner);
   positionRunnerLabels();
 
   if (!raceFinished && raceElapsed >= maxFinish + 0.8) {
@@ -896,6 +1134,7 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
   muzzleFlash.visible = false;
   impactBurst.visible = false;
   raceStage.dataset.cinematic = 'idle';
+  raceStage.dataset.frenzy = 'idle';
 
   const firstEvent = hazardEvents[0];
 
@@ -1021,6 +1260,20 @@ function getRaceTimeScale(hazardEvents: HazardEvent[]) {
   return raceElapsed < activeShot.triggerSeconds ? 0.28 : 0.44;
 }
 
+function getActiveFrenzyCinematicRunner() {
+  return (
+    visualRunners.find((runner) => {
+      if (runner.eliminated || !isFrenzySkillEvent(runner.placement.skillEvent)) {
+        return false;
+      }
+
+      const start = getSkillStartSeconds(runner.placement);
+      const end = start + (runner.placement.skillEvent?.durationSeconds ?? 0);
+      return raceElapsed >= start - frenzyCutsceneLeadSeconds && raceElapsed <= Math.min(runner.placement.finishSeconds, end);
+    }) ?? null
+  );
+}
+
 function getShotTiming(hazardEvent: HazardEvent) {
   const flightSeconds = 0.9;
 
@@ -1094,6 +1347,20 @@ function getRunnerAimPoint(runner: VisualRunner) {
   return runner.mesh.localToWorld(new THREE.Vector3(0.3, 1.68, 0));
 }
 
+function getHorseFacePoint(runner: VisualRunner) {
+  return runner.mesh.localToWorld(new THREE.Vector3(2.12, 1.18, 0));
+}
+
+function getHorseNostrilPoint(runner: VisualRunner, nostrilSide: number) {
+  return runner.mesh.localToWorld(new THREE.Vector3(2.12, 1.12, nostrilSide * 0.13));
+}
+
+function getHorseForwardDirection(runner: VisualRunner) {
+  const nose = runner.mesh.localToWorld(new THREE.Vector3(2.12, 1.12, 0));
+  const forward = runner.mesh.localToWorld(new THREE.Vector3(3.12, 1.12, 0)).sub(nose);
+  return forward.lengthSq() > 0 ? forward.normalize() : new THREE.Vector3(1, 0, 0);
+}
+
 function getMuzzleWorldPosition() {
   return helicopterSniperRig.localToWorld(new THREE.Vector3(0, 0, -1.4));
 }
@@ -1137,20 +1404,123 @@ function spinHelicopterRotors(root: THREE.Object3D, time: number) {
   });
 }
 
+function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
+  const vortex = runner.mesh.userData.frenzyVortex as FrenzyVortexParts | undefined;
+
+  if (!vortex) {
+    return;
+  }
+
+  vortex.root.visible = active;
+
+  if (!active) {
+    return;
+  }
+
+  const pulse = 1 + Math.sin(raceElapsed * 19) * 0.08;
+  vortex.root.rotation.y = raceElapsed * 8 + runner.phase;
+  vortex.root.scale.set(pulse, 1, pulse);
+
+  vortex.rings.forEach((ring, index) => {
+    ring.rotation.z = raceElapsed * (2.8 + index * 0.42) + index * 0.7;
+    ring.position.y = 0.2 + index * 0.28 + Math.sin(raceElapsed * 7 + index) * 0.035;
+
+    const material = ring.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = 0.52 + Math.sin(raceElapsed * 9 + index) * 0.12;
+    }
+  });
+
+  vortex.dust.forEach((particle, index) => {
+    const phase = Number(particle.userData.phase ?? 0);
+    const angle = raceElapsed * 11 + phase;
+    const radius = 0.72 + (index % 6) * 0.13;
+    particle.position.set(Math.cos(angle) * radius, 0.24 + ((index * 0.17 + raceElapsed * 1.8) % 1.72), Math.sin(angle) * radius);
+    particle.scale.setScalar(0.9 + Math.sin(raceElapsed * 12 + phase) * 0.22);
+  });
+}
+
+function updateFrenzySnorts(runner: VisualRunner | null) {
+  const puffs = frenzySnortGroup.userData.puffs as SnortPuffParts[] | undefined;
+
+  if (!puffs) {
+    return;
+  }
+
+  if (!runner || !isFrenzySkillEvent(runner.placement.skillEvent)) {
+    frenzySnortGroup.visible = false;
+    puffs.forEach((puff) => {
+      puff.mesh.visible = false;
+      puff.material.opacity = 0;
+    });
+    return;
+  }
+
+  const skillStart = getSkillStartSeconds(runner.placement);
+  const cutsceneElapsed = raceElapsed - skillStart;
+  const burstOffsets = [-0.48, 0.18];
+  let visible = false;
+
+  puffs.forEach((puff) => {
+    const localElapsed = cutsceneElapsed - (burstOffsets[puff.burstIndex] ?? 0);
+    const burstProgress = clampNumber(localElapsed / 0.58, 0, 1);
+    const burstActive = localElapsed >= 0 && localElapsed <= 0.58;
+
+    puff.mesh.visible = burstActive;
+    puff.material.opacity = burstActive ? 0.68 * (1 - burstProgress) : 0;
+
+    if (!burstActive) {
+      return;
+    }
+
+    visible = true;
+
+    const origin = getHorseNostrilPoint(runner, puff.nostrilSide);
+    const direction = getHorseForwardDirection(runner);
+    const lift = new THREE.Vector3(0, 0.16 + burstProgress * 0.2, 0);
+    const sideSpread = new THREE.Vector3(0, 0, puff.nostrilSide * burstProgress * 0.18);
+    puff.mesh.position.copy(origin).add(direction.multiplyScalar(0.15 + burstProgress * 1.45)).add(lift).add(sideSpread);
+    puff.mesh.scale.setScalar(0.26 + burstProgress * 1.05);
+  });
+
+  frenzySnortGroup.visible = visible;
+}
+
 function isSkillActive(placement: RacePlacement) {
   if (!placement.skillEvent) {
     return false;
   }
 
-  const start = placement.finishSeconds * placement.skillEvent.triggerProgress;
+  const start = getSkillStartSeconds(placement);
   const end = Math.min(placement.finishSeconds, start + placement.skillEvent.durationSeconds);
   return raceElapsed >= start && raceElapsed <= end;
 }
 
+function isFrenzySkillActive(placement: RacePlacement) {
+  return isFrenzySkillEvent(placement.skillEvent) && isSkillActive(placement);
+}
+
+function isFrenzySkillEvent(skillEvent: RacePlacement['skillEvent']) {
+  return skillEvent?.skill.id === FRENZY_SKILL_ID;
+}
+
+function hasSpeedSkillEvent(
+  skillEvent: RacePlacement['skillEvent']
+): skillEvent is NonNullable<RacePlacement['skillEvent']> & { triggerSeconds: number; speedMultiplier: number } {
+  return Boolean(skillEvent?.triggerSeconds !== undefined && skillEvent.speedMultiplier !== undefined);
+}
+
+function getSkillStartSeconds(placement: RacePlacement) {
+  return placement.skillEvent?.triggerSeconds ?? placement.finishSeconds * (placement.skillEvent?.triggerProgress ?? 0);
+}
+
 function getSegmentedRaceProgress(elapsedSeconds: number, placement: RacePlacement, speedSegments: SpeedSegment[]) {
+  const progressElapsedSeconds = getProgressElapsedSeconds(elapsedSeconds, placement);
+  const progressFinishSeconds = getProgressFinishSeconds(placement);
+
   if (speedSegments.length === 0) {
     return {
-      progress: Math.min(1, elapsedSeconds / placement.finishSeconds),
+      progress: Math.min(1, progressElapsedSeconds / progressFinishSeconds),
       multiplier: 1,
       segmentIndex: 0
     };
@@ -1163,14 +1533,14 @@ function getSegmentedRaceProgress(elapsedSeconds: number, placement: RacePlaceme
   for (let index = 0; index < speedSegments.length; index += 1) {
     const segment = speedSegments[index];
     const segmentWeight = segmentWeights[index] ?? 1;
-    const segmentDuration = placement.finishSeconds * (segmentWeight / totalWeight);
+    const segmentDuration = progressFinishSeconds * (segmentWeight / totalWeight);
 
-    if (elapsedSeconds <= elapsedCursor + segmentDuration) {
-      const localProgress = clampNumber((elapsedSeconds - elapsedCursor) / segmentDuration, 0, 1);
+    if (progressElapsedSeconds <= elapsedCursor + segmentDuration) {
+      const localProgress = clampNumber((progressElapsedSeconds - elapsedCursor) / segmentDuration, 0, 1);
 
       return {
         progress: (index + localProgress) / speedSegments.length,
-        multiplier: segment?.multiplier ?? 1,
+        multiplier: (segment?.multiplier ?? 1) * getActiveSpeedMultiplier(elapsedSeconds, placement),
         segmentIndex: index
       };
     }
@@ -1185,6 +1555,44 @@ function getSegmentedRaceProgress(elapsedSeconds: number, placement: RacePlaceme
     multiplier: lastSegment?.multiplier ?? 1,
     segmentIndex: Math.max(0, speedSegments.length - 1)
   };
+}
+
+function getProgressFinishSeconds(placement: RacePlacement) {
+  return hasSpeedSkillEvent(placement.skillEvent) ? placement.baseFinishSeconds : placement.finishSeconds;
+}
+
+function getProgressElapsedSeconds(elapsedSeconds: number, placement: RacePlacement) {
+  const skillEvent = placement.skillEvent;
+
+  if (!hasSpeedSkillEvent(skillEvent)) {
+    return elapsedSeconds;
+  }
+
+  const boostStart = skillEvent.triggerSeconds ?? 0;
+  const boostEnd = boostStart + skillEvent.durationSeconds;
+  const multiplier = skillEvent.speedMultiplier ?? 1;
+
+  if (elapsedSeconds <= boostStart) {
+    return elapsedSeconds;
+  }
+
+  if (elapsedSeconds <= boostEnd) {
+    return boostStart + (elapsedSeconds - boostStart) * multiplier;
+  }
+
+  return elapsedSeconds + skillEvent.durationSeconds * (multiplier - 1);
+}
+
+function getActiveSpeedMultiplier(elapsedSeconds: number, placement: RacePlacement) {
+  const skillEvent = placement.skillEvent;
+
+  if (!hasSpeedSkillEvent(skillEvent)) {
+    return 1;
+  }
+
+  const start = skillEvent.triggerSeconds ?? 0;
+  const end = start + skillEvent.durationSeconds;
+  return elapsedSeconds >= start && elapsedSeconds <= end ? (skillEvent.speedMultiplier ?? 1) : 1;
 }
 
 function animateHorseStride(runner: VisualRunner, progress: number, eliminated: boolean, speedMultiplier: number) {
@@ -1252,7 +1660,7 @@ function applySkillPose(runner: VisualRunner, active: boolean) {
   if (runner.eliminated) {
     const hitShake = fallProgress < 0.55 ? Math.sin(raceElapsed * 32) * (1 - fallProgress) * 0.18 : 0;
     rider.root.rotation.z = lerpNumber(0, -1.24, fallProgress) + hitShake;
-    rider.root.position.y = lerpNumber(1.2, 0.55, fallProgress);
+    rider.root.position.y = lerpNumber(riderMountY, 0.62, fallProgress);
     rider.leftArm.rotation.z = lerpNumber(0.72, 2.1, fallProgress);
     rider.rightArm.rotation.z = lerpNumber(0.72, -1.7, fallProgress);
     rider.leftLeg.rotation.z = lerpNumber(-0.72, 0.8, fallProgress);
@@ -1268,7 +1676,7 @@ function applySkillPose(runner: VisualRunner, active: boolean) {
 }
 
 function resetRiderPose(rider: RiderParts) {
-  rider.root.position.set(-0.08, 1.2, 0);
+  rider.root.position.set(riderMountX, riderMountY, 0);
   rider.root.rotation.set(0, 0, 0);
   rider.torso.rotation.set(0, 0, 0);
   rider.head.position.set(0, 0.78, 0);
@@ -1277,16 +1685,27 @@ function resetRiderPose(rider: RiderParts) {
   rider.leftArm.rotation.set(0, 0, 0.72);
   rider.rightArm.position.set(0.08, 0.32, -0.28);
   rider.rightArm.rotation.set(0, 0, 0.72);
-  rider.leftLeg.position.set(-0.1, -0.18, 0.22);
+  rider.leftLeg.position.set(-0.1, -0.18, riderLegZ);
   rider.leftLeg.rotation.set(0, 0, -0.72);
-  rider.rightLeg.position.set(-0.1, -0.18, -0.22);
+  rider.rightLeg.position.set(-0.1, -0.18, -riderLegZ);
   rider.rightLeg.rotation.set(0, 0, -0.72);
 }
 
 function poseRider(pose: SkillPose, rider: RiderParts, time: number) {
+  if (pose === 'headspin') {
+    rider.root.position.y = riderMountY + 0.34;
+    rider.root.rotation.set(0, time * 17, Math.PI);
+    rider.torso.rotation.x = Math.sin(time * 22) * 0.12;
+    rider.leftArm.rotation.z = 2.25 + Math.sin(time * 18) * 0.22;
+    rider.rightArm.rotation.z = -2.25 + Math.cos(time * 18) * 0.22;
+    rider.leftLeg.rotation.z = -1.5 + Math.sin(time * 16) * 0.38;
+    rider.rightLeg.rotation.z = 1.5 + Math.cos(time * 16) * 0.38;
+    return;
+  }
+
   if (pose === 'handstand') {
     rider.root.rotation.z = Math.PI;
-    rider.root.position.y = 1.55;
+    rider.root.position.y = riderMountY + 0.36;
     rider.leftArm.rotation.z = 2.45;
     rider.rightArm.rotation.z = 2.45;
     rider.leftLeg.rotation.z = -1.15;
@@ -1304,7 +1723,7 @@ function poseRider(pose: SkillPose, rider: RiderParts, time: number) {
 
   if (pose === 'lie-flat') {
     rider.root.rotation.z = Math.PI / 2;
-    rider.root.position.y = 1.05;
+    rider.root.position.y = riderMountY - 0.12;
     rider.head.position.set(0.22, 0.78, 0);
     rider.leftLeg.rotation.z = -0.15;
     rider.rightLeg.rotation.z = -0.15;
@@ -1433,6 +1852,10 @@ function speedSegmentLine(placement: RacePlacement) {
     return '출발 대기';
   }
 
+  if (isFrenzySkillActive(placement)) {
+    return '광폭 질주 x3';
+  }
+
   const raceProgress = getSegmentedRaceProgress(raceElapsed, placement, placement.speedSegments);
   const segment = placement.speedSegments[raceProgress.segmentIndex];
 
@@ -1551,7 +1974,43 @@ function rollSeed() {
   prepareTournament();
 }
 
+function getCurrentParticipantCount() {
+  return normalizeParticipants(participantInput.value.split(/\r?\n/)).length;
+}
+
+function syncOptionBounds(options: { preferMaxFieldSize?: boolean } = {}) {
+  const participantCount = getCurrentParticipantCount();
+  const fieldBounds = getRaceOptionBounds(participantCount);
+  const currentFieldSize = Number(fieldSizeInput.value);
+  const preferMaxFieldSize =
+    options.preferMaxFieldSize || !Number.isFinite(currentFieldSize) || currentFieldSize >= lastFieldSizeMax;
+  const nextFieldSize = preferMaxFieldSize
+    ? fieldBounds.fieldSize.max
+    : clampIntegerInput(currentFieldSize, fieldBounds.fieldSize.min, fieldBounds.fieldSize.max);
+
+  fieldSizeInput.min = String(fieldBounds.fieldSize.min);
+  fieldSizeInput.max = String(fieldBounds.fieldSize.max);
+  fieldSizeInput.value = String(nextFieldSize);
+  lastFieldSizeMax = fieldBounds.fieldSize.max;
+
+  const adjustedBounds = getRaceOptionBounds(participantCount, nextFieldSize);
+  qualifiersInput.min = String(adjustedBounds.qualifiersPerGroup.min);
+  qualifiersInput.max = String(adjustedBounds.qualifiersPerGroup.max);
+  qualifiersInput.value = String(
+    clampIntegerInput(Number(qualifiersInput.value), adjustedBounds.qualifiersPerGroup.min, adjustedBounds.qualifiersPerGroup.max)
+  );
+  winnerCountInput.min = String(adjustedBounds.winnerCount.min);
+  winnerCountInput.max = String(adjustedBounds.winnerCount.max);
+  winnerCountInput.value = String(clampIntegerInput(Number(winnerCountInput.value), adjustedBounds.winnerCount.min, adjustedBounds.winnerCount.max));
+}
+
+function clampIntegerInput(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, Math.floor(Number.isFinite(value) ? value : min)));
+}
+
 function readOptions(): Partial<RaceOptions> {
+  syncOptionBounds();
+
   return {
     seed: seedInput.value,
     fieldSize: Number(fieldSizeInput.value),
@@ -1635,13 +2094,19 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 
-function updateCamera(hazardEvent: HazardEvent | null) {
+function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunner | null) {
   const width = raceCanvas.clientWidth;
   const leaderView = getLeaderCameraView(width);
   const defaultPosition = leaderView.position;
   const defaultTarget = leaderView.target;
 
   if (!hazardEvent) {
+    if (frenzyRunner) {
+      const frenzyView = getFrenzyCameraView(frenzyRunner, width);
+      moveCamera(frenzyView.position, frenzyView.target, frenzyView.alpha);
+      return;
+    }
+
     moveCamera(defaultPosition, defaultTarget, 0.13);
     return;
   }
@@ -1691,6 +2156,35 @@ function updateCamera(hazardEvent: HazardEvent | null) {
   }
 
   moveCamera(desiredPosition, desiredTarget, cameraAlpha);
+}
+
+function getFrenzyCameraView(runner: VisualRunner, width: number) {
+  const start = getSkillStartSeconds(runner.placement);
+  const elapsed = raceElapsed - start;
+  const facePoint = getHorseFacePoint(runner);
+  const forward = getHorseForwardDirection(runner);
+  const side = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
+  const cameraSide = side.lengthSq() > 0 ? side : new THREE.Vector3(0, 0, 1);
+  const closeOffset = forward
+    .clone()
+    .multiplyScalar(width < 760 ? 5.4 : 4.8)
+    .add(cameraSide.clone().multiplyScalar(width < 760 ? 1.4 : 1.05))
+    .add(new THREE.Vector3(0, width < 760 ? 1.02 : 0.72, 0));
+
+  if (elapsed < 0.88) {
+    return {
+      position: facePoint.clone().add(closeOffset),
+      target: facePoint.clone().add(new THREE.Vector3(-0.35, 0.08, 0)),
+      alpha: 0.34
+    };
+  }
+
+  const runnerPoint = runner.mesh.position.clone();
+  return {
+    position: runnerPoint.clone().add(new THREE.Vector3(width < 760 ? -6.4 : -5.1, width < 760 ? 3.6 : 2.8, width < 760 ? 7.2 : 5.4)),
+    target: runnerPoint.clone().add(new THREE.Vector3(1.5, 1.2, 0)),
+    alpha: 0.24
+  };
 }
 
 function getLeaderCameraView(width: number) {
@@ -1766,14 +2260,18 @@ function animate() {
 
 sample18Button.addEventListener('click', () => {
   participantInput.value = createSampleParticipants(18).join('\n');
+  syncOptionBounds({ preferMaxFieldSize: true });
   prepareTournament();
 });
 
 sample64Button.addEventListener('click', () => {
   participantInput.value = createSampleParticipants(64).join('\n');
+  syncOptionBounds({ preferMaxFieldSize: true });
   prepareTournament();
 });
 
+participantInput.addEventListener('input', () => syncOptionBounds());
+fieldSizeInput.addEventListener('input', () => syncOptionBounds());
 startButton.addEventListener('click', startTournament);
 randomSeedButton.addEventListener('click', rollSeed);
 leaderboardList.addEventListener('click', (event) => {

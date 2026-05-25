@@ -2,7 +2,7 @@ export type Surface = 'turf' | 'dirt';
 export type DistanceType = 'sprint' | 'mile' | 'medium' | 'long';
 export type TrackCondition = 'firm' | 'damp' | 'muddy';
 export type Pattern = 'solid' | 'spots' | 'stripes' | 'socks';
-export type SkillPose = 'handstand' | 'dance' | 'lie-flat' | 'cheer';
+export type SkillPose = 'handstand' | 'dance' | 'lie-flat' | 'cheer' | 'headspin';
 
 export type SkillDefinition = {
   id: string;
@@ -11,6 +11,7 @@ export type SkillDefinition = {
   pose: SkillPose;
   effectColor: number;
   callout: string;
+  cinematic?: 'frenzy';
 };
 
 export type HorseProfile = {
@@ -40,7 +41,9 @@ export type RaceEntry = {
 export type SkillEvent = {
   skill: SkillDefinition;
   triggerProgress: number;
+  triggerSeconds?: number;
   durationSeconds: number;
+  speedMultiplier?: number;
 };
 
 export type HazardEvent = {
@@ -62,6 +65,8 @@ export type SpeedSegment = {
 export type RacePlacement = {
   entry: RaceEntry;
   rank: number;
+  laneIndex: number;
+  baseFinishSeconds: number;
   finishSeconds: number;
   qualified: boolean;
   skillEvent: SkillEvent | null;
@@ -95,6 +100,11 @@ const PATTERNS: Pattern[] = ['solid', 'spots', 'stripes', 'socks'];
 const BASE_FINISH_SECONDS = 92;
 const HELICOPTER_ENTRANCE_SECONDS = 3;
 const BULLET_FLIGHT_SECONDS = 0.9;
+const MAX_FIELD_SIZE = 18;
+export const FRENZY_SKILL_ID = 'frenzy-surge';
+const FRENZY_CHANCE_PER_RACE = 0.035;
+const FRENZY_DURATION_SECONDS = 4;
+const FRENZY_SPEED_MULTIPLIER = 3;
 
 export const SKILLS: SkillDefinition[] = [
   {
@@ -147,6 +157,16 @@ export const SKILLS: SkillDefinition[] = [
   }
 ];
 
+export const FRENZY_SKILL: SkillDefinition = {
+  id: FRENZY_SKILL_ID,
+  name: '광폭 질주',
+  phase: 'middle',
+  pose: 'headspin',
+  effectColor: 0xff3030,
+  callout: '콧김을 뿜고 물구나무 헤드스핀으로 폭주한다',
+  cinematic: 'frenzy'
+};
+
 const SAMPLE_FIRST = [
   '혜성',
   '민트',
@@ -191,10 +211,38 @@ export function createSampleParticipants(count: number) {
   });
 }
 
-export function sanitizeOptions(options: Partial<RaceOptions>): RaceOptions {
-  const fieldSize = clampInteger(options.fieldSize ?? 18, 2, 18);
-  const qualifiersPerGroup = clampInteger(options.qualifiersPerGroup ?? 2, 1, fieldSize - 1);
-  const winnerCount = clampInteger(options.winnerCount ?? 1, 1, fieldSize);
+export function getRaceOptionBounds(participantCount: number, fieldSize?: number) {
+  const normalizedParticipantCount = clampInteger(participantCount, 1, 500);
+  const minFieldSize = normalizedParticipantCount > 1 ? 2 : 1;
+  const maxFieldSize = Math.max(minFieldSize, Math.min(MAX_FIELD_SIZE, normalizedParticipantCount));
+  const effectiveFieldSize = clampInteger(fieldSize ?? maxFieldSize, minFieldSize, maxFieldSize);
+
+  return {
+    fieldSize: {
+      min: minFieldSize,
+      max: maxFieldSize
+    },
+    qualifiersPerGroup: {
+      min: 1,
+      max: Math.max(1, effectiveFieldSize - 1)
+    },
+    winnerCount: {
+      min: 1,
+      max: Math.max(1, Math.min(effectiveFieldSize, normalizedParticipantCount))
+    }
+  };
+}
+
+export function sanitizeOptions(options: Partial<RaceOptions>, participantCount = MAX_FIELD_SIZE): RaceOptions {
+  const fieldBounds = getRaceOptionBounds(participantCount);
+  const fieldSize = clampInteger(options.fieldSize ?? fieldBounds.fieldSize.max, fieldBounds.fieldSize.min, fieldBounds.fieldSize.max);
+  const bounds = getRaceOptionBounds(participantCount, fieldSize);
+  const qualifiersPerGroup = clampInteger(
+    options.qualifiersPerGroup ?? Math.min(2, bounds.qualifiersPerGroup.max),
+    bounds.qualifiersPerGroup.min,
+    bounds.qualifiersPerGroup.max
+  );
+  const winnerCount = clampInteger(options.winnerCount ?? 1, bounds.winnerCount.min, bounds.winnerCount.max);
 
   return {
     seed: String(options.seed?.trim() || '호반-2026'),
@@ -232,7 +280,7 @@ export function normalizeParticipants(input: string[]) {
 
 export function runTournament(rawParticipants: string[], rawOptions: Partial<RaceOptions>) {
   const names = normalizeParticipants(rawParticipants);
-  const options = sanitizeOptions(rawOptions);
+  const options = sanitizeOptions(rawOptions, names.length);
   const profiles = names.map((name, index) => createHorseProfile(name, index, options.seed));
   let contenders = profiles.map((profile) => toEntry(profile));
   const races: RaceResult[] = [];
@@ -307,6 +355,7 @@ function simulateRace(
   context: { options: RaceOptions; round: number; group: number; isFinal: boolean }
 ): RaceResult {
   const { options, round, group, isFinal } = context;
+  const laneIndexes = assignRaceLaneIndexes(entries, options, round, group);
   const hazardDrafts = rollHelicopterHazards(entries, options, round, group);
   const hazardTargetIds = new Set(hazardDrafts.map((hazard) => hazard.targetEntryId));
   const placements = entries.map((entry) => {
@@ -321,6 +370,8 @@ function simulateRace(
     return {
       entry,
       rank: 0,
+      laneIndex: laneIndexes.get(entry.id) ?? 0,
+      baseFinishSeconds: finishSeconds,
       finishSeconds,
       qualified: false,
       skillEvent,
@@ -329,10 +380,10 @@ function simulateRace(
     };
   });
 
+  applyFrenzySkill(placements, options, round, group, hazardTargetIds);
+
   const leadPlacement = placements.reduce((lead, placement) => (placement.finishSeconds < lead.finishSeconds ? placement : lead), placements[0]);
-  const leadFinishSeconds = leadPlacement?.finishSeconds ?? 0;
-  const leadSegments = leadPlacement?.speedSegments ?? [];
-  const firstShotSeconds = Number(getSegmentedTimeAtProgress(leadFinishSeconds, leadSegments, 0.5).toFixed(3));
+  const firstShotSeconds = Number((leadPlacement ? getRaceClockAtProgress(leadPlacement, 0.5) : 0).toFixed(3));
   const helicopterApproachSeconds = Number(Math.max(0, firstShotSeconds - HELICOPTER_ENTRANCE_SECONDS - BULLET_FLIGHT_SECONDS).toFixed(3));
   const shotSpacingSeconds = 2.4;
 
@@ -393,12 +444,55 @@ function simulateRace(
   };
 }
 
+function applyFrenzySkill(
+  placements: RacePlacement[],
+  options: RaceOptions,
+  round: number,
+  group: number,
+  hazardTargetIds: Set<string>
+) {
+  if (placements.length < 2) {
+    return;
+  }
+
+  const entrySignature = placements.map((placement) => placement.entry.id).join('|');
+  const rng = createRng(`${options.seed}:frenzy:${round}:${group}:${placements.length}:${entrySignature}`);
+
+  if (rng() >= FRENZY_CHANCE_PER_RACE) {
+    return;
+  }
+
+  const laggingPlacements = [...placements]
+    .sort((left, right) => right.baseFinishSeconds - left.baseFinishSeconds)
+    .slice(0, Math.max(1, Math.ceil(placements.length / 2)));
+  const candidates = laggingPlacements.filter((placement) => !hazardTargetIds.has(placement.entry.id));
+  const target = pick(candidates, rng);
+
+  if (!target) {
+    return;
+  }
+
+  const minTriggerSeconds = Math.min(target.baseFinishSeconds - 1, Math.max(4, target.baseFinishSeconds * 0.18));
+  const maxTriggerSeconds = Math.max(minTriggerSeconds, target.baseFinishSeconds - FRENZY_DURATION_SECONDS - 1);
+  const triggerSeconds = Number((minTriggerSeconds + rng() * (maxTriggerSeconds - minTriggerSeconds)).toFixed(3));
+
+  target.skillEvent = {
+    skill: FRENZY_SKILL,
+    triggerProgress: Number((triggerSeconds / target.baseFinishSeconds).toFixed(3)),
+    triggerSeconds,
+    durationSeconds: FRENZY_DURATION_SECONDS,
+    speedMultiplier: FRENZY_SPEED_MULTIPLIER
+  };
+  target.finishSeconds = Number(getBoostedFinishSeconds(target.baseFinishSeconds, target.skillEvent).toFixed(3));
+}
+
 function rollHelicopterHazards(entries: RaceEntry[], options: RaceOptions, round: number, group: number): HazardEvent[] {
   if (entries.length < 4) {
     return [];
   }
 
-  const rng = createRng(`${options.seed}:helicopter:${round}:${group}:${entries.length}`);
+  const entrySignature = entries.map((entry) => entry.id).join('|');
+  const rng = createRng(`${options.seed}:helicopter:${round}:${group}:${entries.length}:${entrySignature}`);
 
   const targetCount = Math.min(entries.length - 1, Math.max(1, Math.floor(entries.length / 3)));
   const targets = pickUnique(entries, targetCount, rng);
@@ -410,6 +504,30 @@ function rollHelicopterHazards(entries: RaceEntry[], options: RaceOptions, round
     triggerSeconds: 0,
     approachSeconds: 0
   }));
+}
+
+function assignRaceLaneIndexes(entries: RaceEntry[], options: RaceOptions, round: number, group: number) {
+  const entrySignature = entries.map((entry) => entry.id).join('|');
+  const rng = createRng(`${options.seed}:lanes:${round}:${group}:${entries.length}:${entrySignature}`);
+  const shuffled = shuffleItems(entries, rng);
+  return new Map(shuffled.map((entry, index) => [entry.id, index]));
+}
+
+function shuffleItems<T>(items: T[], rng: () => number) {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(rng() * (index + 1));
+    const current = shuffled[index];
+    const replacement = shuffled[swapIndex];
+
+    if (current !== undefined && replacement !== undefined) {
+      shuffled[index] = replacement;
+      shuffled[swapIndex] = current;
+    }
+  }
+
+  return shuffled;
 }
 
 function rollHorseSpeedSegments(entry: RaceEntry, options: RaceOptions, round: number, group: number): SpeedSegment[] {
@@ -457,6 +575,48 @@ function getSegmentedTimeAtProgress(finishSeconds: number, speedSegments: SpeedS
   elapsedSeconds += finishSeconds * ((segmentWeights[targetSegmentIndex] ?? 1) / totalWeight) * localProgress;
 
   return elapsedSeconds;
+}
+
+function getRaceClockAtProgress(placement: RacePlacement, progress: number) {
+  const baseFinishSeconds = getProgressBaseFinishSeconds(placement);
+  const baseElapsedSeconds = getSegmentedTimeAtProgress(baseFinishSeconds, placement.speedSegments, progress);
+
+  if (!hasSpeedSkill(placement.skillEvent)) {
+    return baseElapsedSeconds;
+  }
+
+  return getRaceClockFromBoostedElapsed(baseElapsedSeconds, placement.skillEvent);
+}
+
+function getProgressBaseFinishSeconds(placement: RacePlacement) {
+  return hasSpeedSkill(placement.skillEvent) ? placement.baseFinishSeconds : placement.finishSeconds;
+}
+
+function hasSpeedSkill(skillEvent: SkillEvent | null): skillEvent is SkillEvent & { triggerSeconds: number; speedMultiplier: number } {
+  return Boolean(skillEvent && skillEvent.triggerSeconds !== undefined && skillEvent.speedMultiplier !== undefined);
+}
+
+function getBoostedFinishSeconds(baseFinishSeconds: number, skillEvent: SkillEvent) {
+  if (!hasSpeedSkill(skillEvent)) {
+    return baseFinishSeconds;
+  }
+
+  return getRaceClockFromBoostedElapsed(baseFinishSeconds, skillEvent);
+}
+
+function getRaceClockFromBoostedElapsed(baseElapsedSeconds: number, skillEvent: SkillEvent & { triggerSeconds: number; speedMultiplier: number }) {
+  const boostStart = skillEvent.triggerSeconds;
+  const boostEndBase = boostStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+
+  if (baseElapsedSeconds <= boostStart) {
+    return baseElapsedSeconds;
+  }
+
+  if (baseElapsedSeconds <= boostEndBase) {
+    return boostStart + (baseElapsedSeconds - boostStart) / skillEvent.speedMultiplier;
+  }
+
+  return baseElapsedSeconds - skillEvent.durationSeconds * (skillEvent.speedMultiplier - 1);
 }
 
 function pickUnique<T>(items: T[], count: number, rng: () => number) {
