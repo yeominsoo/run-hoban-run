@@ -17,6 +17,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
 }
 
@@ -35,6 +36,7 @@ button {
 .shell {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background:
     linear-gradient(180deg, rgba(184, 217, 255, 0.92), rgba(220, 232, 239, 0.36) 38%),
     #dce8ef;
@@ -659,7 +661,7 @@ textarea {
   .control-panel {
     top: auto;
     right: 10px;
-    bottom: calc(132px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(166px + env(safe-area-inset-bottom, 0px));
     left: 10px;
     width: auto;
     max-height: min(56vh, 430px);
@@ -667,7 +669,7 @@ textarea {
   }
 
   .race-stage.panels-hidden .control-panel {
-    transform: translateY(calc(100% + 156px + env(safe-area-inset-bottom, 0px)));
+    transform: translateY(calc(100% + 194px + env(safe-area-inset-bottom, 0px)));
   }
 
   .panel-section {
@@ -717,7 +719,7 @@ textarea {
 
   .hud-bottom {
     right: 10px;
-    bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
     left: 10px;
   }
 

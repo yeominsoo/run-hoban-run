@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   createSampleParticipants,
   FRENZY_SKILL_ID,
@@ -93,6 +92,28 @@ const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) {
   throw new Error('앱 루트를 찾을 수 없습니다.');
 }
+
+const bootLoader = document.querySelector<HTMLElement>('#boot-loader');
+const bootStatus = document.querySelector<HTMLElement>('#boot-status');
+let bootCompleted = false;
+
+function setBootStatus(message: string) {
+  if (bootStatus) {
+    bootStatus.textContent = message;
+  }
+}
+
+function completeBootLoader() {
+  if (bootCompleted) {
+    return;
+  }
+
+  bootCompleted = true;
+  document.documentElement.classList.add('app-ready');
+  window.setTimeout(() => bootLoader?.remove(), 420);
+}
+
+setBootStatus('경기장 준비 중');
 
 app.innerHTML = `
   <main class="shell">
@@ -297,8 +318,6 @@ let raceStarted = false;
 let tournament: TournamentResult | null = null;
 let currentRaceIndex = 0;
 let visualRunners: VisualRunner[] = [];
-let helicopterAsset: THREE.Group | null = null;
-let helicopterAssetLoadStarted = false;
 let selectedCameraEntryId = 'overview';
 let overviewCameraZoom = 1;
 let activePinchDistance: number | null = null;
@@ -601,69 +620,9 @@ function makeRail(z: number) {
   scene.add(group);
 }
 
-function loadHelicopterAsset() {
-  if (helicopterAssetLoadStarted) {
-    return;
-  }
-
-  helicopterAssetLoadStarted = true;
-
-  const loader = new GLTFLoader();
-  loader.load(
-    '/models/helicopter.glb',
-    (gltf) => {
-      helicopterAsset = normalizeHelicopterModel(gltf.scene);
-      installHelicopterVisual();
-    },
-    undefined,
-    () => {
-      installHelicopterVisual();
-    }
-  );
-}
-
-function scheduleHelicopterAssetLoad() {
-  installHelicopterVisual();
-
-  const startLoad = () => {
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(() => loadHelicopterAsset(), { timeout: 2500 });
-      return;
-    }
-
-    globalThis.setTimeout(loadHelicopterAsset, 1000);
-  };
-
-  if (document.readyState === 'complete') {
-    startLoad();
-    return;
-  }
-
-  window.addEventListener('load', startLoad, { once: true });
-}
-
 function installHelicopterVisual() {
   clearGroup(helicopterAssetSlot);
-  const model = helicopterAsset ? helicopterAsset.clone(true) : createFallbackHelicopter();
-  helicopterAssetSlot.add(model);
-}
-
-function normalizeHelicopterModel(model: THREE.Group) {
-  const normalized = model.clone(true);
-  const box = new THREE.Box3().setFromObject(normalized);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const maxDimension = Math.max(size.x, size.y, size.z) || 1;
-  normalized.position.sub(center);
-  normalized.scale.setScalar(4.4 / maxDimension);
-  normalized.rotation.y = Math.PI / 2;
-  normalized.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-    }
-  });
-  return normalized;
+  helicopterAssetSlot.add(createFallbackHelicopter());
 }
 
 function createFallbackHelicopter() {
@@ -1256,6 +1215,7 @@ function updateRace(delta: number) {
     updateFrenzySnorts(null);
     raceStage.dataset.frenzy = 'idle';
     updateCamera(null, null);
+    updateHelicopterFrameState();
     updateMinimap();
     positionRunnerLabels();
     return;
@@ -1308,6 +1268,7 @@ function updateRace(delta: number) {
   }
 
   updateCamera(activeHazard, activeFrenzyRunner);
+  updateHelicopterFrameState();
   updateMinimap();
   positionRunnerLabels();
 
@@ -1415,6 +1376,27 @@ function setCameraControlLocked(locked: boolean) {
   cameraSelectionLocked = locked;
   leaderboardList.classList.toggle('camera-locked', locked);
   leaderboardList.dataset.cameraLocked = locked ? 'true' : 'false';
+}
+
+function updateHelicopterFrameState() {
+  if (!helicopterGroup.visible || raceStage.dataset.cinematic === 'idle') {
+    raceStage.dataset.helicopterInFrame = 'false';
+    return;
+  }
+
+  camera.updateMatrixWorld();
+  helicopterGroup.updateMatrixWorld();
+  const projected = helicopterGroup.getWorldPosition(new THREE.Vector3()).project(camera);
+  const inFrame =
+    Number.isFinite(projected.x) &&
+    Number.isFinite(projected.y) &&
+    Math.abs(projected.x) < 0.86 &&
+    projected.y > -0.76 &&
+    projected.y < 0.82;
+
+  raceStage.dataset.helicopterInFrame = String(inFrame);
+  raceStage.dataset.helicopterScreenX = ((projected.x + 1) / 2).toFixed(3);
+  raceStage.dataset.helicopterScreenY = ((1 - projected.y) / 2).toFixed(3);
 }
 
 function getFinishHelicopterHoverPosition(orbit: number, mobile = false) {
@@ -2426,6 +2408,7 @@ function resize() {
 
 function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunner | null) {
   const width = raceCanvas.clientWidth;
+  const mobile = width < 760;
   const defaultView = getDefaultCameraView(width);
   const defaultPosition = defaultView.position;
   const defaultTarget = defaultView.target;
@@ -2458,12 +2441,15 @@ function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunne
 
   if (raceElapsed < shotTiming.shotStart) {
     const finishRouteCenter = targetPoint.clone().lerp(helicopterPoint, 0.62);
-    const mobile = width < 760;
-    desiredPosition = mobile
-      ? helicopterPoint.clone().add(new THREE.Vector3(-16, 10.8, 24))
-      : finishRouteCenter.clone().add(new THREE.Vector3(-24, 13.5, 32));
-    desiredTarget = mobile ? helicopterPoint.clone().lerp(targetPoint, 0.36) : finishRouteCenter.clone().lerp(helicopterPoint, 0.22);
-    cameraAlpha = mobile ? 0.09 : 0.07;
+    if (mobile) {
+      desiredPosition = helicopterPoint.clone().add(new THREE.Vector3(-8.5, 5.2, 17.5));
+      desiredTarget = helicopterPoint.clone().add(new THREE.Vector3(1.2, -0.58, 0.2)).lerp(targetPoint, 0.12);
+      cameraAlpha = 0.2;
+    } else {
+      desiredPosition = finishRouteCenter.clone().add(new THREE.Vector3(-24, 13.5, 32));
+      desiredTarget = finishRouteCenter.clone().lerp(helicopterPoint, 0.22);
+      cameraAlpha = 0.07;
+    }
   } else if (raceElapsed < hazardEvent.triggerSeconds) {
     const muzzlePoint = getMuzzleWorldPosition();
     const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
@@ -2623,6 +2609,7 @@ function animate() {
   updateRace(delta);
   renderLeaderboard();
   renderer.render(scene, camera);
+  completeBootLoader();
   requestAnimationFrame(animate);
 }
 
@@ -2723,6 +2710,6 @@ raceStage.addEventListener('touchcancel', () => {
 });
 window.addEventListener('resize', resize);
 
-scheduleHelicopterAssetLoad();
+installHelicopterVisual();
 prepareTournament();
 animate();

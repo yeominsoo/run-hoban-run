@@ -120,6 +120,18 @@ for (const viewport of viewports) {
   });
 }
 
+test('shows an immediate loading state before the app bundle is ready', async ({ page }) => {
+  const response = await page.request.get('/');
+  const html = (await response.text()).replace(/<script\s+type="module"[^>]*><\/script>/, '');
+
+  await page.setContent(html);
+  await expect(page.locator('#boot-loader')).toBeVisible();
+  await expect(page.locator('#boot-status')).toContainText('로딩');
+
+  await page.goto('/');
+  await expect(page.locator('#boot-loader')).toBeHidden({ timeout: 6_000 });
+});
+
 test('starts a 64 runner tournament and advances to the final race', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#race-stage')).not.toHaveClass(/panels-hidden/);
@@ -203,13 +215,52 @@ test('keeps mobile minimap clear of the leaderboard and supports wheel zoom', as
   });
 
   expect(gap?.minimapToLeaderboard).toBeGreaterThan(260);
-  expect(gap?.leaderboardBottomSpace).toBeGreaterThan(24);
+  expect(gap?.leaderboardBottomSpace).toBeGreaterThan(52);
 
   await page.mouse.move(196, 420);
   await page.mouse.wheel(0, 320);
   await expect(leaderboard).toHaveAttribute('data-camera-zoom', '0.92');
   await page.mouse.wheel(0, -320);
   await expect(leaderboard).toHaveAttribute('data-camera-zoom', '1.00');
+});
+
+test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#start-tournament').click();
+
+  await page.waitForFunction(() => document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'approach', undefined, {
+    timeout: 75_000
+  });
+
+  await page.waitForFunction(() => {
+    const stage = document.querySelector('#race-stage');
+    const x = Number(stage?.getAttribute('data-helicopter-screen-x'));
+    const y = Number(stage?.getAttribute('data-helicopter-screen-y'));
+    return Number.isFinite(x) && Number.isFinite(y) && x > 0.1 && x < 0.9 && y > 0.08 && y < 0.74;
+  }, undefined, { timeout: 8_000 });
+
+  const frame = await page.evaluate(() => {
+    const stage = document.querySelector('#race-stage');
+    const leaderboardBox = document.querySelector('#leaderboard')?.getBoundingClientRect();
+    return {
+      helicopterInFrame: stage?.getAttribute('data-helicopter-in-frame'),
+      helicopterScreenX: Number(stage?.getAttribute('data-helicopter-screen-x')),
+      helicopterScreenY: Number(stage?.getAttribute('data-helicopter-screen-y')),
+      leaderboardBottomSpace: leaderboardBox ? window.innerHeight - leaderboardBox.bottom : -1
+    };
+  });
+
+  expect(frame.helicopterScreenX).toBeGreaterThan(0.1);
+  expect(frame.helicopterScreenX).toBeLessThan(0.9);
+  expect(frame.helicopterScreenY).toBeGreaterThan(0.08);
+  expect(frame.helicopterScreenY).toBeLessThan(0.74);
+  expect(frame.leaderboardBottomSpace).toBeGreaterThan(52);
+
+  await page.screenshot({
+    path: 'test-results/mobile-helicopter-approach.png',
+    fullPage: true
+  });
 });
 
 test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
