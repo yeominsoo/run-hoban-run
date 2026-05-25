@@ -126,7 +126,7 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await expect(page.locator('#race-summary')).toContainText('헬기');
   await expect(page.locator('#camera-target')).toHaveCount(0);
-  await expect(page.locator('#race-minimap')).toBeVisible();
+  await expect(page.locator('#race-minimap')).toBeHidden();
   await expect(page.locator('.minimap-dot')).toHaveCount(18);
   await expect(page.locator('#leaderboard li')).toHaveCount(8);
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-mode', 'overview');
@@ -145,6 +145,7 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveClass(/panels-hidden/);
+  await expect(page.locator('#race-minimap')).toBeVisible();
   await expect(page.locator('#race-summary')).toContainText('64명');
   await expect(page.locator('#race-meta')).toContainText('경기 1/5');
 
@@ -164,6 +165,51 @@ test('updates field size max from the participant count', async ({ page }) => {
   await expect(page.locator('#field-size')).toHaveValue('6');
   await expect(page.locator('#qualifiers')).toHaveAttribute('max', '5');
   await expect(page.locator('#winner-count')).toHaveAttribute('max', '6');
+});
+
+test('restores the recently edited participant list', async ({ page }) => {
+  const recentParticipants = ['민수', '지수', '태오', '서윤'].join('\n');
+
+  await page.goto('/');
+  await page.locator('#participants').fill(recentParticipants);
+  await expect(page.locator('#field-size')).toHaveAttribute('max', '4');
+
+  await page.reload();
+  await expect(page.locator('#participants')).toHaveValue(recentParticipants);
+  await expect(page.locator('#field-size')).toHaveAttribute('max', '4');
+});
+
+test('keeps mobile minimap clear of the leaderboard and supports wheel zoom', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#start-tournament').click();
+
+  const minimap = page.locator('#race-minimap');
+  const leaderboard = page.locator('#leaderboard');
+
+  await expect(minimap).toBeVisible();
+  await expect(leaderboard).toHaveAttribute('data-camera-mode', 'overview');
+  await expect(leaderboard).toHaveAttribute('data-camera-zoom', '1.00');
+
+  const gap = await page.evaluate(() => {
+    const minimapBox = document.querySelector('#race-minimap')?.getBoundingClientRect();
+    const leaderboardBox = document.querySelector('#leaderboard')?.getBoundingClientRect();
+    return minimapBox && leaderboardBox
+      ? {
+          minimapToLeaderboard: leaderboardBox.top - minimapBox.bottom,
+          leaderboardBottomSpace: window.innerHeight - leaderboardBox.bottom
+        }
+      : null;
+  });
+
+  expect(gap?.minimapToLeaderboard).toBeGreaterThan(260);
+  expect(gap?.leaderboardBottomSpace).toBeGreaterThan(24);
+
+  await page.mouse.move(196, 420);
+  await page.mouse.wheel(0, 320);
+  await expect(leaderboard).toHaveAttribute('data-camera-zoom', '0.92');
+  await page.mouse.wheel(0, -320);
+  await expect(leaderboard).toHaveAttribute('data-camera-zoom', '1.00');
 });
 
 test('plays the frenzy cutscene with active vortex state', async ({ page }) => {

@@ -427,12 +427,26 @@ textarea {
 .race-minimap {
   position: absolute;
   right: 20px;
-  bottom: 108px;
+  top: 112px;
+  bottom: auto;
   left: 20px;
   z-index: 5;
   display: flex;
   justify-content: center;
+  opacity: 1;
   pointer-events: none;
+  transform: translateY(0);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 180ms ease;
+  visibility: visible;
+}
+
+.race-stage:not(.race-started) .race-minimap {
+  opacity: 0;
+  transform: translateY(-8px);
+  visibility: hidden;
 }
 
 .minimap-track {
@@ -645,7 +659,7 @@ textarea {
   .control-panel {
     top: auto;
     right: 10px;
-    bottom: 112px;
+    bottom: calc(132px + env(safe-area-inset-bottom, 0px));
     left: 10px;
     width: auto;
     max-height: min(56vh, 430px);
@@ -653,7 +667,7 @@ textarea {
   }
 
   .race-stage.panels-hidden .control-panel {
-    transform: translateY(calc(100% + 132px));
+    transform: translateY(calc(100% + 156px + env(safe-area-inset-bottom, 0px)));
   }
 
   .panel-section {
@@ -703,7 +717,7 @@ textarea {
 
   .hud-bottom {
     right: 10px;
-    bottom: 8px;
+    bottom: calc(30px + env(safe-area-inset-bottom, 0px));
     left: 10px;
   }
 
@@ -745,7 +759,8 @@ textarea {
 
   .race-minimap {
     right: 10px;
-    bottom: 104px;
+    top: 66px;
+    bottom: auto;
     left: 10px;
   }
 

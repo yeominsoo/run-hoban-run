@@ -248,9 +248,10 @@ const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
   damp: '다습',
   muddy: '불량'
 };
+const recentParticipantsStorageKey = 'run-hoban-run:recent-participants';
 
-participantInput.value = createSampleParticipants(18).join('\n');
-let lastFieldSizeMax = getRaceOptionBounds(18).fieldSize.max;
+participantInput.value = loadRecentParticipants() ?? createSampleParticipants(18).join('\n');
+let lastFieldSizeMax = getRaceOptionBounds(normalizeParticipants(participantInput.value.split(/\r?\n/)).length).fieldSize.max;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb8d9ff);
@@ -299,6 +300,10 @@ let visualRunners: VisualRunner[] = [];
 let helicopterAsset: THREE.Group | null = null;
 let helicopterAssetLoadStarted = false;
 let selectedCameraEntryId = 'overview';
+let overviewCameraZoom = 1;
+let activePinchDistance: number | null = null;
+const overviewCameraZoomMin = 0.72;
+const overviewCameraZoomMax = 1.65;
 
 function createRaceRenderer(canvas: HTMLCanvasElement): RaceRenderer {
   try {
@@ -1198,6 +1203,7 @@ function setCurrentRace(index: number) {
   });
 
   updateHelicopterState(race.hazardEvents);
+  syncRaceStartedState();
   renderRaceStaticState();
   renderLeaderboard();
   updateMinimap();
@@ -2137,7 +2143,9 @@ function renderLeaderboard() {
   }
 
   raceStage.dataset.cameraMode = selectedCameraEntryId === 'overview' ? 'overview' : 'tracking';
+  raceStage.dataset.cameraZoom = overviewCameraZoom.toFixed(2);
   leaderboardList.dataset.cameraMode = selectedCameraEntryId === 'overview' ? 'overview' : 'tracking';
+  leaderboardList.dataset.cameraZoom = overviewCameraZoom.toFixed(2);
 
   const ranked = raceFinished
     ? race.placements
@@ -2194,6 +2202,17 @@ function selectCameraEntry(entryId: string) {
   updateMinimap();
 }
 
+function adjustOverviewCameraZoom(delta: number) {
+  const nextZoom = clampNumber(overviewCameraZoom + delta, overviewCameraZoomMin, overviewCameraZoomMax);
+
+  if (Math.abs(nextZoom - overviewCameraZoom) < 0.001) {
+    return;
+  }
+
+  overviewCameraZoom = nextZoom;
+  renderLeaderboard();
+}
+
 function getLeaderboardItemParts(entryId: string) {
   const existing = leaderboardItems.get(entryId);
 
@@ -2214,6 +2233,7 @@ function getLeaderboardItemParts(entryId: string) {
 }
 
 function startTournament() {
+  saveRecentParticipants();
   const names = participantInput.value.split(/\r?\n/);
   const options = readOptions();
   tournament = runTournament(names, options);
@@ -2238,6 +2258,11 @@ function setPanelsHidden(hidden: boolean) {
   togglePanelsButton.setAttribute('aria-pressed', String(hidden));
 }
 
+function syncRaceStartedState() {
+  raceStage.classList.toggle('race-started', raceStarted);
+  raceStage.dataset.raceStarted = String(raceStarted);
+}
+
 function rollSeed() {
   const timestamp = String(Date.now());
   const entropy = String(Math.floor(Math.random() * 100_000)).padStart(5, '0');
@@ -2247,6 +2272,29 @@ function rollSeed() {
 
 function getCurrentParticipantCount() {
   return normalizeParticipants(participantInput.value.split(/\r?\n/)).length;
+}
+
+function loadRecentParticipants() {
+  try {
+    const value = window.localStorage.getItem(recentParticipantsStorageKey);
+    return value && value.split(/\r?\n/).some((name) => name.trim()) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRecentParticipants() {
+  const value = participantInput.value;
+
+  try {
+    if (value.split(/\r?\n/).some((name) => name.trim())) {
+      window.localStorage.setItem(recentParticipantsStorageKey, value);
+    } else {
+      window.localStorage.removeItem(recentParticipantsStorageKey);
+    }
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
 }
 
 function syncOptionBounds(options: { preferMaxFieldSize?: boolean } = {}) {
@@ -2355,6 +2403,16 @@ function getStableIndex(value: string, modulo: number) {
   }
 
   return modulo > 0 ? hash % modulo : 0;
+}
+
+function getTouchDistance(touches: TouchList) {
+  if (touches.length < 2) {
+    return null;
+  }
+
+  const first = touches[0];
+  const second = touches[1];
+  return Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
 }
 
 function resize() {
@@ -2493,26 +2551,29 @@ function getFocusedCameraView(width: number) {
 }
 
 function getOverviewCameraView(width: number) {
-  if (visualRunners.length === 0) {
+  const leadRunner = getLeadRunner();
+
+  if (!leadRunner) {
     return {
-      position: width < 760 ? new THREE.Vector3(0, 58, 86) : new THREE.Vector3(0, 42, 64),
+      position: width < 760 ? new THREE.Vector3(-18, 32, 54) : new THREE.Vector3(0, 24, 42),
       target: new THREE.Vector3(0, 0, 0)
     };
   }
 
-  const runnerXs = visualRunners.map((runner) => runner.mesh.position.x);
-  const minRunnerX = Math.min(...runnerXs, startX);
-  const maxRunnerX = Math.max(...runnerXs, finishX);
-  const spanX = clampNumber(maxRunnerX - minRunnerX + 16, 56, finishX - startX + 24);
-  const centerX = clampNumber((minRunnerX + maxRunnerX) / 2, startX + 28, finishX - 18);
   const mobile = width < 760;
-  const height = mobile ? 38 + spanX * 0.22 : 28 + spanX * 0.15;
-  const depth = mobile ? 54 + spanX * 0.26 : 39 + spanX * 0.2;
-  const back = mobile ? 18 + spanX * 0.08 : 14 + spanX * 0.06;
+  const zoomScale = 1 / overviewCameraZoom;
+  const leadX = clampNumber(leadRunner.mesh.position.x, startX + 8, finishX - 4);
+  const lookBack = (mobile ? 74 : 94) * zoomScale;
+  const lookAhead = (mobile ? 24 : 32) * zoomScale;
+  const centerX = clampNumber(leadX - lookBack * 0.48 + lookAhead * 0.2, startX + 18, finishX - 12);
+  const targetX = clampNumber(leadX - lookBack * 0.22 + lookAhead * 0.34, startX + 14, finishX - 4);
+  const height = (mobile ? 31 : 25) + lookBack * (mobile ? 0.2 : 0.13);
+  const depth = (mobile ? 42 : 34) + lookBack * (mobile ? 0.24 : 0.16);
+  const back = (mobile ? 15 : 11) + lookBack * 0.08;
 
   return {
     position: new THREE.Vector3(centerX - back, height, depth),
-    target: new THREE.Vector3(centerX + (mobile ? 12 : 18), 0.8, 0)
+    target: new THREE.Vector3(targetX, 0.92, 0)
   };
 }
 
@@ -2567,17 +2628,22 @@ function animate() {
 
 sample18Button.addEventListener('click', () => {
   participantInput.value = createSampleParticipants(18).join('\n');
+  saveRecentParticipants();
   syncOptionBounds({ preferMaxFieldSize: true });
   prepareTournament();
 });
 
 sample64Button.addEventListener('click', () => {
   participantInput.value = createSampleParticipants(64).join('\n');
+  saveRecentParticipants();
   syncOptionBounds({ preferMaxFieldSize: true });
   prepareTournament();
 });
 
-participantInput.addEventListener('input', () => syncOptionBounds());
+participantInput.addEventListener('input', () => {
+  saveRecentParticipants();
+  syncOptionBounds();
+});
 fieldSizeInput.addEventListener('input', () => syncOptionBounds());
 startButton.addEventListener('click', startTournament);
 randomSeedButton.addEventListener('click', rollSeed);
@@ -2610,6 +2676,50 @@ replayButton.addEventListener('click', () => {
 nextButton.addEventListener('click', () => {
   raceStarted = true;
   setCurrentRace(currentRaceIndex + 1);
+});
+raceStage.addEventListener(
+  'wheel',
+  (event) => {
+    if (cameraSelectionLocked) {
+      return;
+    }
+
+    event.preventDefault();
+    adjustOverviewCameraZoom(event.deltaY < 0 ? 0.08 : -0.08);
+  },
+  { passive: false }
+);
+raceStage.addEventListener(
+  'touchstart',
+  (event) => {
+    activePinchDistance = getTouchDistance(event.touches);
+  },
+  { passive: true }
+);
+raceStage.addEventListener(
+  'touchmove',
+  (event) => {
+    const nextDistance = getTouchDistance(event.touches);
+
+    if (nextDistance === null || activePinchDistance === null || cameraSelectionLocked) {
+      activePinchDistance = nextDistance;
+      return;
+    }
+
+    const delta = (nextDistance - activePinchDistance) / 180;
+    if (Math.abs(delta) >= 0.015) {
+      event.preventDefault();
+      adjustOverviewCameraZoom(delta);
+      activePinchDistance = nextDistance;
+    }
+  },
+  { passive: false }
+);
+raceStage.addEventListener('touchend', (event) => {
+  activePinchDistance = getTouchDistance(event.touches);
+});
+raceStage.addEventListener('touchcancel', () => {
+  activePinchDistance = null;
 });
 window.addEventListener('resize', resize);
 
