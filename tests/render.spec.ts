@@ -237,7 +237,33 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
     const stage = document.querySelector('#race-stage');
     const x = Number(stage?.getAttribute('data-helicopter-screen-x'));
     const y = Number(stage?.getAttribute('data-helicopter-screen-y'));
-    return Number.isFinite(x) && Number.isFinite(y) && x > 0.1 && x < 0.9 && y > 0.08 && y < 0.74;
+    const left = Number(stage?.getAttribute('data-helicopter-box-left'));
+    const right = Number(stage?.getAttribute('data-helicopter-box-right'));
+    const top = Number(stage?.getAttribute('data-helicopter-box-top'));
+    const bottom = Number(stage?.getAttribute('data-helicopter-box-bottom'));
+    const width = Number(stage?.getAttribute('data-helicopter-box-width'));
+    const distance = Number(stage?.getAttribute('data-helicopter-camera-distance'));
+    return (
+      stage?.getAttribute('data-cinematic') === 'approach' &&
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      Number.isFinite(left) &&
+      Number.isFinite(right) &&
+      Number.isFinite(top) &&
+      Number.isFinite(bottom) &&
+      Number.isFinite(width) &&
+      Number.isFinite(distance) &&
+      x > 0.43 &&
+      x < 0.57 &&
+      y > 0.3 &&
+      y < 0.58 &&
+      left > 0.04 &&
+      right < 0.96 &&
+      top > 0.08 &&
+      bottom < 0.78 &&
+      width > 0.2 &&
+      distance < 12.5
+    );
   }, undefined, { timeout: 8_000 });
 
   const frame = await page.evaluate(() => {
@@ -247,14 +273,26 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       helicopterInFrame: stage?.getAttribute('data-helicopter-in-frame'),
       helicopterScreenX: Number(stage?.getAttribute('data-helicopter-screen-x')),
       helicopterScreenY: Number(stage?.getAttribute('data-helicopter-screen-y')),
+      helicopterBoxLeft: Number(stage?.getAttribute('data-helicopter-box-left')),
+      helicopterBoxRight: Number(stage?.getAttribute('data-helicopter-box-right')),
+      helicopterBoxTop: Number(stage?.getAttribute('data-helicopter-box-top')),
+      helicopterBoxBottom: Number(stage?.getAttribute('data-helicopter-box-bottom')),
+      helicopterBoxWidth: Number(stage?.getAttribute('data-helicopter-box-width')),
+      helicopterCameraDistance: Number(stage?.getAttribute('data-helicopter-camera-distance')),
       leaderboardBottomSpace: leaderboardBox ? window.innerHeight - leaderboardBox.bottom : -1
     };
   });
 
-  expect(frame.helicopterScreenX).toBeGreaterThan(0.1);
-  expect(frame.helicopterScreenX).toBeLessThan(0.9);
-  expect(frame.helicopterScreenY).toBeGreaterThan(0.08);
-  expect(frame.helicopterScreenY).toBeLessThan(0.74);
+  expect(frame.helicopterScreenX).toBeGreaterThan(0.43);
+  expect(frame.helicopterScreenX).toBeLessThan(0.57);
+  expect(frame.helicopterScreenY).toBeGreaterThan(0.3);
+  expect(frame.helicopterScreenY).toBeLessThan(0.58);
+  expect(frame.helicopterBoxLeft).toBeGreaterThan(0.04);
+  expect(frame.helicopterBoxRight).toBeLessThan(0.96);
+  expect(frame.helicopterBoxTop).toBeGreaterThan(0.08);
+  expect(frame.helicopterBoxBottom).toBeLessThan(0.78);
+  expect(frame.helicopterBoxWidth).toBeGreaterThan(0.2);
+  expect(frame.helicopterCameraDistance).toBeLessThan(12.5);
   expect(frame.leaderboardBottomSpace).toBeGreaterThan(52);
 
   await page.screenshot({

@@ -452,13 +452,14 @@ function drawFallbackRaceScene(canvas: HTMLCanvasElement, context: CanvasRenderi
     }
   });
 
-  drawFallbackHelicopter(context, width, trackTop, trackHeight, trackLeft, trackWidth, laneCount);
+  drawFallbackHelicopter(context, width, height, trackTop, trackHeight, trackLeft, trackWidth, laneCount);
   context.restore();
 }
 
 function drawFallbackHelicopter(
   context: CanvasRenderingContext2D,
   width: number,
+  height: number,
   trackTop: number,
   trackHeight: number,
   trackLeft: number,
@@ -483,17 +484,26 @@ function drawFallbackHelicopter(
   const targetProgress = clampNumber((target.mesh.position.x - startX) / (finishX - startX), 0, 1);
   const targetX = trackLeft + 28 + targetProgress * (trackWidth - 64);
   const targetY = trackTop + (trackHeight / Math.max(laneCount, 1)) * (target.lane + 0.5);
-  const entryX = width * 0.9;
-  const hoverX = width * 0.72;
-  const entryY = Math.max(108, trackTop - 92);
-  const hoverY = Math.max(116, trackTop - 128);
+  const mobilePortrait = width < 760 && height > width;
+  const helicopterScale = mobilePortrait ? 1.38 : 1;
+  const entryX = mobilePortrait ? width * 0.52 : width * 0.9;
+  const hoverX = mobilePortrait ? width * 0.5 : width * 0.72;
+  const entryY = mobilePortrait ? Math.max(130, trackTop - 116) : Math.max(108, trackTop - 92);
+  const hoverY = mobilePortrait ? Math.max(138, trackTop - 146) : Math.max(116, trackTop - 128);
   const helicopterX = lerpNumber(entryX, hoverX, arrivalProgress);
   const helicopterY = lerpNumber(entryY, hoverY, arrivalProgress) + Math.sin(raceElapsed * 3) * 5;
   const shotTiming = getShotTiming(hazardEvent);
   const shotActive = raceElapsed >= shotTiming.shotStart && raceElapsed <= shotTiming.impactEnd;
+  const visualBounds = {
+    left: (helicopterX - 74 * helicopterScale) / width,
+    right: (helicopterX + 58 * helicopterScale) / width,
+    top: (helicopterY - 10 * helicopterScale) / height,
+    bottom: (helicopterY + 42 * helicopterScale) / height
+  };
 
   context.save();
   context.translate(helicopterX, helicopterY);
+  context.scale(helicopterScale, helicopterScale);
   context.rotate(Math.sin(raceElapsed * 2) * 0.08);
 
   context.strokeStyle = 'rgba(17, 24, 39, 0.74)';
@@ -530,12 +540,28 @@ function drawFallbackHelicopter(
   context.stroke();
   context.restore();
 
+  raceStage.dataset.helicopterInFrame = String(
+    visualBounds.left > 0.04 &&
+      visualBounds.right < 0.96 &&
+      visualBounds.top > 0.08 &&
+      visualBounds.bottom < 0.78
+  );
+  raceStage.dataset.helicopterScreenX = (helicopterX / width).toFixed(3);
+  raceStage.dataset.helicopterScreenY = (helicopterY / height).toFixed(3);
+  raceStage.dataset.helicopterBoxLeft = visualBounds.left.toFixed(3);
+  raceStage.dataset.helicopterBoxRight = visualBounds.right.toFixed(3);
+  raceStage.dataset.helicopterBoxTop = visualBounds.top.toFixed(3);
+  raceStage.dataset.helicopterBoxBottom = visualBounds.bottom.toFixed(3);
+  raceStage.dataset.helicopterBoxWidth = (visualBounds.right - visualBounds.left).toFixed(3);
+  raceStage.dataset.helicopterBoxHeight = (visualBounds.bottom - visualBounds.top).toFixed(3);
+  raceStage.dataset.helicopterCameraDistance = mobilePortrait ? '9.80' : '14.00';
+
   if (!shotActive) {
     return;
   }
 
-  const muzzleX = helicopterX + 14;
-  const muzzleY = helicopterY + 30;
+  const muzzleX = helicopterX + 14 * helicopterScale;
+  const muzzleY = helicopterY + 30 * helicopterScale;
   const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
   const bulletX = lerpNumber(muzzleX, targetX, smoothStep(bulletProgress));
   const bulletY = lerpNumber(muzzleY, targetY, smoothStep(bulletProgress));
@@ -1386,17 +1412,101 @@ function updateHelicopterFrameState() {
 
   camera.updateMatrixWorld();
   helicopterGroup.updateMatrixWorld();
-  const projected = helicopterGroup.getWorldPosition(new THREE.Vector3()).project(camera);
+  const bounds = getProjectedHelicopterVisualBounds();
+  const focusPoint = getHelicopterVisualCenterPoint();
+  const projected = focusPoint.clone().project(camera);
+  const screenX = bounds?.centerX ?? (projected.x + 1) / 2;
+  const screenY = bounds?.centerY ?? (1 - projected.y) / 2;
   const inFrame =
-    Number.isFinite(projected.x) &&
-    Number.isFinite(projected.y) &&
-    Math.abs(projected.x) < 0.86 &&
-    projected.y > -0.76 &&
-    projected.y < 0.82;
+    bounds !== null &&
+    bounds.left > 0.04 &&
+    bounds.right < 0.96 &&
+    bounds.top > 0.08 &&
+    bounds.bottom < 0.78;
 
   raceStage.dataset.helicopterInFrame = String(inFrame);
-  raceStage.dataset.helicopterScreenX = ((projected.x + 1) / 2).toFixed(3);
-  raceStage.dataset.helicopterScreenY = ((1 - projected.y) / 2).toFixed(3);
+  raceStage.dataset.helicopterScreenX = screenX.toFixed(3);
+  raceStage.dataset.helicopterScreenY = screenY.toFixed(3);
+  if (bounds) {
+    raceStage.dataset.helicopterBoxLeft = bounds.left.toFixed(3);
+    raceStage.dataset.helicopterBoxRight = bounds.right.toFixed(3);
+    raceStage.dataset.helicopterBoxTop = bounds.top.toFixed(3);
+    raceStage.dataset.helicopterBoxBottom = bounds.bottom.toFixed(3);
+    raceStage.dataset.helicopterBoxWidth = bounds.width.toFixed(3);
+    raceStage.dataset.helicopterBoxHeight = bounds.height.toFixed(3);
+  }
+  raceStage.dataset.helicopterCameraDistance = camera.position.distanceTo(focusPoint).toFixed(2);
+}
+
+function getProjectedHelicopterVisualBounds() {
+  const min = new THREE.Vector3(-2.85, -0.58, -0.58);
+  const max = new THREE.Vector3(1.92, 0.78, 0.58);
+  const corners = [
+    new THREE.Vector3(min.x, min.y, min.z),
+    new THREE.Vector3(min.x, min.y, max.z),
+    new THREE.Vector3(min.x, max.y, min.z),
+    new THREE.Vector3(min.x, max.y, max.z),
+    new THREE.Vector3(max.x, min.y, min.z),
+    new THREE.Vector3(max.x, min.y, max.z),
+    new THREE.Vector3(max.x, max.y, min.z),
+    new THREE.Vector3(max.x, max.y, max.z)
+  ];
+
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+
+  for (const corner of corners) {
+    const projected = helicopterGroup.localToWorld(corner).project(camera);
+
+    if (!Number.isFinite(projected.x) || !Number.isFinite(projected.y)) {
+      return null;
+    }
+
+    const x = (projected.x + 1) / 2;
+    const y = (1 - projected.y) / 2;
+    left = Math.min(left, x);
+    right = Math.max(right, x);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y);
+  }
+
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+    width: right - left,
+    height: bottom - top
+  };
+}
+
+function getHelicopterVisualCenterPoint() {
+  return helicopterGroup.localToWorld(new THREE.Vector3(-0.35, 0.12, 0));
+}
+
+function getMobileHelicopterCameraView(targetPoint?: THREE.Vector3) {
+  const visualCenter = getHelicopterVisualCenterPoint();
+  const position = visualCenter.clone().add(new THREE.Vector3(-6, 2.9, 10));
+  const forward = visualCenter.clone().sub(position);
+  const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
+  const target = visualCenter
+    .clone()
+    .add(right.multiplyScalar(0.35))
+    .add(new THREE.Vector3(0, -0.08, 0));
+
+  if (targetPoint) {
+    target.lerp(targetPoint, 0.04);
+  }
+
+  return {
+    position,
+    target,
+    alpha: 0.66
+  };
 }
 
 function getFinishHelicopterHoverPosition(orbit: number, mobile = false) {
@@ -2442,9 +2552,10 @@ function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunne
   if (raceElapsed < shotTiming.shotStart) {
     const finishRouteCenter = targetPoint.clone().lerp(helicopterPoint, 0.62);
     if (mobile) {
-      desiredPosition = helicopterPoint.clone().add(new THREE.Vector3(-8.5, 5.2, 17.5));
-      desiredTarget = helicopterPoint.clone().add(new THREE.Vector3(1.2, -0.58, 0.2)).lerp(targetPoint, 0.12);
-      cameraAlpha = 0.2;
+      const helicopterView = getMobileHelicopterCameraView();
+      desiredPosition = helicopterView.position;
+      desiredTarget = helicopterView.target;
+      cameraAlpha = helicopterView.alpha;
     } else {
       desiredPosition = finishRouteCenter.clone().add(new THREE.Vector3(-24, 13.5, 32));
       desiredTarget = finishRouteCenter.clone().lerp(helicopterPoint, 0.22);
@@ -2454,16 +2565,23 @@ function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunne
     const muzzlePoint = getMuzzleWorldPosition();
     const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
     const bulletPosition = bulletMesh.visible ? bulletMesh.position.clone() : muzzlePoint.clone().lerp(targetPoint, smoothStep(bulletProgress));
-    const bulletDirection = targetPoint.clone().sub(muzzlePoint).normalize();
-    const side = new THREE.Vector3(-bulletDirection.z, 0, bulletDirection.x).normalize();
-    const cameraSide = side.lengthSq() > 0 ? side : new THREE.Vector3(0, 0, 1);
-    desiredPosition = bulletPosition
-      .clone()
-      .add(bulletDirection.clone().multiplyScalar(-1.6))
-      .add(cameraSide.multiplyScalar(2.35))
-      .add(new THREE.Vector3(0, 0.82, 0));
-    desiredTarget = bulletPosition.clone().add(bulletDirection.clone().multiplyScalar(5.2)).lerp(targetPoint, 0.4);
-    cameraAlpha = 0.42;
+    if (mobile) {
+      const helicopterView = getMobileHelicopterCameraView(bulletPosition);
+      desiredPosition = helicopterView.position;
+      desiredTarget = helicopterView.target;
+      cameraAlpha = helicopterView.alpha;
+    } else {
+      const bulletDirection = targetPoint.clone().sub(muzzlePoint).normalize();
+      const side = new THREE.Vector3(-bulletDirection.z, 0, bulletDirection.x).normalize();
+      const cameraSide = side.lengthSq() > 0 ? side : new THREE.Vector3(0, 0, 1);
+      desiredPosition = bulletPosition
+        .clone()
+        .add(bulletDirection.clone().multiplyScalar(-1.6))
+        .add(cameraSide.multiplyScalar(2.35))
+        .add(new THREE.Vector3(0, 0.82, 0));
+      desiredTarget = bulletPosition.clone().add(bulletDirection.clone().multiplyScalar(5.2)).lerp(targetPoint, 0.4);
+      cameraAlpha = 0.42;
+    }
   } else if (raceElapsed < shotTiming.impactEnd) {
     desiredPosition = target.mesh.position.clone().add(new THREE.Vector3(-3.9, 2.45, 4.9));
     desiredTarget = targetPoint.clone().add(new THREE.Vector3(0.2, 0.18, 0));
