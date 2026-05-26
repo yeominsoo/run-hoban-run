@@ -381,8 +381,14 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
     const bottom = Number(stage?.getAttribute('data-helicopter-box-bottom'));
     const width = Number(stage?.getAttribute('data-helicopter-box-width'));
     const distance = Number(stage?.getAttribute('data-helicopter-camera-distance'));
+    const mainRotorClearance = Number(stage?.getAttribute('data-helicopter-main-rotor-clearance'));
+    const tailRotorGap = Number(stage?.getAttribute('data-helicopter-tail-rotor-gap'));
+    const muzzleLocalX = Number(stage?.getAttribute('data-helicopter-muzzle-local-x'));
+    const noseTargetBias = Number(stage?.getAttribute('data-helicopter-nose-target-bias'));
     return (
       stage?.getAttribute('data-cinematic') === 'approach' &&
+      stage?.getAttribute('data-helicopter-model-clean') === 'true' &&
+      stage?.getAttribute('data-helicopter-shot-origin') === 'nose' &&
       Number.isFinite(x) &&
       Number.isFinite(y) &&
       Number.isFinite(left) &&
@@ -391,6 +397,10 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       Number.isFinite(bottom) &&
       Number.isFinite(width) &&
       Number.isFinite(distance) &&
+      Number.isFinite(mainRotorClearance) &&
+      Number.isFinite(tailRotorGap) &&
+      Number.isFinite(muzzleLocalX) &&
+      Number.isFinite(noseTargetBias) &&
       x > 0.43 &&
       x < 0.57 &&
       y > 0.3 &&
@@ -400,7 +410,12 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       top > 0.08 &&
       bottom < 0.78 &&
       width > 0.2 &&
-      distance < 13.2
+      distance > 18 &&
+      distance < 28 &&
+      mainRotorClearance > 0.55 &&
+      tailRotorGap < 0.18 &&
+      muzzleLocalX > 1.25 &&
+      noseTargetBias > 0.2
     );
   }, undefined, { timeout: 8_000 });
 
@@ -417,10 +432,18 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       helicopterBoxBottom: Number(stage?.getAttribute('data-helicopter-box-bottom')),
       helicopterBoxWidth: Number(stage?.getAttribute('data-helicopter-box-width')),
       helicopterCameraDistance: Number(stage?.getAttribute('data-helicopter-camera-distance')),
+      helicopterModelClean: stage?.getAttribute('data-helicopter-model-clean'),
+      helicopterShotOrigin: stage?.getAttribute('data-helicopter-shot-origin'),
+      helicopterMainRotorClearance: Number(stage?.getAttribute('data-helicopter-main-rotor-clearance')),
+      helicopterTailRotorGap: Number(stage?.getAttribute('data-helicopter-tail-rotor-gap')),
+      helicopterMuzzleLocalX: Number(stage?.getAttribute('data-helicopter-muzzle-local-x')),
+      helicopterNoseTargetBias: Number(stage?.getAttribute('data-helicopter-nose-target-bias')),
       leaderboardBottomSpace: leaderboardBox ? window.innerHeight - leaderboardBox.bottom : -1
     };
   });
 
+  expect(frame.helicopterModelClean).toBe('true');
+  expect(frame.helicopterShotOrigin).toBe('nose');
   expect(frame.helicopterScreenX).toBeGreaterThan(0.43);
   expect(frame.helicopterScreenX).toBeLessThan(0.57);
   expect(frame.helicopterScreenY).toBeGreaterThan(0.3);
@@ -430,7 +453,12 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
   expect(frame.helicopterBoxTop).toBeGreaterThan(0.08);
   expect(frame.helicopterBoxBottom).toBeLessThan(0.78);
   expect(frame.helicopterBoxWidth).toBeGreaterThan(0.2);
-  expect(frame.helicopterCameraDistance).toBeLessThan(13.2);
+  expect(frame.helicopterCameraDistance).toBeGreaterThan(18);
+  expect(frame.helicopterCameraDistance).toBeLessThan(28);
+  expect(frame.helicopterMainRotorClearance).toBeGreaterThan(0.55);
+  expect(frame.helicopterTailRotorGap).toBeLessThan(0.18);
+  expect(frame.helicopterMuzzleLocalX).toBeGreaterThan(1.25);
+  expect(frame.helicopterNoseTargetBias).toBeGreaterThan(0.2);
   expect(frame.leaderboardBottomSpace).toBeGreaterThan(52);
 
   await page.screenshot({
@@ -455,7 +483,7 @@ test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
 
   await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
-  await expect(page.locator('.runner-tag.skill').filter({ hasText: '광폭 질주' })).toBeVisible();
+  await expect(page.locator('.runner-tag.skill').filter({ hasText: '광폭 질주' }).first()).toBeVisible();
   await page.screenshot({
     path: 'test-results/frenzy-cutscene.png',
     fullPage: true
@@ -568,6 +596,36 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
     return Number(stage?.getAttribute('data-helicopter-forward-dot')) > 0.92 && Number(stage?.getAttribute('data-bullet-direction-dot')) > 0.98;
   }, undefined, { timeout: 8_000 });
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
+
+  const helicopterModel = await page.evaluate(() => {
+    const stage = document.querySelector('#race-stage');
+    return {
+      clean: stage?.getAttribute('data-helicopter-model-clean'),
+      shotOrigin: stage?.getAttribute('data-helicopter-shot-origin'),
+      mainRotorClear: stage?.getAttribute('data-helicopter-main-rotor-clear'),
+      tailRotorAttached: stage?.getAttribute('data-helicopter-tail-rotor-attached'),
+      muzzleForward: stage?.getAttribute('data-helicopter-muzzle-forward'),
+      mainRotorClearance: Number(stage?.getAttribute('data-helicopter-main-rotor-clearance')),
+      tailRotorGap: Number(stage?.getAttribute('data-helicopter-tail-rotor-gap')),
+      muzzleLocalX: Number(stage?.getAttribute('data-helicopter-muzzle-local-x')),
+      noseTargetBias: Number(stage?.getAttribute('data-helicopter-nose-target-bias'))
+    };
+  });
+
+  expect(helicopterModel.clean).toBe('true');
+  expect(helicopterModel.shotOrigin).toBe('nose');
+  expect(helicopterModel.mainRotorClear).toBe('true');
+  expect(helicopterModel.tailRotorAttached).toBe('true');
+  expect(helicopterModel.muzzleForward).toBe('true');
+  expect(helicopterModel.mainRotorClearance).toBeGreaterThan(0.55);
+  expect(helicopterModel.tailRotorGap).toBeLessThan(0.18);
+  expect(helicopterModel.muzzleLocalX).toBeGreaterThan(1.25);
+  expect(helicopterModel.noseTargetBias).toBeGreaterThan(0.35);
+
+  await page.screenshot({
+    path: 'test-results/helicopter-clean-model.png',
+    fullPage: true
+  });
 
   await expect(page.locator('.runner-tag.eliminated').first()).toBeVisible({ timeout: 12_000 });
 

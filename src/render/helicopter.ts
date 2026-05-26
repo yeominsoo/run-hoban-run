@@ -61,22 +61,23 @@ export function createHelicopterSniperRig() {
   const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.52 });
   const scopeMaterial = new THREE.MeshStandardMaterial({ color: 0x243447, roughness: 0.42 });
 
-  group.position.set(0.25, -0.48, 0.15);
+  group.position.set(1.64, -0.46, 0);
 
-  const mount = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.18, 0.22), darkMaterial);
+  const mount = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.18, 0.26), darkMaterial);
+  mount.position.x = -0.1;
   mount.castShadow = true;
   group.add(mount);
 
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.35, 10), darkMaterial);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.05, 10), darkMaterial);
   barrel.name = 'sniper-barrel';
   barrel.rotation.x = Math.PI / 2;
-  barrel.position.z = 0.72;
+  barrel.position.z = 0.56;
   barrel.castShadow = true;
   group.add(barrel);
 
   const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.36, 10), scopeMaterial);
   scope.rotation.x = Math.PI / 2;
-  scope.position.set(0, 0.12, 0.24);
+  scope.position.set(0, 0.12, 0.22);
   scope.castShadow = true;
   group.add(scope);
 
@@ -484,15 +485,15 @@ function addRotorAssembly(group: THREE.Group, material = new THREE.MeshStandardM
   const tailBlurMaterial = blurMaterial.clone();
   tailBlurMaterial.opacity = 0.32;
 
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.46, 10), material);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.72, 10), material);
   mast.name = 'rotor-mast';
-  mast.position.y = 0.7;
+  mast.position.y = 0.88;
   mast.castShadow = true;
   group.add(mast);
 
   const rotorGroup = new THREE.Group();
   rotorGroup.name = 'main-rotor';
-  rotorGroup.position.y = 0.94;
+  rotorGroup.position.y = 1.24;
   group.add(rotorGroup);
 
   const rotorBlur = new THREE.Mesh(new THREE.CircleGeometry(1.86, 48), blurMaterial);
@@ -515,7 +516,7 @@ function addRotorAssembly(group: THREE.Group, material = new THREE.MeshStandardM
 
   const tailRotorGroup = new THREE.Group();
   tailRotorGroup.name = 'tail-rotor';
-  tailRotorGroup.position.set(-2.98, 0.22, 0);
+  tailRotorGroup.position.set(-3.12, 0.18, 0);
   group.add(tailRotorGroup);
 
   const tailRotorBlur = new THREE.Mesh(new THREE.CircleGeometry(0.44, 36), tailBlurMaterial);

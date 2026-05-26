@@ -226,6 +226,14 @@ const riderScale = 1.14;
 const riderLegZ = 0.38;
 const frenzyCutsceneLeadSeconds = 0.72;
 const helicopterEntranceSeconds = 3;
+const helicopterForwardRotationY = -Math.PI / 2;
+const helicopterNoseLocalX = 1.72;
+const helicopterTailLocalX = -3.16;
+const helicopterTailBoomEndX = -3.08;
+const helicopterTailRotorHubX = -3.12;
+const helicopterBodyTopY = 0.58;
+const helicopterMainRotorY = 1.24;
+const helicopterMuzzleLocalZ = 1.12;
 let raceElapsed = 0;
 let raceFinished = false;
 let raceStarted = false;
@@ -431,9 +439,9 @@ function drawFallbackHelicopter(
   const shotTiming = getShotTiming(hazardEvent);
   const shotActive = raceElapsed >= shotTiming.shotStart && raceElapsed <= shotTiming.impactEnd;
   const visualBounds = {
-    left: (helicopterX - 74 * helicopterScale) / width,
-    right: (helicopterX + 58 * helicopterScale) / width,
-    top: (helicopterY - 10 * helicopterScale) / height,
+    left: (helicopterX - 82 * helicopterScale) / width,
+    right: (helicopterX + 66 * helicopterScale) / width,
+    top: (helicopterY - 26 * helicopterScale) / height,
     bottom: (helicopterY + 42 * helicopterScale) / height
   };
 
@@ -445,8 +453,29 @@ function drawFallbackHelicopter(
   context.strokeStyle = 'rgba(17, 24, 39, 0.74)';
   context.lineWidth = 4;
   context.beginPath();
-  context.moveTo(-54, 0);
-  context.lineTo(52, 0);
+  context.moveTo(-62, -18);
+  context.lineTo(62, -18);
+  context.stroke();
+
+  context.strokeStyle = 'rgba(17, 24, 39, 0.72)';
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(0, -16);
+  context.lineTo(0, 4);
+  context.stroke();
+
+  context.fillStyle = '#c2413a';
+  context.fillRect(-60, 15, 48, 7);
+  context.fillRect(-68, 11, 10, 14);
+  context.strokeStyle = 'rgba(17, 24, 39, 0.8)';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(-70, 18);
+  context.lineTo(-82, 18);
+  context.moveTo(-78, 8);
+  context.lineTo(-78, 28);
+  context.moveTo(-86, 18);
+  context.lineTo(-70, 18);
   context.stroke();
 
   context.fillStyle = '#c2413a';
@@ -457,15 +486,12 @@ function drawFallbackHelicopter(
   context.beginPath();
   context.ellipse(24, 17, 14, 10, 0, 0, Math.PI * 2);
   context.fill();
-  context.fillStyle = '#c2413a';
-  context.fillRect(-52, 15, 42, 7);
+
   context.strokeStyle = 'rgba(17, 24, 39, 0.8)';
   context.lineWidth = 2;
   context.beginPath();
-  context.moveTo(-62, 18);
-  context.lineTo(-72, 8);
-  context.moveTo(-62, 18);
-  context.lineTo(-72, 28);
+  context.moveTo(18, 33);
+  context.lineTo(36, 39);
   context.stroke();
 
   context.strokeStyle = 'rgba(255, 255, 255, 0.72)';
@@ -496,8 +522,8 @@ function drawFallbackHelicopter(
     return;
   }
 
-  const muzzleX = helicopterX + 14 * helicopterScale;
-  const muzzleY = helicopterY + 30 * helicopterScale;
+  const muzzleX = helicopterX + 36 * helicopterScale;
+  const muzzleY = helicopterY + 39 * helicopterScale;
   const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
   const bulletX = lerpNumber(muzzleX, targetX, smoothStep(bulletProgress));
   const bulletY = lerpNumber(muzzleY, targetY, smoothStep(bulletProgress));
@@ -1304,6 +1330,7 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
   impactBurst.visible = false;
   raceStage.dataset.cinematic = 'idle';
   raceStage.dataset.frenzy = 'idle';
+  resetHelicopterModelDiagnostics();
 
   const firstEvent = hazardEvents[0];
 
@@ -1317,7 +1344,7 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
     mobile ? 9.8 : 11.8,
     -(trackVisualWidth / 2 + (mobile ? 5.8 : 18))
   );
-  helicopterGroup.rotation.set(0, Math.PI / 2, 0);
+  helicopterGroup.rotation.set(0, helicopterForwardRotationY, 0);
   helicopterGroup.scale.setScalar(mobile ? 1.18 : 1);
 }
 
@@ -1361,6 +1388,7 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
     muzzleFlash.visible = false;
     impactBurst.visible = false;
     raceStage.dataset.cinematic = 'idle';
+    resetHelicopterModelDiagnostics();
     setCameraControlLocked(false);
     return;
   }
@@ -1376,6 +1404,7 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
     muzzleFlash.visible = false;
     impactBurst.visible = false;
     raceStage.dataset.cinematic = 'idle';
+    resetHelicopterModelDiagnostics();
     setCameraControlLocked(false);
     return;
   }
@@ -1397,6 +1426,7 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
   aimSniperRigAt(targetPosition);
 
   const muzzlePosition = getMuzzleWorldPosition();
+  updateHelicopterModelDiagnostics(targetPosition, muzzlePosition);
   const shotTiming = getShotTiming(hazardEvent);
   const bulletProgress = clampNumber((raceElapsed - shotTiming.shotStart) / (hazardEvent.triggerSeconds - shotTiming.shotStart), 0, 1);
   const bulletActive = raceElapsed >= shotTiming.shotStart && raceElapsed <= shotTiming.shotEnd;
@@ -1498,9 +1528,45 @@ function updateHelicopterFrameState() {
   raceStage.dataset.helicopterCameraDistance = camera.position.distanceTo(focusPoint).toFixed(2);
 }
 
+function resetHelicopterModelDiagnostics() {
+  raceStage.dataset.helicopterModelClean = 'false';
+  raceStage.dataset.helicopterMainRotorClear = 'false';
+  raceStage.dataset.helicopterTailRotorAttached = 'false';
+  raceStage.dataset.helicopterMuzzleForward = 'false';
+  raceStage.dataset.helicopterShotOrigin = 'unknown';
+}
+
+function updateHelicopterModelDiagnostics(targetPosition: THREE.Vector3, muzzleWorldPosition: THREE.Vector3) {
+  helicopterGroup.updateMatrixWorld(true);
+  helicopterSniperRig.updateMatrixWorld(true);
+
+  const nosePosition = helicopterGroup.localToWorld(new THREE.Vector3(helicopterNoseLocalX, 0, 0));
+  const tailPosition = helicopterGroup.localToWorld(new THREE.Vector3(helicopterTailLocalX, 0.12, 0));
+  const tailBoomEndPosition = helicopterGroup.localToWorld(new THREE.Vector3(helicopterTailBoomEndX, 0.18, 0));
+  const tailRotorHubPosition = helicopterGroup.localToWorld(new THREE.Vector3(helicopterTailRotorHubX, 0.18, 0));
+  const muzzleLocal = helicopterGroup.worldToLocal(muzzleWorldPosition.clone());
+  const mainRotorClearance = (helicopterMainRotorY - helicopterBodyTopY) * helicopterGroup.scale.y;
+  const tailRotorGap = tailRotorHubPosition.distanceTo(tailBoomEndPosition);
+  const noseTargetBias = tailPosition.distanceTo(targetPosition) - nosePosition.distanceTo(targetPosition);
+  const muzzleForward = muzzleLocal.x > helicopterNoseLocalX - 0.46;
+  const mainRotorClear = mainRotorClearance > 0.55;
+  const tailRotorAttached = tailRotorGap < 0.18;
+  const noseFacesTarget = noseTargetBias > 0.2;
+
+  raceStage.dataset.helicopterMainRotorClearance = mainRotorClearance.toFixed(3);
+  raceStage.dataset.helicopterTailRotorGap = tailRotorGap.toFixed(3);
+  raceStage.dataset.helicopterMuzzleLocalX = muzzleLocal.x.toFixed(3);
+  raceStage.dataset.helicopterNoseTargetBias = noseTargetBias.toFixed(3);
+  raceStage.dataset.helicopterMainRotorClear = String(mainRotorClear);
+  raceStage.dataset.helicopterTailRotorAttached = String(tailRotorAttached);
+  raceStage.dataset.helicopterMuzzleForward = String(muzzleForward);
+  raceStage.dataset.helicopterShotOrigin = muzzleForward && noseFacesTarget ? 'nose' : 'tail';
+  raceStage.dataset.helicopterModelClean = String(mainRotorClear && tailRotorAttached && muzzleForward && noseFacesTarget);
+}
+
 function getProjectedHelicopterVisualBounds() {
-  const min = new THREE.Vector3(-2.85, -0.58, -0.58);
-  const max = new THREE.Vector3(1.92, 0.78, 0.58);
+  const min = new THREE.Vector3(-3.3, -0.78, -2.48);
+  const max = new THREE.Vector3(2.55, 1.32, 2.48);
   const corners = [
     new THREE.Vector3(min.x, min.y, min.z),
     new THREE.Vector3(min.x, min.y, max.z),
@@ -1545,12 +1611,12 @@ function getProjectedHelicopterVisualBounds() {
 }
 
 function getHelicopterVisualCenterPoint() {
-  return helicopterGroup.localToWorld(new THREE.Vector3(-0.35, 0.12, 0));
+  return helicopterGroup.localToWorld(new THREE.Vector3(-0.18, 0.28, 0));
 }
 
 function getMobileHelicopterCameraView(targetPoint?: THREE.Vector3) {
   const visualCenter = getHelicopterVisualCenterPoint();
-  const position = visualCenter.clone().add(new THREE.Vector3(-6, 2.9, 10.85));
+  const position = visualCenter.clone().add(new THREE.Vector3(-12.4, 5.4, 20.8));
   const forward = visualCenter.clone().sub(position);
   const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
   const target = visualCenter
@@ -1565,7 +1631,7 @@ function getMobileHelicopterCameraView(targetPoint?: THREE.Vector3) {
   return {
     position,
     target,
-    alpha: 0.66
+    alpha: 0.56
   };
 }
 
@@ -1707,7 +1773,8 @@ function getHorseForwardDirection(runner: VisualRunner) {
 }
 
 function getMuzzleWorldPosition() {
-  return helicopterSniperRig.localToWorld(new THREE.Vector3(0, 0, 1.4));
+  helicopterSniperRig.updateMatrixWorld(true);
+  return helicopterSniperRig.localToWorld(new THREE.Vector3(0, 0, helicopterMuzzleLocalZ));
 }
 
 function aimSniperRigAt(targetWorldPosition: THREE.Vector3) {
