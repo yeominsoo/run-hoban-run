@@ -7,6 +7,6 @@ resources:
 images:
 - name: ghcr.io/yeominsoo/run-hoban-run
   newName: ghcr.io/yeominsoo/run-hoban-run
-  newTag: 1702b2e1bd15a1944ab6e3222764b4f7f444b9c8
+  newTag: 2fb8078d1ba48a6f3ada42845fc5a2d1ae3c960d
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
