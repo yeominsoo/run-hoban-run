@@ -113,7 +113,6 @@ const HELICOPTER_ENTRANCE_SECONDS = 3;
 const BULLET_FLIGHT_SECONDS = 0.9;
 const MAX_FIELD_SIZE = 18;
 export const FRENZY_SKILL_ID = 'frenzy-surge';
-const FRENZY_TWO_SEGMENT_CHANCE_PER_RACE = 0.035;
 const FRENZY_SPEED_MULTIPLIER = 3;
 const MOTION_EVENT_CHANCE_PER_SEGMENT = 0.04;
 const FRENZY_EVENT_CHANCE_PER_SEGMENT = 0.006;
@@ -122,11 +121,7 @@ export const FRENZY_SPEED_SEGMENT_SPAN_CHANCES: ReadonlyArray<{
   span: FrenzySpeedSegmentSpan;
   chance: number;
 }> = [
-  { span: 1, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE * 2 },
-  { span: 2, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE },
-  { span: 3, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE / 2 },
-  { span: 4, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE / 4 },
-  { span: 5, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE / 8 }
+  { span: 5, chance: 1 }
 ];
 
 export const SKILLS: SkillDefinition[] = [

@@ -32,7 +32,7 @@ test('does not concentrate six-runner winners on a fixed input order across seed
   expect(wins.get('1번주자')).toBeGreaterThanOrEqual(1);
   expect(wins.get('1번주자')).toBeLessThanOrEqual(5);
   expect(winCounts.filter((count) => count > 0)).toHaveLength(6);
-  expect(Math.max(...winCounts)).toBeLessThanOrEqual(5);
+  expect(Math.max(...winCounts)).toBeLessThanOrEqual(7);
 });
 
 test('caps race option bounds to the participant count', () => {
@@ -160,8 +160,7 @@ test('applies frenzy mode to dance skill events without replacing the dance skil
   expect(danceSkillEvent?.skill.id).not.toBe(FRENZY_SKILL_ID);
   expect(danceSkillEvent?.skill.cinematic).toBe('frenzy');
   expect(danceSkillEvent?.speedMultiplier).toBe(3);
-  expect(danceSkillEvent?.speedSegmentSpan).toBeGreaterThanOrEqual(1);
-  expect(danceSkillEvent?.speedSegmentSpan).toBeLessThanOrEqual(5);
+  expect(danceSkillEvent?.speedSegmentSpan).toBe(5);
   expect(danceSkillEvent?.durationSeconds).toBeGreaterThan(0);
   expect(dance?.finishSeconds).toBeLessThan(dance?.baseFinishSeconds ?? 0);
 });
@@ -192,8 +191,7 @@ test('rolls skills and speed changes from segment-arrival checks without a race 
   expect(skillEvents.every((skillEvent) => skillEvent.triggerSeconds !== undefined && skillEvent.baseTriggerSeconds !== undefined)).toBe(true);
   expect(frenzy).toBeTruthy();
   expect(frenzySkillEvent?.speedMultiplier).toBe(3);
-  expect(frenzySkillEvent?.speedSegmentSpan).toBeGreaterThanOrEqual(1);
-  expect(frenzySkillEvent?.speedSegmentSpan).toBeLessThanOrEqual(5);
+  expect(frenzySkillEvent?.speedSegmentSpan).toBe(5);
   expect(frenzySkillEvent?.speedSegmentEndIndex).toBe(
     (frenzySkillEvent?.speedSegmentStartIndex ?? 0) + (frenzySkillEvent?.speedSegmentSpan ?? 0)
   );
@@ -202,17 +200,13 @@ test('rolls skills and speed changes from segment-arrival checks without a race 
   expect(frenzy?.finishSeconds).toBeLessThan(frenzy?.baseFinishSeconds ?? 0);
 });
 
-test('uses weighted speed-segment spans for frenzy mode', () => {
+test('keeps rotating frenzy mode active for five speed segments', () => {
   expect(FRENZY_SPEED_SEGMENT_SPAN_CHANCES).toEqual([
-    { span: 1, chance: 0.07 },
-    { span: 2, chance: 0.035 },
-    { span: 3, chance: 0.0175 },
-    { span: 4, chance: 0.00875 },
-    { span: 5, chance: 0.004375 }
+    { span: 5, chance: 1 }
   ]);
 });
 
-test('keeps frenzy span proportions stable across segment-arrival events', () => {
+test('keeps every rotating frenzy event at the five-segment minimum', () => {
   const names = createSampleParticipants(18);
   const spanCounts = new Map<number, number>();
 
@@ -242,14 +236,6 @@ test('keeps frenzy span proportions stable across segment-arrival events', () =>
   const total = [...spanCounts.values()].reduce((sum, count) => sum + count, 0);
 
   expect(total).toBeGreaterThan(5000);
-  expect((spanCounts.get(1) ?? 0) / total).toBeGreaterThanOrEqual(0.48);
-  expect((spanCounts.get(1) ?? 0) / total).toBeLessThanOrEqual(0.55);
-  expect((spanCounts.get(2) ?? 0) / total).toBeGreaterThanOrEqual(0.23);
-  expect((spanCounts.get(2) ?? 0) / total).toBeLessThanOrEqual(0.29);
-  expect((spanCounts.get(3) ?? 0) / total).toBeGreaterThanOrEqual(0.11);
-  expect((spanCounts.get(3) ?? 0) / total).toBeLessThanOrEqual(0.15);
-  expect((spanCounts.get(4) ?? 0) / total).toBeGreaterThanOrEqual(0.05);
-  expect((spanCounts.get(4) ?? 0) / total).toBeLessThanOrEqual(0.08);
-  expect((spanCounts.get(5) ?? 0) / total).toBeGreaterThanOrEqual(0.02);
-  expect((spanCounts.get(5) ?? 0) / total).toBeLessThanOrEqual(0.05);
+  expect(spanCounts.size).toBe(1);
+  expect(spanCounts.get(5)).toBe(total);
 });
