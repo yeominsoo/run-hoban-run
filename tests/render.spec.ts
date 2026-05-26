@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 const viewports = [
@@ -120,6 +121,73 @@ for (const viewport of viewports) {
   });
 }
 
+test('loads the military helicopter GLB asset into the scene', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'loaded', { timeout: 10_000 });
+
+  const response = await page.request.get('/assets/helicopter/freepixel-helicopter.glb');
+  expect(response.ok()).toBe(true);
+  expect((await response.body()).byteLength).toBeGreaterThan(5_000_000);
+});
+
+test('serves the frenzy particle texture assets', async ({ page }) => {
+  for (const path of [
+    '/assets/frenzy/blackSmoke07.png',
+    '/assets/frenzy/blackSmoke14.png',
+    '/assets/frenzy/whitePuff08.png',
+    '/assets/frenzy/whitePuff16.png'
+  ]) {
+    const response = await page.request.get(path);
+    expect(response.ok()).toBe(true);
+    expect(response.headers()['content-type']).toContain('image/png');
+    expect((await response.body()).byteLength).toBeGreaterThan(50_000);
+  }
+});
+
+test('downloads a composited result screenshot', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#download-result-shot')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#download-result-shot').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^run-hoban-run-.*-result-.*\.png$/);
+
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+
+  if (downloadPath) {
+    expect((await stat(downloadPath)).size).toBeGreaterThan(20_000);
+  }
+});
+
+test('records the race canvas to a downloadable video', async ({ page }) => {
+  await page.goto('/');
+  const supported = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    return typeof MediaRecorder !== 'undefined' && typeof canvas?.captureStream === 'function';
+  });
+
+  test.skip(!supported, 'MediaRecorder canvas capture is not available in this browser');
+  await expect(page.locator('#toggle-recording')).toBeEnabled();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#toggle-recording').click();
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-recording', 'active');
+  await page.waitForTimeout(1200);
+  await page.locator('#toggle-recording').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^run-hoban-run-.*-race-capture-.*\.(webm|mp4)$/);
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-recording', 'idle');
+
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+
+  if (downloadPath) {
+    expect((await stat(downloadPath)).size).toBeGreaterThan(1_000);
+  }
+});
+
 test('shows an immediate loading state before the app bundle is ready', async ({ page }) => {
   const response = await page.request.get('/');
   const html = (await response.text()).replace(/<script\s+type="module"[^>]*><\/script>/, '');
@@ -160,6 +228,7 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-minimap')).toBeVisible();
   await expect(page.locator('#race-summary')).toContainText('64명');
   await expect(page.locator('#race-meta')).toContainText('경기 1/5');
+  await expect(page.locator('#leaderboard')).not.toContainText(/% 지점/);
 
   for (let index = 0; index < 4; index += 1) {
     await page.locator('#next-race').click();
@@ -316,6 +385,28 @@ test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
   await expect(page.locator('.runner-tag.skill')).toContainText('광폭 질주');
   await page.screenshot({
     path: 'test-results/frenzy-cutscene.png',
+    fullPage: true
+  });
+});
+
+test('plays dance skills with the frenzy mode effect active', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.locator('#seed-input').fill('댄스광폭-0113');
+  await page.locator('#start-tournament').click();
+
+  await page.waitForFunction(
+    () =>
+      document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
+      [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('코너 댄스')),
+    undefined,
+    { timeout: 40_000 }
+  );
+
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
+  await expect(page.locator('.runner-tag.skill').filter({ hasText: '코너 댄스' })).toBeVisible();
+  await page.screenshot({
+    path: 'test-results/dance-frenzy-cutscene.png',
     fullPage: true
   });
 });

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import {
   createSampleParticipants,
-  FRENZY_SKILL_ID,
   getRaceOptionBounds,
   normalizeParticipants,
   runTournament,
@@ -14,6 +13,17 @@ import {
   type SpeedSegment,
   type TournamentResult
 } from './game/rules';
+import { FRENZY_PARTICLE_TEXTURES } from './assets/frenzy';
+import {
+  createBulletMesh,
+  createHelicopterSniperRig,
+  createImpactBurst,
+  createMuzzleFlash,
+  installHelicopterVisual,
+  spinHelicopterRotors
+} from './render/helicopter';
+import { clearGroup, disposeObject } from './render/scene-utils';
+import { query, renderAppShell } from './ui/app-shell';
 import './style.css';
 
 type RiderParts = {
@@ -62,6 +72,8 @@ type FrenzyVortexParts = {
   root: THREE.Group;
   rings: THREE.Mesh[];
   dust: THREE.Mesh[];
+  smokeSprites: THREE.Sprite[];
+  smokeMaterials: THREE.SpriteMaterial[];
 };
 
 type FrenzyFireParts = {
@@ -115,121 +127,7 @@ function completeBootLoader() {
 
 setBootStatus('경기장 준비 중');
 
-app.innerHTML = `
-  <main class="shell">
-    <section class="race-stage" id="race-stage">
-      <canvas id="race-canvas"></canvas>
-      <div class="hud hud-top">
-        <div class="title-block">
-          <p class="eyebrow" id="race-meta">룰 기반 3D 경주</p>
-          <h1>달려라 호반</h1>
-        </div>
-        <div class="top-actions">
-          <button class="icon-button" id="toggle-panels" type="button" aria-label="패널 열고 닫기">
-            <span aria-hidden="true">☰</span>
-          </button>
-          <button class="icon-button" id="replay-race" type="button" aria-label="경기 다시 보기">
-            <span aria-hidden="true">↻</span>
-          </button>
-          <button class="icon-button" id="next-race" type="button" aria-label="다음 경기">
-            <span aria-hidden="true">›</span>
-          </button>
-        </div>
-      </div>
-
-      <aside class="control-panel">
-        <div class="panel-section">
-          <div class="section-title">참가자</div>
-          <textarea id="participants" spellcheck="false"></textarea>
-          <div class="button-row">
-            <button id="sample-18" type="button">18</button>
-            <button id="sample-64" type="button">64</button>
-            <button id="start-tournament" type="button">시작</button>
-          </div>
-        </div>
-
-        <div class="panel-section option-grid">
-          <div class="seed-control">
-            <label>
-              <span>시드</span>
-              <input id="seed-input" value="호반-2026" />
-            </label>
-            <button id="random-seed" type="button">랜덤</button>
-          </div>
-          <label>
-            <span>출전</span>
-            <input id="field-size" type="number" min="2" max="18" value="18" />
-          </label>
-          <label>
-            <span>진출</span>
-            <input id="qualifiers" type="number" min="1" max="17" value="2" />
-          </label>
-          <label>
-            <span>우승</span>
-            <input id="winner-count" type="number" min="1" max="18" value="1" />
-          </label>
-          <label>
-            <span>주로</span>
-            <select id="surface-select">
-              <option value="turf">잔디</option>
-              <option value="dirt">더트</option>
-            </select>
-          </label>
-          <label>
-            <span>거리</span>
-            <select id="distance-select">
-              <option value="sprint">단거리</option>
-              <option value="mile" selected>마일</option>
-              <option value="medium">중거리</option>
-              <option value="long">장거리</option>
-            </select>
-          </label>
-          <label>
-            <span>상태</span>
-            <select id="condition-select">
-              <option value="firm">양호</option>
-              <option value="damp">다습</option>
-              <option value="muddy">불량</option>
-            </select>
-          </label>
-        </div>
-      </aside>
-
-      <aside class="race-panel">
-        <div class="panel-section">
-          <div class="section-title" id="race-title">경기</div>
-          <div id="race-summary" class="race-summary"></div>
-        </div>
-        <div class="panel-section">
-          <div class="section-title">결과</div>
-          <ol id="result-list" class="result-list"></ol>
-        </div>
-      </aside>
-
-      <div class="hud hud-bottom">
-        <ol id="leaderboard" class="leaderboard"></ol>
-      </div>
-
-      <div class="race-minimap" id="race-minimap" aria-label="경주 진행도">
-        <div class="minimap-track">
-          <span class="minimap-start" aria-hidden="true"></span>
-          <span class="minimap-finish" aria-hidden="true"></span>
-          <div id="minimap-dots" class="minimap-dots"></div>
-        </div>
-      </div>
-    </section>
-  </main>
-`;
-
-function query<T extends Element>(selector: string) {
-  const element = document.querySelector<T>(selector);
-
-  if (!element) {
-    throw new Error(`화면 요소를 찾을 수 없습니다: ${selector}`);
-  }
-
-  return element;
-}
+renderAppShell(app);
 
 const raceCanvas = query<HTMLCanvasElement>('#race-canvas');
 const raceStage = query<HTMLElement>('#race-stage');
@@ -248,6 +146,8 @@ const sample64Button = query<HTMLButtonElement>('#sample-64');
 const startButton = query<HTMLButtonElement>('#start-tournament');
 const randomSeedButton = query<HTMLButtonElement>('#random-seed');
 const togglePanelsButton = query<HTMLButtonElement>('#toggle-panels');
+const toggleRecordingButton = query<HTMLButtonElement>('#toggle-recording');
+const downloadResultShotButton = query<HTMLButtonElement>('#download-result-shot');
 const replayButton = query<HTMLButtonElement>('#replay-race');
 const nextButton = query<HTMLButtonElement>('#next-race');
 const raceMeta = query<HTMLParagraphElement>('#race-meta');
@@ -321,8 +221,17 @@ let visualRunners: VisualRunner[] = [];
 let selectedCameraEntryId = 'overview';
 let overviewCameraZoom = 1;
 let activePinchDistance: number | null = null;
+let mediaRecorder: MediaRecorder | null = null;
+let recordedVideoChunks: Blob[] = [];
+let recordingMimeType = '';
 const overviewCameraZoomMin = 0.72;
 const overviewCameraZoomMax = 1.65;
+const frenzyTextureLoader = new THREE.TextureLoader();
+const frenzyParticleTextures = FRENZY_PARTICLE_TEXTURES.map((url) => {
+  const texture = frenzyTextureLoader.load(url);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+});
 
 function createRaceRenderer(canvas: HTMLCanvasElement): RaceRenderer {
   try {
@@ -646,104 +555,6 @@ function makeRail(z: number) {
   scene.add(group);
 }
 
-function installHelicopterVisual() {
-  clearGroup(helicopterAssetSlot);
-  helicopterAssetSlot.add(createFallbackHelicopter());
-}
-
-function createFallbackHelicopter() {
-  const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xc2413a, roughness: 0.55 });
-  const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x9ed8ff, roughness: 0.25 });
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.5 });
-
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 2.3, 8, 16), bodyMaterial);
-  body.rotation.z = Math.PI / 2;
-  body.castShadow = true;
-  group.add(body);
-
-  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 10), windowMaterial);
-  cockpit.position.x = 1.18;
-  cockpit.scale.set(1.1, 0.72, 0.72);
-  cockpit.castShadow = true;
-  group.add(cockpit);
-
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.16, 0.16), bodyMaterial);
-  tail.position.x = -1.85;
-  tail.castShadow = true;
-  group.add(tail);
-
-  const rotor = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.04, 0.18), darkMaterial);
-  rotor.name = 'main-rotor';
-  rotor.position.y = 0.72;
-  group.add(rotor);
-
-  const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.92, 0.12), darkMaterial);
-  tailRotor.name = 'tail-rotor';
-  tailRotor.position.x = -2.78;
-  group.add(tailRotor);
-
-  return group;
-}
-
-function createHelicopterSniperRig() {
-  const group = new THREE.Group();
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.52 });
-  const scopeMaterial = new THREE.MeshStandardMaterial({ color: 0x243447, roughness: 0.42 });
-
-  group.position.set(0.25, -0.48, 0.15);
-
-  const mount = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.18, 0.22), darkMaterial);
-  mount.castShadow = true;
-  group.add(mount);
-
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.35, 10), darkMaterial);
-  barrel.name = 'sniper-barrel';
-  barrel.rotation.x = -Math.PI / 2;
-  barrel.position.z = -0.72;
-  barrel.castShadow = true;
-  group.add(barrel);
-
-  const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.36, 10), scopeMaterial);
-  scope.rotation.x = Math.PI / 2;
-  scope.position.set(0, 0.12, -0.2);
-  scope.castShadow = true;
-  group.add(scope);
-
-  return group;
-}
-
-function createBulletMesh() {
-  const material = new THREE.MeshBasicMaterial({ color: 0xfff1a6 });
-  const bullet = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.48, 4, 10), material);
-  bullet.visible = false;
-  return bullet;
-}
-
-function createMuzzleFlash() {
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xffd166,
-    transparent: true,
-    opacity: 0.88,
-    depthWrite: false
-  });
-  const flash = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.58, 12), material);
-  flash.visible = false;
-  return flash;
-}
-
-function createImpactBurst() {
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xff4141,
-    transparent: true,
-    opacity: 0.76,
-    depthWrite: false
-  });
-  const burst = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 10), material);
-  burst.visible = false;
-  return burst;
-}
-
 function createFrenzySnortGroup() {
   const group = new THREE.Group();
   const puffs: SnortPuffParts[] = [];
@@ -990,6 +801,8 @@ function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
   const root = new THREE.Group();
   const rings: THREE.Mesh[] = [];
   const dust: THREE.Mesh[] = [];
+  const smokeSprites: THREE.Sprite[] = [];
+  const smokeMaterials: THREE.SpriteMaterial[] = [];
   const ringColors = [0xffffff, accentColor, 0xff4d4d];
 
   root.position.y = 0.12;
@@ -1026,7 +839,25 @@ function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
     root.add(particle);
   }
 
-  return { root, rings, dust };
+  for (let index = 0; index < 14; index += 1) {
+    const material = new THREE.SpriteMaterial({
+      alphaMap: frenzyParticleTextures[index % frenzyParticleTextures.length],
+      color: index % 4 === 0 ? 0xff7a2a : 0xf7fbff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false
+    });
+    const smoke = new THREE.Sprite(material);
+    smoke.userData.phase = index * 0.91;
+    smoke.userData.baseScale = 0.74 + (index % 5) * 0.16;
+    smoke.renderOrder = 12;
+    smokeSprites.push(smoke);
+    smokeMaterials.push(material);
+    root.add(smoke);
+  }
+
+  return { root, rings, dust, smokeSprites, smokeMaterials };
 }
 
 function createRider(accentColor: number): RiderParts {
@@ -1269,8 +1100,16 @@ function updateRace(delta: number) {
     runner.mesh.position.x = startX + progress * (finishX - startX);
     runner.mesh.position.z = laneZ(runner.lane, visualRunners.length) + (eliminatedNow ? 0 : laneSway);
     runner.mesh.position.y = eliminatedNow ? lerpNumber(horseBaseY, 0.42, fallProgress) : horseBaseY + Math.abs(bob) * 0.24;
-    runner.mesh.rotation.x = eliminatedNow ? lerpNumber(0, Math.PI / 2, fallProgress) : 0;
-    runner.mesh.rotation.z = eliminatedNow ? lerpNumber(bob * 0.055, -0.18, fallProgress) : bob * 0.055;
+    if (frenzyActive) {
+      const spin = raceElapsed * (10.8 + raceProgress.multiplier * 0.42) + runner.phase;
+      runner.mesh.rotation.x = Math.sin(spin * 0.72) * 0.16;
+      runner.mesh.rotation.y = spin;
+      runner.mesh.rotation.z = Math.cos(spin * 0.68) * 0.14;
+    } else {
+      runner.mesh.rotation.x = eliminatedNow ? lerpNumber(0, Math.PI / 2, fallProgress) : 0;
+      runner.mesh.rotation.y = 0;
+      runner.mesh.rotation.z = eliminatedNow ? lerpNumber(bob * 0.055, -0.18, fallProgress) : bob * 0.055;
+    }
     runner.mesh.scale.setScalar(runner.baseScale * skillPulse);
     runner.skillActive = activeSkill;
     runner.eliminated = eliminatedNow;
@@ -1685,16 +1524,6 @@ function positionImpactBurst(position: THREE.Vector3, elapsedSinceImpact: number
   }
 }
 
-function spinHelicopterRotors(root: THREE.Object3D, time: number) {
-  root.traverse((child) => {
-    if (!/rotor|blade|prop/i.test(child.name)) {
-      return;
-    }
-
-    child.rotation.y = time * 22;
-  });
-}
-
 function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
   const vortex = runner.mesh.userData.frenzyVortex as FrenzyVortexParts | undefined;
 
@@ -1705,6 +1534,9 @@ function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
   vortex.root.visible = active;
 
   if (!active) {
+    vortex.smokeMaterials.forEach((material) => {
+      material.opacity = 0;
+    });
     return;
   }
 
@@ -1728,6 +1560,24 @@ function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
     const radius = 0.72 + (index % 6) * 0.13;
     particle.position.set(Math.cos(angle) * radius, 0.24 + ((index * 0.17 + raceElapsed * 1.8) % 1.72), Math.sin(angle) * radius);
     particle.scale.setScalar(0.9 + Math.sin(raceElapsed * 12 + phase) * 0.22);
+  });
+
+  vortex.smokeSprites.forEach((sprite, index) => {
+    const phase = Number(sprite.userData.phase ?? 0);
+    const baseScale = Number(sprite.userData.baseScale ?? 1);
+    const angle = raceElapsed * (6.8 + index * 0.08) + phase;
+    const layerProgress = (index * 0.19 + raceElapsed * 1.25) % 1;
+    const radius = 0.9 + (index % 5) * 0.2 + Math.sin(raceElapsed * 3.2 + phase) * 0.06;
+    const height = 0.18 + layerProgress * 1.85;
+    const opacity = 0.42 + Math.sin(raceElapsed * 5.7 + phase) * 0.12;
+    sprite.position.set(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
+    sprite.scale.setScalar(baseScale * (1.12 + layerProgress * 1.72));
+
+    const material = sprite.material;
+    if (material instanceof THREE.SpriteMaterial) {
+      material.opacity = opacity * (1 - layerProgress * 0.28);
+      material.rotation = -angle + raceElapsed * 1.4;
+    }
   });
 }
 
@@ -1824,7 +1674,7 @@ function isFrenzySkillActive(placement: RacePlacement) {
 }
 
 function isFrenzySkillEvent(skillEvent: RacePlacement['skillEvent']) {
-  return skillEvent?.skill.id === FRENZY_SKILL_ID;
+  return skillEvent?.skill.cinematic === 'frenzy' && hasSpeedSkillEvent(skillEvent);
 }
 
 function hasSpeedSkillEvent(
@@ -2214,19 +2064,6 @@ function resultDetail(placement: RacePlacement, race: RaceResult) {
   return `${placement.finishSeconds.toFixed(2)}초 / ${advanceText}${skillText}`;
 }
 
-function speedSegmentLine(placement: RacePlacement) {
-  if (!raceStarted) {
-    return '출발 대기';
-  }
-
-  if (isFrenzySkillActive(placement)) {
-    return '광폭 질주';
-  }
-
-  const raceProgress = getSegmentedRaceProgress(raceElapsed, placement, placement.speedSegments);
-  return `${Math.round(raceProgress.progress * 100)}% 지점`;
-}
-
 function renderLeaderboard() {
   const race = getCurrentRace();
 
@@ -2249,7 +2086,6 @@ function renderLeaderboard() {
 
   ranked.slice(0, 8).forEach((placement, index) => {
     const runner = visualRunners.find((candidate) => candidate.placement === placement);
-    const activeSkill = runner?.skillActive && placement.skillEvent ? placement.skillEvent.skill.name : null;
     const eliminated = runner?.eliminated || (raceFinished && placement.eliminatedByHelicopter);
     const selected = selectedCameraEntryId === placement.entry.id;
     const parts = getLeaderboardItemParts(placement.entry.id);
@@ -2258,9 +2094,8 @@ function renderLeaderboard() {
     visibleIds.add(placement.entry.id);
     parts.rank.textContent = String(raceFinished ? placement.rank : index + 1);
     parts.name.textContent = placement.entry.name;
-    parts.detail.textContent = eliminated
-      ? '헬기 탈락'
-      : activeSkill ?? (raceFinished ? resultDetail(placement, race) : speedSegmentLine(placement));
+    parts.detail.textContent = '';
+    parts.detail.hidden = true;
     parts.item.dataset.entryId = placement.entry.id;
     parts.item.setAttribute('role', 'button');
     parts.item.setAttribute('tabindex', cameraSelectionLocked ? '-1' : '0');
@@ -2318,6 +2153,7 @@ function getLeaderboardItemParts(entryId: string) {
   const detail = document.createElement('small');
   const parts = { item, rank, name, detail };
 
+  detail.hidden = true;
   item.append(rank, name, detail);
   leaderboardItems.set(entryId, parts);
 
@@ -2449,30 +2285,6 @@ function laneZ(index: number, count: number) {
   }
 
   return -raceWidth / 2 + (raceWidth / (count - 1)) * index;
-}
-
-function clearGroup(group: THREE.Group) {
-  while (group.children.length > 0) {
-    const child = group.children[0];
-    group.remove(child);
-    disposeObject(child);
-  }
-}
-
-function disposeObject(object: THREE.Object3D) {
-  object.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) {
-      return;
-    }
-
-    child.geometry.dispose();
-
-    if (Array.isArray(child.material)) {
-      child.material.forEach((material) => material.dispose());
-    } else {
-      child.material.dispose();
-    }
-  });
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -2659,21 +2471,22 @@ function getOverviewCameraView(width: number) {
 
   if (!leadRunner) {
     return {
-      position: width < 760 ? new THREE.Vector3(-18, 32, 54) : new THREE.Vector3(0, 24, 42),
+      position: width < 760 ? new THREE.Vector3(-8, 20.5, 29) : new THREE.Vector3(-4, 15.5, 22),
       target: new THREE.Vector3(0, 0, 0)
     };
   }
 
   const mobile = width < 760;
   const zoomScale = 1 / overviewCameraZoom;
+  const framingScale = mobile ? 0.42 : 0.36;
   const leadX = clampNumber(leadRunner.mesh.position.x, startX + 8, finishX - 4);
-  const lookBack = (mobile ? 74 : 94) * zoomScale;
-  const lookAhead = (mobile ? 24 : 32) * zoomScale;
-  const centerX = clampNumber(leadX - lookBack * 0.48 + lookAhead * 0.2, startX + 18, finishX - 12);
-  const targetX = clampNumber(leadX - lookBack * 0.22 + lookAhead * 0.34, startX + 14, finishX - 4);
-  const height = (mobile ? 31 : 25) + lookBack * (mobile ? 0.2 : 0.13);
-  const depth = (mobile ? 42 : 34) + lookBack * (mobile ? 0.24 : 0.16);
-  const back = (mobile ? 15 : 11) + lookBack * 0.08;
+  const lookBack = (mobile ? 50 : 56) * framingScale * zoomScale;
+  const lookAhead = (mobile ? 18 : 22) * framingScale * zoomScale;
+  const centerX = clampNumber(leadX - lookBack * 0.26 + lookAhead * 0.16, startX + 8, finishX - 6);
+  const targetX = clampNumber(leadX - lookBack * 0.06 + lookAhead * 0.42, startX + 6, finishX - 2);
+  const height = (mobile ? 16.5 : 13.5) + lookBack * (mobile ? 0.1 : 0.06);
+  const depth = (mobile ? 22 : 17.5) + lookBack * (mobile ? 0.1 : 0.07);
+  const back = (mobile ? 7.4 : 5.5) + lookBack * 0.05;
 
   return {
     position: new THREE.Vector3(centerX - back, height, depth),
@@ -2719,6 +2532,296 @@ function moveCamera(position: THREE.Vector3, target: THREE.Vector3, alpha: numbe
   camera.position.lerp(position, alpha);
   cameraLookTarget.lerp(target, alpha);
   camera.lookAt(cameraLookTarget);
+}
+
+function initializeCaptureControls() {
+  const supported = isVideoCaptureSupported();
+  raceStage.dataset.recording = supported ? 'idle' : 'unsupported';
+  toggleRecordingButton.disabled = !supported;
+  toggleRecordingButton.title = supported ? '화면 영상 캡처' : '영상 캡처 미지원';
+}
+
+function isVideoCaptureSupported() {
+  return typeof MediaRecorder !== 'undefined' && typeof raceCanvas.captureStream === 'function';
+}
+
+function toggleRaceRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    stopRaceRecording();
+    return;
+  }
+
+  startRaceRecording();
+}
+
+function startRaceRecording() {
+  if (!isVideoCaptureSupported()) {
+    raceStage.dataset.recording = 'unsupported';
+    return;
+  }
+
+  const stream = raceCanvas.captureStream(60);
+  const mimeType = getSupportedRecordingMimeType();
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+  recordingMimeType = mimeType || 'video/webm';
+  recordedVideoChunks = [];
+  mediaRecorder = recorder;
+
+  recorder.addEventListener('dataavailable', (event) => {
+    if (event.data.size > 0) {
+      recordedVideoChunks.push(event.data);
+    }
+  });
+
+  recorder.addEventListener('stop', () => {
+    stream.getTracks().forEach((track) => track.stop());
+    const chunks = recordedVideoChunks;
+    recordedVideoChunks = [];
+    mediaRecorder = null;
+    setRecordingActive(false);
+
+    if (chunks.length === 0) {
+      return;
+    }
+
+    const extension = recordingMimeType.includes('mp4') ? 'mp4' : 'webm';
+    downloadBlob(new Blob(chunks, { type: recordingMimeType }), makeDownloadFilename('race-capture', extension));
+  });
+
+  recorder.start(500);
+  setRecordingActive(true);
+}
+
+function stopRaceRecording() {
+  const recorder = mediaRecorder;
+
+  if (!recorder || recorder.state === 'inactive') {
+    return;
+  }
+
+  if (recorder.state === 'recording') {
+    recorder.requestData();
+  }
+
+  recorder.stop();
+}
+
+function setRecordingActive(active: boolean) {
+  raceStage.dataset.recording = active ? 'active' : 'idle';
+  toggleRecordingButton.classList.toggle('recording', active);
+  toggleRecordingButton.setAttribute('aria-pressed', String(active));
+  toggleRecordingButton.title = active ? '영상 캡처 중지' : '화면 영상 캡처';
+}
+
+function getSupportedRecordingMimeType() {
+  const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+  return mimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? '';
+}
+
+function downloadResultScreenshot() {
+  renderer.render(scene, camera);
+  const screenshot = createResultScreenshotCanvas();
+  screenshot.toBlob((blob) => {
+    if (!blob) {
+      return;
+    }
+
+    downloadBlob(blob, makeDownloadFilename('result', 'png'));
+  }, 'image/png');
+}
+
+function createResultScreenshotCanvas() {
+  const width = Math.max(1, raceCanvas.width);
+  const height = Math.max(1, raceCanvas.height);
+  const screenshot = document.createElement('canvas');
+  screenshot.width = width;
+  screenshot.height = height;
+  const context = screenshot.getContext('2d');
+
+  if (!context) {
+    return screenshot;
+  }
+
+  context.drawImage(raceCanvas, 0, 0, width, height);
+  drawResultScreenshotOverlay(context, width, height);
+  return screenshot;
+}
+
+function drawResultScreenshotOverlay(context: CanvasRenderingContext2D, width: number, height: number) {
+  const race = getCurrentRace();
+  const scale = Math.max(0.72, Math.min(2.25, width / 1440));
+  const margin = 24 * scale;
+  const padding = 18 * scale;
+  const columns = width < 1100 ? 2 : 4;
+  const rows = getResultScreenshotRows(race);
+  const rowHeight = 42 * scale;
+  const gridRows = Math.max(1, Math.ceil(rows.length / columns));
+  const panelWidth = Math.min(width - margin * 2, 1060 * scale);
+  const panelHeight = padding * 2 + 44 * scale + gridRows * rowHeight;
+  const panelX = (width - panelWidth) / 2;
+  const panelY = height - panelHeight - margin;
+
+  context.save();
+  context.fillStyle = 'rgba(9, 22, 20, 0.72)';
+  fillRoundedRect(context, panelX, panelY, panelWidth, panelHeight, 12 * scale);
+
+  context.fillStyle = '#ffffff';
+  context.font = `900 ${22 * scale}px Inter, sans-serif`;
+  context.textBaseline = 'top';
+  context.fillText(getResultScreenshotTitle(race), panelX + padding, panelY + padding);
+
+  context.fillStyle = '#c9e4ef';
+  context.font = `800 ${12 * scale}px Inter, sans-serif`;
+  context.fillText(getResultScreenshotSubtitle(race), panelX + padding, panelY + padding + 28 * scale);
+
+  const gridX = panelX + padding;
+  const gridY = panelY + padding + 50 * scale;
+  const gap = 8 * scale;
+  const cellWidth = (panelWidth - padding * 2 - gap * (columns - 1)) / columns;
+
+  rows.forEach((row, index) => {
+    const column = index % columns;
+    const rowIndex = Math.floor(index / columns);
+    const x = gridX + column * (cellWidth + gap);
+    const y = gridY + rowIndex * rowHeight;
+
+    context.fillStyle = row.eliminated ? 'rgba(255, 77, 77, 0.26)' : row.qualified ? 'rgba(111, 207, 151, 0.24)' : 'rgba(255, 255, 255, 0.12)';
+    fillRoundedRect(context, x, y, cellWidth, rowHeight - 6 * scale, 8 * scale);
+
+    context.fillStyle = '#f2c94c';
+    context.beginPath();
+    context.arc(x + 16 * scale, y + 18 * scale, 12 * scale, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = '#112019';
+    context.font = `900 ${12 * scale}px Inter, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(String(row.rank), x + 16 * scale, y + 18 * scale);
+
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillStyle = '#ffffff';
+    context.font = `900 ${13 * scale}px Inter, sans-serif`;
+    context.fillText(fitCanvasText(context, row.name, cellWidth - 48 * scale), x + 36 * scale, y + 7 * scale);
+
+    context.fillStyle = '#c9e4ef';
+    context.font = `800 ${10 * scale}px Inter, sans-serif`;
+    context.fillText(fitCanvasText(context, row.detail, cellWidth - 48 * scale), x + 36 * scale, y + 23 * scale);
+  });
+
+  context.restore();
+}
+
+function getResultScreenshotTitle(race: RaceResult | null) {
+  if (!race) {
+    return '경기 결과';
+  }
+
+  if (raceFinished) {
+    return race.isFinal ? '결승 결과' : `${race.round}라운드 ${race.group}조 결과`;
+  }
+
+  return raceStarted ? '실시간 순위' : '출발 대기';
+}
+
+function getResultScreenshotSubtitle(race: RaceResult | null) {
+  if (!race) {
+    return '달려라 호반';
+  }
+
+  const raceNumber = tournament ? `${currentRaceIndex + 1}/${tournament.races.length}` : '1/1';
+  return `경기 ${raceNumber} / ${race.options.seed} / ${SURFACE_LABELS[race.options.surface]} / ${DISTANCE_LABELS[race.options.distance]}`;
+}
+
+function getResultScreenshotRows(race: RaceResult | null) {
+  if (!race) {
+    return [];
+  }
+
+  if (raceStarted && !raceFinished && visualRunners.length > 0) {
+    return [...visualRunners]
+      .sort((left, right) => right.mesh.position.x - left.mesh.position.x)
+      .slice(0, 8)
+      .map((runner, index) => ({
+        rank: index + 1,
+        name: runner.placement.entry.name,
+        detail: runner.eliminated
+          ? '헬기 탈락'
+          : isSkillActive(runner.placement)
+            ? runner.placement.skillEvent?.skill.name ?? '스킬 발동'
+            : '진행 중',
+        qualified: false,
+        eliminated: runner.eliminated
+      }));
+  }
+
+  return race.placements.slice(0, 8).map((placement) => ({
+    rank: placement.rank || race.placements.indexOf(placement) + 1,
+    name: placement.entry.name,
+    detail: raceFinished ? resultDetail(placement, race) : '출발 대기',
+    qualified: placement.qualified,
+    eliminated: placement.eliminatedByHelicopter
+  }));
+}
+
+function fillRoundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const clampedRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + clampedRadius, y);
+  context.lineTo(x + width - clampedRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + clampedRadius);
+  context.lineTo(x + width, y + height - clampedRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - clampedRadius, y + height);
+  context.lineTo(x + clampedRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - clampedRadius);
+  context.lineTo(x, y + clampedRadius);
+  context.quadraticCurveTo(x, y, x + clampedRadius, y);
+  context.closePath();
+  context.fill();
+}
+
+function fitCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (context.measureText(text).width <= maxWidth) {
+    return text;
+  }
+
+  let end = text.length;
+
+  while (end > 1 && context.measureText(`${text.slice(0, end)}...`).width > maxWidth) {
+    end -= 1;
+  }
+
+  return `${text.slice(0, end)}...`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function makeDownloadFilename(kind: string, extension: string) {
+  const race = getCurrentRace();
+  const raceId = race?.id ?? 'race';
+  const seed = sanitizeFilename(seedInput.value || 'seed');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `run-hoban-run-${raceId}-${seed}-${kind}-${timestamp}.${extension}`;
+}
+
+function sanitizeFilename(value: string) {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|\s]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48) || 'race';
 }
 
 function animate() {
@@ -2774,6 +2877,8 @@ leaderboardList.addEventListener('keydown', (event) => {
   selectCameraEntry(target.dataset.entryId ?? '');
 });
 togglePanelsButton.addEventListener('click', () => setPanelsHidden(!raceStage.classList.contains('panels-hidden')));
+toggleRecordingButton.addEventListener('click', toggleRaceRecording);
+downloadResultShotButton.addEventListener('click', downloadResultScreenshot);
 replayButton.addEventListener('click', () => {
   raceStarted = true;
   setCurrentRace(currentRaceIndex);
@@ -2826,8 +2931,17 @@ raceStage.addEventListener('touchend', (event) => {
 raceStage.addEventListener('touchcancel', () => {
   activePinchDistance = null;
 });
+window.addEventListener('beforeunload', () => {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+});
 window.addEventListener('resize', resize);
 
-installHelicopterVisual();
+initializeCaptureControls();
+raceStage.dataset.helicopterAsset = 'fallback';
+void installHelicopterVisual(helicopterAssetSlot).then((status) => {
+  raceStage.dataset.helicopterAsset = status;
+});
 prepareTournament();
 animate();

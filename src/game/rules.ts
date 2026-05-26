@@ -3,6 +3,7 @@ export type DistanceType = 'sprint' | 'mile' | 'medium' | 'long';
 export type TrackCondition = 'firm' | 'damp' | 'muddy';
 export type Pattern = 'solid' | 'spots' | 'stripes' | 'socks';
 export type SkillPose = 'handstand' | 'dance' | 'lie-flat' | 'cheer' | 'headspin';
+export type FrenzySpeedSegmentSpan = 1 | 2 | 3 | 4 | 5;
 
 export type SkillDefinition = {
   id: string;
@@ -44,6 +45,9 @@ export type SkillEvent = {
   triggerSeconds?: number;
   durationSeconds: number;
   speedMultiplier?: number;
+  speedSegmentSpan?: FrenzySpeedSegmentSpan;
+  speedSegmentStartIndex?: number;
+  speedSegmentEndIndex?: number;
 };
 
 export type HazardEvent = {
@@ -102,9 +106,19 @@ const HELICOPTER_ENTRANCE_SECONDS = 3;
 const BULLET_FLIGHT_SECONDS = 0.9;
 const MAX_FIELD_SIZE = 18;
 export const FRENZY_SKILL_ID = 'frenzy-surge';
-const FRENZY_CHANCE_PER_RACE = 0.035;
-const FRENZY_DURATION_SECONDS = 4;
+const FRENZY_TWO_SEGMENT_CHANCE_PER_RACE = 0.035;
 const FRENZY_SPEED_MULTIPLIER = 3;
+
+export const FRENZY_SPEED_SEGMENT_SPAN_CHANCES: ReadonlyArray<{
+  span: FrenzySpeedSegmentSpan;
+  chance: number;
+}> = [
+  { span: 1, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE * 2 },
+  { span: 2, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE },
+  { span: 3, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE / 2 },
+  { span: 4, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE / 4 },
+  { span: 5, chance: FRENZY_TWO_SEGMENT_CHANCE_PER_RACE / 8 }
+];
 
 export const SKILLS: SkillDefinition[] = [
   {
@@ -356,8 +370,6 @@ function simulateRace(
 ): RaceResult {
   const { options, round, group, isFinal } = context;
   const laneIndexes = assignRaceLaneIndexes(entries, options, round, group);
-  const hazardDrafts = rollHelicopterHazards(entries, options, round, group);
-  const hazardTargetIds = new Set(hazardDrafts.map((hazard) => hazard.targetEntryId));
   const placements = entries.map((entry) => {
     const rng = createRng(`${options.seed}:race:${round}:${group}:${entry.id}`);
     const assignedSkill = pick(SKILLS, rng);
@@ -375,9 +387,17 @@ function simulateRace(
       finishSeconds,
       qualified: false,
       skillEvent,
-      eliminatedByHelicopter: hazardTargetIds.has(entry.id),
+      eliminatedByHelicopter: false,
       speedSegments
     };
+  });
+
+  applyDanceFrenzyModes(placements, options, round, group);
+
+  const hazardDrafts = rollHelicopterHazards(placements, options, round, group);
+  const hazardTargetIds = new Set(hazardDrafts.map((hazard) => hazard.targetEntryId));
+  placements.forEach((placement) => {
+    placement.eliminatedByHelicopter = hazardTargetIds.has(placement.entry.id);
   });
 
   applyFrenzySkill(placements, options, round, group, hazardTargetIds);
@@ -444,6 +464,19 @@ function simulateRace(
   };
 }
 
+function applyDanceFrenzyModes(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {
+  placements.forEach((placement) => {
+    if (!placement.skillEvent || placement.skillEvent.skill.pose !== 'dance' || hasSpeedSkill(placement.skillEvent)) {
+      return;
+    }
+
+    const rng = createRng(`${options.seed}:dance-frenzy:${round}:${group}:${placement.entry.id}`);
+    const speedSegmentSpan = rollGuaranteedFrenzySpeedSegmentSpan(rng);
+    const segmentTiming = rollFrenzySpeedSegmentTiming(placement, speedSegmentSpan, rng);
+    applyFrenzyModeToPlacement(placement, withFrenzyCinematic(placement.skillEvent.skill), segmentTiming, speedSegmentSpan);
+  });
+}
+
 function applyFrenzySkill(
   placements: RacePlacement[],
   options: RaceOptions,
@@ -458,48 +491,126 @@ function applyFrenzySkill(
   const entrySignature = placements.map((placement) => placement.entry.id).join('|');
   const rng = createRng(`${options.seed}:frenzy:${round}:${group}:${placements.length}:${entrySignature}`);
 
-  if (rng() >= FRENZY_CHANCE_PER_RACE) {
+  const speedSegmentSpan = rollFrenzySpeedSegmentSpan(rng);
+
+  if (!speedSegmentSpan) {
     return;
   }
 
   const laggingPlacements = [...placements]
     .sort((left, right) => right.baseFinishSeconds - left.baseFinishSeconds)
     .slice(0, Math.max(1, Math.ceil(placements.length / 2)));
-  const candidates = laggingPlacements.filter((placement) => !hazardTargetIds.has(placement.entry.id));
+  const candidates = laggingPlacements.filter((placement) => !hazardTargetIds.has(placement.entry.id) && !hasSpeedSkill(placement.skillEvent));
   const target = pick(candidates, rng);
 
   if (!target) {
     return;
   }
 
-  const minTriggerSeconds = Math.min(target.baseFinishSeconds - 1, Math.max(4, target.baseFinishSeconds * 0.18));
-  const maxTriggerSeconds = Math.max(minTriggerSeconds, target.baseFinishSeconds - FRENZY_DURATION_SECONDS - 1);
-  const triggerSeconds = Number((minTriggerSeconds + rng() * (maxTriggerSeconds - minTriggerSeconds)).toFixed(3));
-
-  target.skillEvent = {
-    skill: FRENZY_SKILL,
-    triggerProgress: Number((triggerSeconds / target.baseFinishSeconds).toFixed(3)),
-    triggerSeconds,
-    durationSeconds: FRENZY_DURATION_SECONDS,
-    speedMultiplier: FRENZY_SPEED_MULTIPLIER
-  };
-  target.finishSeconds = Number(getBoostedFinishSeconds(target.baseFinishSeconds, target.skillEvent).toFixed(3));
+  const segmentTiming = rollFrenzySpeedSegmentTiming(target, speedSegmentSpan, rng);
+  applyFrenzyModeToPlacement(target, FRENZY_SKILL, segmentTiming, speedSegmentSpan);
 }
 
-function rollHelicopterHazards(entries: RaceEntry[], options: RaceOptions, round: number, group: number): HazardEvent[] {
-  if (entries.length < 4) {
+function applyFrenzyModeToPlacement(
+  placement: RacePlacement,
+  skill: SkillDefinition,
+  segmentTiming: ReturnType<typeof rollFrenzySpeedSegmentTiming>,
+  speedSegmentSpan: FrenzySpeedSegmentSpan
+) {
+  placement.skillEvent = {
+    skill,
+    triggerProgress: segmentTiming.triggerProgress,
+    triggerSeconds: segmentTiming.triggerSeconds,
+    durationSeconds: segmentTiming.durationSeconds,
+    speedMultiplier: FRENZY_SPEED_MULTIPLIER,
+    speedSegmentSpan,
+    speedSegmentStartIndex: segmentTiming.startIndex,
+    speedSegmentEndIndex: segmentTiming.endIndex
+  };
+  placement.finishSeconds = Number(getBoostedFinishSeconds(placement.baseFinishSeconds, placement.skillEvent).toFixed(3));
+}
+
+function withFrenzyCinematic(skill: SkillDefinition): SkillDefinition {
+  if (skill.cinematic === 'frenzy') {
+    return skill;
+  }
+
+  return {
+    ...skill,
+    cinematic: 'frenzy'
+  };
+}
+
+function rollFrenzySpeedSegmentSpan(rng: () => number): FrenzySpeedSegmentSpan | null {
+  let roll = rng();
+
+  for (const item of FRENZY_SPEED_SEGMENT_SPAN_CHANCES) {
+    if (roll < item.chance) {
+      return item.span;
+    }
+
+    roll -= item.chance;
+  }
+
+  return null;
+}
+
+function rollGuaranteedFrenzySpeedSegmentSpan(rng: () => number): FrenzySpeedSegmentSpan {
+  const totalChance = FRENZY_SPEED_SEGMENT_SPAN_CHANCES.reduce((sum, item) => sum + item.chance, 0);
+  let roll = rng() * totalChance;
+
+  for (const item of FRENZY_SPEED_SEGMENT_SPAN_CHANCES) {
+    if (roll < item.chance) {
+      return item.span;
+    }
+
+    roll -= item.chance;
+  }
+
+  return FRENZY_SPEED_SEGMENT_SPAN_CHANCES[FRENZY_SPEED_SEGMENT_SPAN_CHANCES.length - 1]?.span ?? 1;
+}
+
+function rollFrenzySpeedSegmentTiming(placement: RacePlacement, span: FrenzySpeedSegmentSpan, rng: () => number) {
+  const segmentCount = Math.max(1, placement.speedSegments.length);
+  const clampedSpan = Math.min(span, segmentCount) as FrenzySpeedSegmentSpan;
+  const maxStartIndex = Math.max(0, segmentCount - clampedSpan);
+  const preferredMinStartIndex = Math.min(maxStartIndex, Math.max(1, Math.floor(segmentCount * 0.14)));
+  const preferredMaxStartIndex = Math.max(
+    preferredMinStartIndex,
+    Math.min(maxStartIndex, segmentCount - clampedSpan - Math.max(1, Math.floor(segmentCount * 0.08)))
+  );
+  const startIndex =
+    preferredMinStartIndex + Math.floor(rng() * (preferredMaxStartIndex - preferredMinStartIndex + 1));
+  const endIndex = Math.min(segmentCount, startIndex + clampedSpan);
+  const startProgress = placement.speedSegments[startIndex]?.startProgress ?? startIndex / segmentCount;
+  const endProgress = placement.speedSegments[endIndex - 1]?.endProgress ?? endIndex / segmentCount;
+  const triggerSeconds = getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, startProgress);
+  const boostEndBaseSeconds = getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, endProgress);
+  const baseSpanSeconds = Math.max(0.3, boostEndBaseSeconds - triggerSeconds);
+
+  return {
+    startIndex,
+    endIndex,
+    triggerProgress: Number(startProgress.toFixed(3)),
+    triggerSeconds: Number(triggerSeconds.toFixed(3)),
+    durationSeconds: Number((baseSpanSeconds / FRENZY_SPEED_MULTIPLIER).toFixed(3))
+  };
+}
+
+function rollHelicopterHazards(placements: RacePlacement[], options: RaceOptions, round: number, group: number): HazardEvent[] {
+  if (placements.length < 4) {
     return [];
   }
 
-  const entrySignature = entries.map((entry) => entry.id).join('|');
-  const rng = createRng(`${options.seed}:helicopter:${round}:${group}:${entries.length}:${entrySignature}`);
+  const entrySignature = placements.map((placement) => placement.entry.id).join('|');
+  const rng = createRng(`${options.seed}:helicopter:${round}:${group}:${placements.length}:${entrySignature}`);
 
-  const targetCount = Math.min(entries.length - 1, Math.max(1, Math.floor(entries.length / 3)));
-  const targets = pickUnique(entries, targetCount, rng);
+  const targetCount = Math.min(placements.length - 1, Math.max(1, Math.floor(placements.length / 3)));
+  const targets = pickUnique(placements, targetCount, rng);
 
   return targets.map((target, index) => ({
     type: 'helicopter-snipe',
-    targetEntryId: target.id,
+    targetEntryId: target.entry.id,
     triggerProgress: 0.5 + index * 0.02,
     triggerSeconds: 0,
     approachSeconds: 0
