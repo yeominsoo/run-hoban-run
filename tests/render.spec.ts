@@ -125,7 +125,10 @@ test('loads the military helicopter GLB asset into the scene', async ({ page }) 
   await page.goto('/');
   await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'loaded', { timeout: 10_000 });
 
-  const response = await page.request.get('/assets/helicopter/freepixel-helicopter.glb');
+  const assetUrl = await page.locator('#race-stage').getAttribute('data-helicopter-asset-url');
+  expect(assetUrl).toMatch(/freepixel-helicopter.*\.glb/);
+
+  const response = await page.request.get(assetUrl ?? '');
   expect(response.ok()).toBe(true);
   const byteLength = (await response.body()).byteLength;
   expect(byteLength).toBeGreaterThan(1_000_000);
@@ -144,6 +147,22 @@ test('serves the frenzy particle texture assets', async ({ page }) => {
     expect(response.headers()['content-type']).toContain('image/png');
     expect((await response.body()).byteLength).toBeGreaterThan(50_000);
   }
+});
+
+test('keeps initial runtime asset requests local', async ({ page }) => {
+  const externalRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+
+    if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      externalRequests.push(request.url());
+    }
+  });
+
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  expect(externalRequests).toEqual([]);
 });
 
 test('downloads a composited result screenshot', async ({ page }) => {

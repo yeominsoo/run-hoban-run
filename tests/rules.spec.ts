@@ -160,7 +160,7 @@ test('applies frenzy mode to dance skill events without replacing the dance skil
   expect(danceSkillEvent?.skill.id).not.toBe(FRENZY_SKILL_ID);
   expect(danceSkillEvent?.skill.cinematic).toBe('frenzy');
   expect(danceSkillEvent?.speedMultiplier).toBe(3);
-  expect(danceSkillEvent?.speedSegmentSpan).toBe(5);
+  expect(danceSkillEvent?.speedSegmentSpan).toBe(3);
   expect(danceSkillEvent?.durationSeconds).toBeGreaterThan(0);
   expect(dance?.finishSeconds).toBeLessThan(dance?.baseFinishSeconds ?? 0);
 });
@@ -191,7 +191,7 @@ test('rolls skills and speed changes from segment-arrival checks without a race 
   expect(skillEvents.every((skillEvent) => skillEvent.triggerSeconds !== undefined && skillEvent.baseTriggerSeconds !== undefined)).toBe(true);
   expect(frenzy).toBeTruthy();
   expect(frenzySkillEvent?.speedMultiplier).toBe(3);
-  expect(frenzySkillEvent?.speedSegmentSpan).toBe(5);
+  expect(frenzySkillEvent?.speedSegmentSpan).toBe(3);
   expect(frenzySkillEvent?.speedSegmentEndIndex).toBe(
     (frenzySkillEvent?.speedSegmentStartIndex ?? 0) + (frenzySkillEvent?.speedSegmentSpan ?? 0)
   );
@@ -200,13 +200,13 @@ test('rolls skills and speed changes from segment-arrival checks without a race 
   expect(frenzy?.finishSeconds).toBeLessThan(frenzy?.baseFinishSeconds ?? 0);
 });
 
-test('keeps rotating frenzy mode active for five speed segments', () => {
+test('keeps rotating frenzy mode active for three speed segments', () => {
   expect(FRENZY_SPEED_SEGMENT_SPAN_CHANCES).toEqual([
-    { span: 5, chance: 1 }
+    { span: 3, chance: 1 }
   ]);
 });
 
-test('keeps every rotating frenzy event at the five-segment minimum', () => {
+test('keeps every rotating frenzy event at three speed segments', () => {
   const names = createSampleParticipants(18);
   const spanCounts = new Map<number, number>();
 
@@ -237,5 +237,5 @@ test('keeps every rotating frenzy event at the five-segment minimum', () => {
 
   expect(total).toBeGreaterThan(5000);
   expect(spanCounts.size).toBe(1);
-  expect(spanCounts.get(5)).toBe(total);
+  expect(spanCounts.get(3)).toBe(total);
 });

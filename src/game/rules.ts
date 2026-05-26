@@ -121,7 +121,7 @@ export const FRENZY_SPEED_SEGMENT_SPAN_CHANCES: ReadonlyArray<{
   span: FrenzySpeedSegmentSpan;
   chance: number;
 }> = [
-  { span: 5, chance: 1 }
+  { span: 3, chance: 1 }
 ];
 
 export const SKILLS: SkillDefinition[] = [

@@ -15,6 +15,7 @@ import {
   type TournamentResult
 } from './game/rules';
 import { FRENZY_PARTICLE_TEXTURES } from './assets/frenzy';
+import { MILITARY_HELICOPTER_ASSET_URL } from './assets/helicopter';
 import {
   createBulletMesh,
   createHelicopterSniperRig,
@@ -652,7 +653,7 @@ function createHorse(profile: HorseProfile) {
   saddle.castShadow = true;
   group.add(saddle);
 
-  const rider = createRider(profile.secondaryColor);
+  const rider = createRider(profile.color);
   group.add(rider.root);
 
   const legParts: HorseLegParts[] = [];
@@ -869,18 +870,33 @@ function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
 function createRider(accentColor: number): RiderParts {
   const root = new THREE.Group();
   const skinMaterial = new THREE.MeshStandardMaterial({ color: 0xf4d6b0, roughness: 0.52 });
-  const suitMaterial = new THREE.MeshStandardMaterial({ color: 0x234155, roughness: 0.62 });
-  const accentMaterial = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.48 });
+  const shirtMaterial = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5 });
+  const tightsMaterial = new THREE.MeshStandardMaterial({ color: 0xf6f4ec, roughness: 0.46 });
   const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.68 });
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42 });
+  const goggleMaterial = new THREE.MeshStandardMaterial({ color: 0x101820, roughness: 0.34, metalness: 0.08 });
 
   root.position.set(riderMountX, riderMountY, 0);
   root.scale.setScalar(riderScale);
 
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.54, 5, 12), suitMaterial);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, 0.56, 7, 14), shirtMaterial);
   torso.position.y = 0.28;
-  torso.scale.set(0.9, 1, 0.72);
+  torso.scale.set(0.92, 1, 0.7);
   torso.castShadow = true;
   root.add(torso);
+
+  const shirtPanel = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.3, 0.28), trimMaterial);
+  shirtPanel.position.set(0.21, 0.26, 0);
+  shirtPanel.rotation.z = -0.12;
+  shirtPanel.castShadow = true;
+  torso.add(shirtPanel);
+
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 6, 18, Math.PI * 1.2), trimMaterial);
+  collar.position.set(0.03, 0.58, 0);
+  collar.rotation.set(Math.PI / 2, 0, Math.PI * 0.92);
+  collar.scale.set(0.7, 0.42, 0.22);
+  collar.castShadow = true;
+  root.add(collar);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), skinMaterial);
   head.position.y = 0.78;
@@ -888,39 +904,64 @@ function createRider(accentColor: number): RiderParts {
   head.castShadow = true;
   root.add(head);
 
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.205, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), accentMaterial);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.205, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), shirtMaterial);
   helmet.position.set(0, 0.86, 0);
   helmet.castShadow = true;
   root.add(helmet);
 
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.055, 0.3), bootMaterial);
+  const helmetStripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.34), trimMaterial);
+  helmetStripe.position.set(0.03, 0.98, 0);
+  helmetStripe.castShadow = true;
+  root.add(helmetStripe);
+
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.055, 0.3), goggleMaterial);
   visor.position.set(0.16, 0.8, 0);
   visor.castShadow = true;
   root.add(visor);
 
-  const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.48, 4, 8), skinMaterial);
+  const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.058, 0.5, 5, 10), shirtMaterial);
   leftArm.position.set(0.08, 0.32, 0.28);
   leftArm.rotation.z = 0.72;
   leftArm.castShadow = true;
   root.add(leftArm);
 
-  const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.48, 4, 8), skinMaterial);
+  const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), skinMaterial);
+  leftHand.position.set(0.03, -0.28, 0);
+  leftHand.castShadow = true;
+  leftArm.add(leftHand);
+
+  const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.058, 0.5, 5, 10), shirtMaterial);
   rightArm.position.set(0.08, 0.32, -0.28);
   rightArm.rotation.z = 0.72;
   rightArm.castShadow = true;
   root.add(rightArm);
 
-  const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.58, 4, 8), bootMaterial);
+  const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), skinMaterial);
+  rightHand.position.set(0.03, -0.28, 0);
+  rightHand.castShadow = true;
+  rightArm.add(rightHand);
+
+  const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.6, 5, 10), tightsMaterial);
   leftLeg.position.set(-0.1, -0.18, riderLegZ);
   leftLeg.rotation.z = -0.72;
   leftLeg.castShadow = true;
   root.add(leftLeg);
 
-  const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.58, 4, 8), bootMaterial);
+  const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.12), bootMaterial);
+  leftBoot.position.set(0.03, -0.35, 0);
+  leftBoot.castShadow = true;
+  leftLeg.add(leftBoot);
+
+  const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.6, 5, 10), tightsMaterial);
   rightLeg.position.set(-0.1, -0.18, -riderLegZ);
   rightLeg.rotation.z = -0.72;
   rightLeg.castShadow = true;
   root.add(rightLeg);
+
+  const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.12), bootMaterial);
+  rightBoot.position.set(0.03, -0.35, 0);
+  rightBoot.castShadow = true;
+  rightLeg.add(rightBoot);
 
   return {
     root,
@@ -3098,6 +3139,7 @@ window.addEventListener('resize', resize);
 
 initializeCaptureControls();
 raceStage.dataset.helicopterAsset = 'fallback';
+raceStage.dataset.helicopterAssetUrl = MILITARY_HELICOPTER_ASSET_URL;
 void installHelicopterVisual(helicopterAssetSlot).then((status) => {
   raceStage.dataset.helicopterAsset = status;
 });

@@ -1,4 +1,6 @@
-export const MILITARY_HELICOPTER_ASSET_URL = '/assets/helicopter/freepixel-helicopter.glb';
+import militaryHelicopterAssetUrl from './helicopter/freepixel-helicopter.glb?url';
+
+export const MILITARY_HELICOPTER_ASSET_URL = militaryHelicopterAssetUrl;
 
 export const MILITARY_HELICOPTER_ASSET_SOURCE = {
   name: 'FreePixel Helicopter GLB',
