@@ -4,7 +4,8 @@ import {
   FRENZY_SKILL_ID,
   FRENZY_SPEED_SEGMENT_SPAN_CHANCES,
   getRaceOptionBounds,
-  runTournament
+  runTournament,
+  type SkillEvent
 } from '../src/game/rules';
 
 test('does not concentrate six-runner winners on a fixed input order across seeds', () => {
@@ -163,6 +164,33 @@ test('applies frenzy mode to dance skill events without replacing the dance skil
   expect(danceSkillEvent?.speedSegmentSpan).toBe(3);
   expect(danceSkillEvent?.durationSeconds).toBeGreaterThan(0);
   expect(dance?.finishSeconds).toBeLessThan(dance?.baseFinishSeconds ?? 0);
+});
+
+test('applies frenzy mode to lie-flat skill events without replacing the motion skill', () => {
+  const names = createSampleParticipants(18);
+  const tournament = runTournament(names, {
+    seed: 'seed-flatout-glide-0001',
+    fieldSize: 18,
+    qualifiersPerGroup: 2,
+    winnerCount: 1,
+    surface: 'turf',
+    distance: 'mile',
+    condition: 'firm'
+  });
+  const placement = tournament.races[0]?.placements.find(
+    (candidate) => !candidate.eliminatedByHelicopter && candidate.skillEvents.some((skillEvent) => skillEvent.skill.pose === 'lie-flat')
+  );
+  const event: SkillEvent | undefined = placement?.skillEvents.find((skillEvent) => skillEvent.skill.pose === 'lie-flat');
+
+  expect(placement).toBeTruthy();
+  expect(event?.skill.pose).toBe('lie-flat');
+  expect(['flatout-glide', 'turf-slide']).toContain(event?.skill.id);
+  expect(event?.skill.id).not.toBe(FRENZY_SKILL_ID);
+  expect(event?.skill.cinematic).toBe('frenzy');
+  expect(event?.speedMultiplier).toBe(3);
+  expect(event?.speedSegmentSpan).toBe(3);
+  expect(event?.durationSeconds).toBeGreaterThan(0);
+  expect(placement?.finishSeconds).toBeLessThan(placement?.baseFinishSeconds ?? 0);
 });
 
 test('rolls skills and speed changes from segment-arrival checks without a race skill cap', () => {

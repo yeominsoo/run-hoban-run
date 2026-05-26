@@ -395,7 +395,7 @@ function simulateRace(
     };
   });
 
-  applyDanceFrenzyModes(placements, options, round, group);
+  applyMotionFrenzyModes(placements, options, round, group);
   applyRandomFrenzySkills(placements, options, round, group);
   placements.forEach(finalizePlacementSkillEvents);
 
@@ -467,18 +467,22 @@ function simulateRace(
   };
 }
 
-function applyDanceFrenzyModes(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {
+function applyMotionFrenzyModes(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {
   placements.forEach((placement) => {
     placement.skillEvents.forEach((skillEvent, eventIndex) => {
-      if (skillEvent.skill.pose !== 'dance' || hasSpeedSkill(skillEvent)) {
+      if (!shouldApplyFrenzyModeToMotionSkill(skillEvent.skill) || hasSpeedSkill(skillEvent)) {
         return;
       }
 
-      const rng = createRng(`${options.seed}:dance-frenzy:${round}:${group}:${placement.entry.id}:${eventIndex}`);
+      const rng = createRng(`${options.seed}:motion-frenzy:${round}:${group}:${placement.entry.id}:${eventIndex}`);
       const speedSegmentSpan = rollGuaranteedFrenzySpeedSegmentSpan(rng);
       applyFrenzyModeToSkillEvent(placement, skillEvent, withFrenzyCinematic(skillEvent.skill), speedSegmentSpan);
     });
   });
+}
+
+function shouldApplyFrenzyModeToMotionSkill(skill: SkillDefinition) {
+  return skill.pose === 'dance' || skill.pose === 'lie-flat';
 }
 
 function applyRandomFrenzySkills(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {

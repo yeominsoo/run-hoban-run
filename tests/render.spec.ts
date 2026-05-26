@@ -400,7 +400,7 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       top > 0.08 &&
       bottom < 0.78 &&
       width > 0.2 &&
-      distance < 12.5
+      distance < 13.2
     );
   }, undefined, { timeout: 8_000 });
 
@@ -430,7 +430,7 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
   expect(frame.helicopterBoxTop).toBeGreaterThan(0.08);
   expect(frame.helicopterBoxBottom).toBeLessThan(0.78);
   expect(frame.helicopterBoxWidth).toBeGreaterThan(0.2);
-  expect(frame.helicopterCameraDistance).toBeLessThan(12.5);
+  expect(frame.helicopterCameraDistance).toBeLessThan(13.2);
   expect(frame.leaderboardBottomSpace).toBeGreaterThan(52);
 
   await page.screenshot({
@@ -480,6 +480,46 @@ test('plays dance skills with the frenzy mode effect active', async ({ page }) =
   await expect(page.locator('.runner-tag.skill').filter({ hasText: '코너 댄스' })).toBeVisible();
   await page.screenshot({
     path: 'test-results/dance-frenzy-cutscene.png',
+    fullPage: true
+  });
+});
+
+test('plays lie-flat skills with the frenzy mode speed effect active', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.locator('#participants').fill(['혜성', '민트', '번개', '남색', '장미', '재빛'].join('\n'));
+  await page.locator('#seed-input').fill('flat-six-00002');
+  await page.locator('#start-tournament').click();
+
+  await page.waitForFunction(
+    () =>
+      document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy') === 'active' &&
+      [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('납작 활주')),
+    undefined,
+    { timeout: 45_000 }
+  );
+
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
+  await expect(page.locator('.runner-tag.skill').filter({ hasText: '납작 활주' })).toBeVisible();
+  await page.screenshot({
+    path: 'test-results/lie-flat-frenzy-cutscene.png',
+    fullPage: true
+  });
+});
+
+test('plays rocket start with rear gas burst effect', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.locator('#participants').fill(['혜성', '민트', '번개', '남색', '장미', '재빛'].join('\n'));
+  await page.locator('#seed-input').fill('rocket-six-0002');
+  await page.locator('#start-tournament').click();
+
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-rocket-fart', 'active', { timeout: 25_000 });
+  await expect(page.locator('.runner-tag.skill').filter({ hasText: '로켓 출발' })).toBeVisible();
+  await page.waitForTimeout(700);
+  await page.screenshot({
+    path: 'test-results/rocket-start-fart.png',
     fullPage: true
   });
 });

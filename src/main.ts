@@ -87,6 +87,12 @@ type FrenzyFireParts = {
   materials: THREE.MeshBasicMaterial[];
 };
 
+type RocketFartParts = {
+  root: THREE.Group;
+  puffs: THREE.Mesh[];
+  materials: THREE.MeshBasicMaterial[];
+};
+
 type SnortPuffParts = {
   mesh: THREE.Mesh;
   material: THREE.MeshBasicMaterial;
@@ -600,11 +606,23 @@ function createFrenzySnortGroup() {
   return group;
 }
 
+function createCapsuleBetween(start: THREE.Vector3, end: THREE.Vector3, radius: number, material: THREE.Material, radialSegments = 8) {
+  const direction = end.clone().sub(start);
+  const length = Math.max(radius * 2.2, direction.length());
+  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, Math.max(0.01, length - radius * 2), 5, radialSegments), material);
+
+  mesh.position.copy(start).lerp(end, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  mesh.castShadow = true;
+  return mesh;
+}
+
 function createHorse(profile: HorseProfile) {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: profile.color, roughness: 0.58 });
-  const accentMaterial = new THREE.MeshStandardMaterial({ color: profile.secondaryColor, roughness: 0.68 });
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x2d2020, roughness: 0.7 });
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: profile.color, roughness: 0.62 });
+  const accentMaterial = new THREE.MeshStandardMaterial({ color: profile.secondaryColor, roughness: 0.7 });
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x2d2020, roughness: 0.72 });
+  const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x090909, roughness: 0.38 });
   const saddleMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.5 });
   const effectMaterial = new THREE.MeshBasicMaterial({
     color: profile.secondaryColor,
@@ -613,57 +631,78 @@ function createHorse(profile: HorseProfile) {
     side: THREE.DoubleSide
   });
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 1.95, 8, 16), bodyMaterial);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.54, 2.24, 8, 18), bodyMaterial);
   body.rotation.z = Math.PI / 2;
-  body.scale.set(1.32, 0.98, 0.9);
+  body.position.y = 0.25;
+  body.scale.set(1.32, 0.84, 0.72);
   body.castShadow = true;
   group.add(body);
 
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.66, 18, 12), bodyMaterial);
-  chest.position.set(0.78, 0.18, 0);
-  chest.scale.set(1.04, 1.12, 0.95);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 12), bodyMaterial);
+  chest.position.set(0.78, 0.36, 0);
+  chest.scale.set(0.9, 1.1, 0.82);
   chest.castShadow = true;
   group.add(chest);
 
-  const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.72, 18, 12), bodyMaterial);
-  haunch.position.set(-0.82, 0.14, 0);
-  haunch.scale.set(1.12, 1.02, 0.98);
+  const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.56, 18, 12), bodyMaterial);
+  haunch.position.set(-0.88, 0.32, 0);
+  haunch.scale.set(1.08, 1.02, 0.9);
   haunch.castShadow = true;
   group.add(haunch);
 
-  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), accentMaterial);
-  shoulder.position.set(0.58, 0.2, 0.52);
-  shoulder.scale.set(0.72, 1.1, 0.32);
+  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), accentMaterial);
+  shoulder.position.set(0.58, 0.32, 0.42);
+  shoulder.scale.set(0.65, 1.02, 0.28);
   shoulder.castShadow = true;
   group.add(shoulder);
 
   const hip = shoulder.clone();
-  hip.position.set(-0.86, 0.18, -0.52);
+  hip.position.set(-0.86, 0.3, -0.42);
   hip.castShadow = true;
   group.add(hip);
 
-  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.31, 1.02, 6, 12), bodyMaterial);
-  neck.rotation.z = -0.48;
-  neck.position.set(1.08, 0.82, 0);
+  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.06, 6, 12), bodyMaterial);
+  neck.rotation.z = -0.66;
+  neck.position.set(1.12, 0.9, 0);
+  neck.scale.set(0.86, 1, 0.82);
   neck.castShadow = true;
   group.add(neck);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.46, 18, 12), bodyMaterial);
-  head.scale.set(1.34, 0.82, 0.78);
-  head.position.set(1.58, 1.18, 0);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 12), bodyMaterial);
+  head.scale.set(1.24, 0.72, 0.62);
+  head.position.set(1.62, 1.18, 0);
   head.castShadow = true;
   group.add(head);
 
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), bodyMaterial);
+  muzzle.position.set(1.94, 1.09, 0);
+  muzzle.scale.set(1.12, 0.58, 0.52);
+  muzzle.castShadow = true;
+  group.add(muzzle);
+
+  for (const z of [-0.16, 0.16]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.28, 8), bodyMaterial);
+    ear.position.set(1.4, 1.48, z);
+    ear.rotation.z = z > 0 ? -0.28 : -0.12;
+    ear.castShadow = true;
+    group.add(ear);
+
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), eyeMaterial);
+    eye.position.set(1.86, 1.2, z * 0.78);
+    eye.castShadow = true;
+    group.add(eye);
+  }
+
   addPattern(group, profile.pattern, accentMaterial);
 
-  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.92, 0.18), darkMaterial);
-  mane.rotation.z = -0.5;
-  mane.position.set(0.88, 1.14, 0);
+  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.02, 0.14), darkMaterial);
+  mane.rotation.z = -0.62;
+  mane.position.set(0.93, 1.18, 0);
   mane.castShadow = true;
   group.add(mane);
 
-  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.16, 0.86), saddleMaterial);
-  saddle.position.set(-0.1, 0.9, 0);
+  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.14, 0.72), saddleMaterial);
+  saddle.position.set(-0.06, 0.9, 0);
   saddle.castShadow = true;
   group.add(saddle);
 
@@ -674,42 +713,42 @@ function createHorse(profile: HorseProfile) {
   const motionStyles: HorseMotionStyle[] = ['rush', 'run', 'walk', 'stroll'];
   const motionStyle = motionStyles[getStableIndex(profile.id, motionStyles.length)] ?? 'run';
 
-  for (const x of [-0.78, 0.58]) {
-    for (const z of [-0.38, 0.38]) {
+  for (const x of [-0.86, 0.62]) {
+    for (const z of [-0.32, 0.32]) {
       const upperBaseRotation = x < 0 ? -0.08 : 0.08;
       const lowerBaseRotation = x < 0 ? 0.12 : -0.12;
       const hoofBaseRotation = x < 0 ? -0.03 : 0.03;
       const hipJoint = new THREE.Group();
-      hipJoint.position.set(x, 0.02, z);
+      hipJoint.position.set(x, 0.1, z);
       hipJoint.rotation.z = upperBaseRotation;
       group.add(hipJoint);
 
-      const upperLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.66, 5, 10), bodyMaterial);
-      upperLeg.position.set(0, -0.34, 0);
+      const upperLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.7, 5, 10), bodyMaterial);
+      upperLeg.position.set(0, -0.36, 0);
       upperLeg.castShadow = true;
       hipJoint.add(upperLeg);
 
       const kneeJoint = new THREE.Group();
-      kneeJoint.position.set(x < 0 ? -0.05 : 0.05, -0.7, 0);
+      kneeJoint.position.set(x < 0 ? -0.06 : 0.06, -0.76, 0);
       kneeJoint.rotation.z = lowerBaseRotation;
       hipJoint.add(kneeJoint);
 
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), bodyMaterial);
-      knee.scale.set(0.85, 0.72, 0.85);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), bodyMaterial);
+      knee.scale.set(0.85, 0.8, 0.85);
       knee.castShadow = true;
       kneeJoint.add(knee);
 
-      const lowerLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.62, 4, 8), darkMaterial);
-      lowerLeg.position.set(x < 0 ? -0.02 : 0.02, -0.35, 0);
+      const lowerLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.66, 4, 8), darkMaterial);
+      lowerLeg.position.set(x < 0 ? -0.02 : 0.02, -0.37, 0);
       lowerLeg.castShadow = true;
       kneeJoint.add(lowerLeg);
 
       const hoofJoint = new THREE.Group();
-      hoofJoint.position.set(x < 0 ? -0.04 : 0.04, -0.69, 0);
+      hoofJoint.position.set(x < 0 ? -0.03 : 0.03, -0.74, 0);
       hoofJoint.rotation.z = hoofBaseRotation;
       kneeJoint.add(hoofJoint);
 
-      const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.18), darkMaterial);
+      const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.1, 0.16), darkMaterial);
       hoof.position.set(0.08, -0.02, 0);
       hoof.castShadow = true;
       hoofJoint.add(hoof);
@@ -735,9 +774,9 @@ function createHorse(profile: HorseProfile) {
     }
   }
 
-  const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.98, 4, 8), darkMaterial);
-  tail.rotation.z = 0.92;
-  tail.position.set(-1.62, 0.28, 0);
+  const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 1.05, 4, 8), darkMaterial);
+  tail.rotation.z = 1.08;
+  tail.position.set(-1.62, 0.52, 0);
   tail.castShadow = true;
   group.add(tail);
 
@@ -808,6 +847,34 @@ function createFrenzyFire(): FrenzyFireParts {
   });
 
   return { root, flames, materials };
+}
+
+function createRocketFart(): RocketFartParts {
+  const root = new THREE.Group();
+  const puffs: THREE.Mesh[] = [];
+  const materials: THREE.MeshBasicMaterial[] = [];
+  const colors = [0xd7ff7a, 0xc4e86b, 0xf2e58a, 0xa6c957, 0x8b6f3f];
+
+  root.visible = false;
+  root.position.set(-1.62, 0.52, 0);
+
+  for (let index = 0; index < 14; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: colors[index % colors.length] ?? 0xd7ff7a,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false
+    });
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.16 + (index % 4) * 0.035, 12, 8), material);
+    puff.userData.phase = index * 0.31;
+    puff.renderOrder = 10;
+    puffs.push(puff);
+    materials.push(material);
+    root.add(puff);
+  }
+
+  return { root, puffs, materials };
 }
 
 function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
@@ -975,40 +1042,30 @@ function createRider(accentColor: number): RiderParts {
 
 function createJockeyLeg(side: 1 | -1, tightsMaterial: THREE.Material, bootMaterial: THREE.Material) {
   const group = new THREE.Group();
-  const hip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), tightsMaterial);
-  const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.32, 5, 10), tightsMaterial);
+  const hipPoint = new THREE.Vector3(0, 0, 0);
+  const kneePoint = new THREE.Vector3(0.17, -0.29, side * 0.01);
+  const anklePoint = new THREE.Vector3(0.09, -0.62, side * 0.02);
+  const hip = new THREE.Mesh(new THREE.SphereGeometry(0.066, 8, 6), tightsMaterial);
   const knee = new THREE.Mesh(new THREE.SphereGeometry(0.064, 8, 6), tightsMaterial);
-  const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.34, 5, 10), tightsMaterial);
   const boot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.12), bootMaterial);
-  const stirrup = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.34, 0.018), bootMaterial);
+  const thigh = createCapsuleBetween(hipPoint, kneePoint, 0.052, tightsMaterial, 10);
+  const shin = createCapsuleBetween(kneePoint, anklePoint, 0.046, tightsMaterial, 10);
 
   hip.castShadow = true;
   group.add(hip);
 
-  thigh.position.set(0.08, -0.17, side * 0.01);
-  thigh.rotation.z = -0.64;
-  thigh.rotation.x = side * 0.1;
-  thigh.castShadow = true;
   group.add(thigh);
 
-  knee.position.set(0.18, -0.33, side * 0.02);
+  knee.position.copy(kneePoint);
   knee.castShadow = true;
   group.add(knee);
 
-  shin.position.set(0.12, -0.51, side * 0.015);
-  shin.rotation.z = 0.18;
-  shin.rotation.x = side * 0.06;
-  shin.castShadow = true;
   group.add(shin);
 
-  boot.position.set(0.19, -0.7, side * 0.02);
-  boot.rotation.z = 0.08;
+  boot.position.set(0.2, -0.69, side * 0.02);
+  boot.rotation.z = 0.06;
   boot.castShadow = true;
   group.add(boot);
-
-  stirrup.position.set(0.03, -0.43, -side * 0.04);
-  stirrup.castShadow = true;
-  group.add(stirrup);
 
   return group;
 }
@@ -1155,11 +1212,13 @@ function updateRace(delta: number) {
       applySkillPose(runner, false);
       updateFrenzyVortex(runner, false);
       updateFrenzyFire(runner, false);
+      updateRocketFart(runner, false);
       updateRunnerLabel(runner, false);
     });
     updateHelicopterAnimation([]);
     updateFrenzySnorts(null);
     raceStage.dataset.frenzy = 'idle';
+    raceStage.dataset.rocketFart = 'idle';
     updateCamera(null, null);
     updateHelicopterFrameState();
     updateMinimap();
@@ -1207,10 +1266,16 @@ function updateRace(delta: number) {
     applySkillPose(runner, activeSkill);
     updateFrenzyVortex(runner, frenzyActive && usesDetailedGraphics());
     updateFrenzyFire(runner, frenzyActive);
+    updateRocketFart(runner, !eliminatedNow && getActiveSkillEvent(runner.placement)?.skill.id === 'rocket-start');
     updateRunnerLabel(runner, activeSkill);
   });
 
   raceStage.dataset.frenzy = visualRunners.some((runner) => !runner.eliminated && isFrenzySkillActive(runner.placement)) ? 'active' : 'idle';
+  raceStage.dataset.rocketFart = visualRunners.some(
+    (runner) => !runner.eliminated && getActiveSkillEvent(runner.placement)?.skill.id === 'rocket-start'
+  )
+    ? 'active'
+    : 'idle';
   const activeHazard = getActiveHazardEvent(race.hazardEvents);
   updateHelicopterAnimation(race.hazardEvents);
   const activeFrenzyRunner = activeHazard ? null : getActiveFrenzyCinematicRunner();
@@ -1485,12 +1550,12 @@ function getHelicopterVisualCenterPoint() {
 
 function getMobileHelicopterCameraView(targetPoint?: THREE.Vector3) {
   const visualCenter = getHelicopterVisualCenterPoint();
-  const position = visualCenter.clone().add(new THREE.Vector3(-6, 2.9, 10));
+  const position = visualCenter.clone().add(new THREE.Vector3(-6, 2.9, 10.85));
   const forward = visualCenter.clone().sub(position);
   const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
   const target = visualCenter
     .clone()
-    .add(right.multiplyScalar(-0.35))
+    .add(right.multiplyScalar(-0.16))
     .add(new THREE.Vector3(0, -0.08, 0));
 
   if (targetPoint) {
@@ -1785,6 +1850,59 @@ function updateFrenzyFire(runner: VisualRunner, active: boolean) {
     const material = flame.material;
     if (material instanceof THREE.MeshBasicMaterial) {
       material.opacity = 0.66 + Math.sin(raceElapsed * 20 + phase) * 0.18;
+    }
+  });
+}
+
+function ensureRocketFart(runner: VisualRunner) {
+  const existing = runner.mesh.userData.rocketFart as RocketFartParts | undefined;
+
+  if (existing) {
+    return existing;
+  }
+
+  const fart = createRocketFart();
+  runner.mesh.add(fart.root);
+  runner.mesh.userData.rocketFart = fart;
+  return fart;
+}
+
+function updateRocketFart(runner: VisualRunner, active: boolean) {
+  const fart = active ? ensureRocketFart(runner) : (runner.mesh.userData.rocketFart as RocketFartParts | undefined);
+
+  if (!fart) {
+    return;
+  }
+
+  fart.root.visible = active;
+
+  if (!active) {
+    fart.materials.forEach((material) => {
+      material.opacity = 0;
+    });
+    return;
+  }
+
+  const skillEvent = getActiveSkillEvent(runner.placement);
+  const startSeconds = getSkillStartSeconds(runner.placement, skillEvent);
+  const elapsed = Math.max(0, raceElapsed - startSeconds);
+  fart.root.rotation.y = Math.sin(raceElapsed * 9 + runner.phase) * 0.18;
+
+  fart.puffs.forEach((puff, index) => {
+    const phase = Number(puff.userData.phase ?? 0);
+    const streamProgress = (elapsed * 3.2 + phase) % 1;
+    const spread = 0.2 + streamProgress * 0.7;
+    const side = index % 2 === 0 ? 1 : -1;
+    puff.position.set(
+      -0.2 - streamProgress * 1.55 - Math.sin(raceElapsed * 6 + phase) * 0.1,
+      0.04 + Math.sin(raceElapsed * 8 + phase) * 0.1 + streamProgress * 0.18,
+      side * spread * (0.34 + (index % 4) * 0.08)
+    );
+    puff.scale.setScalar(0.85 + streamProgress * 2.2);
+
+    const material = puff.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = Math.max(0, 0.88 * (1 - streamProgress));
     }
   });
 }
