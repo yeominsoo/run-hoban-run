@@ -1,9 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MILITARY_HELICOPTER_ASSET_URL } from '../assets/helicopter';
 import { clearGroup } from './scene-utils';
-
-const loader = new GLTFLoader();
 
 export function installHelicopterVisual(slot: THREE.Group): Promise<'loaded' | 'fallback'> {
   clearGroup(slot);
@@ -11,22 +8,41 @@ export function installHelicopterVisual(slot: THREE.Group): Promise<'loaded' | '
   slot.add(createMilitaryFallbackHelicopter());
 
   return new Promise((resolve) => {
-    loader.load(
-      MILITARY_HELICOPTER_ASSET_URL,
-      (gltf) => {
-        const model = createLoadedMilitaryHelicopter(gltf.scene);
-        clearGroup(slot);
-        slot.add(model);
-        slot.userData.assetStatus = 'loaded';
-        resolve('loaded');
-      },
-      undefined,
-      (error) => {
-        console.warn('Military helicopter asset failed to load. Keeping generated fallback.', error);
-        resolve('fallback');
-      }
-    );
+    scheduleHeavyAssetLoad(() => {
+      void import('three/examples/jsm/loaders/GLTFLoader.js')
+        .then(({ GLTFLoader }) => {
+          const loader = new GLTFLoader();
+          loader.load(
+            MILITARY_HELICOPTER_ASSET_URL,
+            (gltf) => {
+              const model = createLoadedMilitaryHelicopter(gltf.scene);
+              clearGroup(slot);
+              slot.add(model);
+              slot.userData.assetStatus = 'loaded';
+              resolve('loaded');
+            },
+            undefined,
+            (error) => {
+              console.warn('Military helicopter asset failed to load. Keeping generated fallback.', error);
+              resolve('fallback');
+            }
+          );
+        })
+        .catch((error: unknown) => {
+          console.warn('Military helicopter loader failed. Keeping generated fallback.', error);
+          resolve('fallback');
+        });
+    });
   });
+}
+
+function scheduleHeavyAssetLoad(callback: () => void) {
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(callback, { timeout: 2500 });
+    return;
+  }
+
+  setTimeout(callback, 900);
 }
 
 export function createHelicopterSniperRig() {
