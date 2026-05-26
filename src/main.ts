@@ -1477,8 +1477,8 @@ function getRunnerAimPoint(runner: VisualRunner) {
   return runner.mesh.localToWorld(new THREE.Vector3(0.3, 1.68, 0));
 }
 
-function getHorseFacePoint(runner: VisualRunner) {
-  return runner.mesh.localToWorld(new THREE.Vector3(2.12, 1.18, 0));
+function getStableHorseFacePoint(runner: VisualRunner) {
+  return runner.mesh.position.clone().add(new THREE.Vector3(2.12, 1.18, 0));
 }
 
 function getHorseNostrilPoint(runner: VisualRunner, nostrilSide: number) {
@@ -2469,8 +2469,8 @@ function getFrenzyCameraView(runner: VisualRunner, width: number) {
   const skillEvent = getActiveFrenzySkillEvent(runner.placement, frenzyCutsceneLeadSeconds);
   const start = getSkillStartSeconds(runner.placement, skillEvent);
   const elapsed = raceElapsed - start;
-  const facePoint = getHorseFacePoint(runner);
-  const forward = getHorseForwardDirection(runner);
+  const facePoint = getStableHorseFacePoint(runner);
+  const forward = new THREE.Vector3(1, 0, 0);
   const side = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
   const cameraSide = side.lengthSq() > 0 ? side : new THREE.Vector3(0, 0, 1);
   const closeOffset = forward

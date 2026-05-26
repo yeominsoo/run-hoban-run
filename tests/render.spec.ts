@@ -127,7 +127,9 @@ test('loads the military helicopter GLB asset into the scene', async ({ page }) 
 
   const response = await page.request.get('/assets/helicopter/freepixel-helicopter.glb');
   expect(response.ok()).toBe(true);
-  expect((await response.body()).byteLength).toBeGreaterThan(5_000_000);
+  const byteLength = (await response.body()).byteLength;
+  expect(byteLength).toBeGreaterThan(1_000_000);
+  expect(byteLength).toBeLessThan(2_000_000);
 });
 
 test('serves the frenzy particle texture assets', async ({ page }) => {
