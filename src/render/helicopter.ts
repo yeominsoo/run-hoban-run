@@ -8,7 +8,7 @@ export function installHelicopterFallback(slot: THREE.Group) {
   slot.add(createMilitaryFallbackHelicopter());
 }
 
-export function installHelicopterVisual(slot: THREE.Group): Promise<'loaded' | 'fallback'> {
+export function installHelicopterVisual(slot: THREE.Group, shouldApply: () => boolean = () => true): Promise<'loaded' | 'fallback'> {
   if (slot.userData.assetStatus !== 'fallback') {
     installHelicopterFallback(slot);
   }
@@ -21,6 +21,11 @@ export function installHelicopterVisual(slot: THREE.Group): Promise<'loaded' | '
           loader.load(
             MILITARY_HELICOPTER_ASSET_URL,
             (gltf) => {
+              if (!shouldApply()) {
+                resolve('fallback');
+                return;
+              }
+
               const model = createLoadedMilitaryHelicopter(gltf.scene);
               clearGroup(slot);
               slot.add(model);
@@ -64,14 +69,14 @@ export function createHelicopterSniperRig() {
 
   const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.35, 10), darkMaterial);
   barrel.name = 'sniper-barrel';
-  barrel.rotation.x = -Math.PI / 2;
-  barrel.position.z = -0.72;
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.z = 0.72;
   barrel.castShadow = true;
   group.add(barrel);
 
   const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.36, 10), scopeMaterial);
   scope.rotation.x = Math.PI / 2;
-  scope.position.set(0, 0.12, -0.2);
+  scope.position.set(0, 0.12, 0.24);
   scope.castShadow = true;
   group.add(scope);
 

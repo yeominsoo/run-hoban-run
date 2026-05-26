@@ -32,11 +32,11 @@ import './style.css';
 type RiderParts = {
   root: THREE.Group;
   torso: THREE.Mesh;
-  head: THREE.Mesh;
+  head: THREE.Group;
   leftArm: THREE.Mesh;
   rightArm: THREE.Mesh;
-  leftLeg: THREE.Mesh;
-  rightLeg: THREE.Mesh;
+  leftLeg: THREE.Group;
+  rightLeg: THREE.Group;
 };
 
 type VisualRunner = {
@@ -146,6 +146,7 @@ const winnerCountInput = query<HTMLInputElement>('#winner-count');
 const surfaceSelect = query<HTMLSelectElement>('#surface-select');
 const distanceSelect = query<HTMLSelectElement>('#distance-select');
 const conditionSelect = query<HTMLSelectElement>('#condition-select');
+const graphicsSelect = query<HTMLSelectElement>('#graphics-select');
 const sample18Button = query<HTMLButtonElement>('#sample-18');
 const sample64Button = query<HTMLButtonElement>('#sample-64');
 const startButton = query<HTMLButtonElement>('#start-tournament');
@@ -175,8 +176,10 @@ const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
   muddy: '불량'
 };
 const recentParticipantsStorageKey = 'run-hoban-run:recent-participants';
+const graphicsStorageKey = 'run-hoban-run:graphics-quality';
 
 participantInput.value = loadRecentParticipants() ?? createSampleParticipants(18).join('\n');
+graphicsSelect.value = loadGraphicsQuality();
 let lastFieldSizeMax = getRaceOptionBounds(normalizeParticipants(participantInput.value.split(/\r?\n/)).length).fieldSize.max;
 
 const scene = new THREE.Scene();
@@ -214,7 +217,7 @@ const horseBaseY = 1.45;
 const riderMountX = -0.08;
 const riderMountY = 1.36;
 const riderScale = 1.14;
-const riderLegZ = 0.5;
+const riderLegZ = 0.38;
 const frenzyCutsceneLeadSeconds = 0.72;
 const helicopterEntranceSeconds = 3;
 let raceElapsed = 0;
@@ -237,6 +240,7 @@ const overviewCameraZoomMax = 1.65;
 const frenzyTextureLoader = new THREE.TextureLoader();
 let frenzyParticleTextures: THREE.Texture[] | null = null;
 let helicopterVisualPromise: Promise<'loaded' | 'fallback'> | null = null;
+let helicopterVisualLoadToken = 0;
 
 function getFrenzyParticleTextures() {
   if (!frenzyParticleTextures) {
@@ -883,8 +887,9 @@ function createRider(accentColor: number): RiderParts {
   root.scale.setScalar(riderScale);
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, 0.56, 7, 14), shirtMaterial);
-  torso.position.y = 0.28;
-  torso.scale.set(0.92, 1, 0.7);
+  torso.position.set(0.12, 0.22, 0);
+  torso.rotation.z = -0.42;
+  torso.scale.set(0.84, 0.82, 0.62);
   torso.castShadow = true;
   root.add(torso);
 
@@ -895,36 +900,39 @@ function createRider(accentColor: number): RiderParts {
   torso.add(shirtPanel);
 
   const collar = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 6, 18, Math.PI * 1.2), trimMaterial);
-  collar.position.set(0.03, 0.58, 0);
+  collar.position.set(0.14, 0.54, 0);
   collar.rotation.set(Math.PI / 2, 0, Math.PI * 0.92);
   collar.scale.set(0.7, 0.42, 0.22);
   collar.castShadow = true;
   root.add(collar);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), skinMaterial);
-  head.position.y = 0.78;
-  head.scale.set(0.92, 1.05, 0.92);
-  head.castShadow = true;
+  const head = new THREE.Group();
+  head.position.set(0.28, 0.64, 0);
   root.add(head);
 
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), skinMaterial);
+  face.scale.set(0.92, 1.05, 0.92);
+  face.castShadow = true;
+  head.add(face);
+
   const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.205, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), shirtMaterial);
-  helmet.position.set(0, 0.86, 0);
+  helmet.position.set(0, 0.08, 0);
   helmet.castShadow = true;
-  root.add(helmet);
+  head.add(helmet);
 
   const helmetStripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.34), trimMaterial);
-  helmetStripe.position.set(0.03, 0.98, 0);
+  helmetStripe.position.set(0.03, 0.2, 0);
   helmetStripe.castShadow = true;
-  root.add(helmetStripe);
+  head.add(helmetStripe);
 
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.055, 0.3), goggleMaterial);
-  visor.position.set(0.16, 0.8, 0);
+  visor.position.set(0.16, 0.02, 0);
   visor.castShadow = true;
-  root.add(visor);
+  head.add(visor);
 
   const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.058, 0.5, 5, 10), shirtMaterial);
-  leftArm.position.set(0.08, 0.32, 0.28);
-  leftArm.rotation.z = 0.72;
+  leftArm.position.set(0.24, 0.24, 0.28);
+  leftArm.rotation.z = 1.16;
   leftArm.castShadow = true;
   root.add(leftArm);
 
@@ -934,8 +942,8 @@ function createRider(accentColor: number): RiderParts {
   leftArm.add(leftHand);
 
   const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.058, 0.5, 5, 10), shirtMaterial);
-  rightArm.position.set(0.08, 0.32, -0.28);
-  rightArm.rotation.z = 0.72;
+  rightArm.position.set(0.24, 0.24, -0.28);
+  rightArm.rotation.z = 1.16;
   rightArm.castShadow = true;
   root.add(rightArm);
 
@@ -944,27 +952,15 @@ function createRider(accentColor: number): RiderParts {
   rightHand.castShadow = true;
   rightArm.add(rightHand);
 
-  const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.6, 5, 10), tightsMaterial);
-  leftLeg.position.set(-0.1, -0.18, riderLegZ);
-  leftLeg.rotation.z = -0.72;
-  leftLeg.castShadow = true;
+  const leftLeg = createJockeyLeg(1, tightsMaterial, bootMaterial);
+  leftLeg.position.set(0.02, -0.08, riderLegZ);
+  leftLeg.rotation.set(0.1, 0, -0.2);
   root.add(leftLeg);
 
-  const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.12), bootMaterial);
-  leftBoot.position.set(0.03, -0.35, 0);
-  leftBoot.castShadow = true;
-  leftLeg.add(leftBoot);
-
-  const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.6, 5, 10), tightsMaterial);
-  rightLeg.position.set(-0.1, -0.18, -riderLegZ);
-  rightLeg.rotation.z = -0.72;
-  rightLeg.castShadow = true;
+  const rightLeg = createJockeyLeg(-1, tightsMaterial, bootMaterial);
+  rightLeg.position.set(0.02, -0.08, -riderLegZ);
+  rightLeg.rotation.set(-0.1, 0, -0.2);
   root.add(rightLeg);
-
-  const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.12), bootMaterial);
-  rightBoot.position.set(0.03, -0.35, 0);
-  rightBoot.castShadow = true;
-  rightLeg.add(rightBoot);
 
   return {
     root,
@@ -975,6 +971,46 @@ function createRider(accentColor: number): RiderParts {
     leftLeg,
     rightLeg
   };
+}
+
+function createJockeyLeg(side: 1 | -1, tightsMaterial: THREE.Material, bootMaterial: THREE.Material) {
+  const group = new THREE.Group();
+  const hip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), tightsMaterial);
+  const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.32, 5, 10), tightsMaterial);
+  const knee = new THREE.Mesh(new THREE.SphereGeometry(0.064, 8, 6), tightsMaterial);
+  const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.34, 5, 10), tightsMaterial);
+  const boot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.12), bootMaterial);
+  const stirrup = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.34, 0.018), bootMaterial);
+
+  hip.castShadow = true;
+  group.add(hip);
+
+  thigh.position.set(0.08, -0.17, side * 0.01);
+  thigh.rotation.z = -0.64;
+  thigh.rotation.x = side * 0.1;
+  thigh.castShadow = true;
+  group.add(thigh);
+
+  knee.position.set(0.18, -0.33, side * 0.02);
+  knee.castShadow = true;
+  group.add(knee);
+
+  shin.position.set(0.12, -0.51, side * 0.015);
+  shin.rotation.z = 0.18;
+  shin.rotation.x = side * 0.06;
+  shin.castShadow = true;
+  group.add(shin);
+
+  boot.position.set(0.19, -0.7, side * 0.02);
+  boot.rotation.z = 0.08;
+  boot.castShadow = true;
+  group.add(boot);
+
+  stirrup.position.set(0.03, -0.43, -side * 0.04);
+  stirrup.castShadow = true;
+  group.add(stirrup);
+
+  return group;
 }
 
 function addPattern(group: THREE.Group, pattern: HorseProfile['pattern'], material: THREE.Material) {
@@ -1069,7 +1105,7 @@ function setCurrentRace(index: number) {
   });
 
   updateHelicopterState(race.hazardEvents);
-  if (raceStarted) {
+  if (raceStarted && usesDetailedGraphics()) {
     void ensureHelicopterVisualLoading();
   }
   syncRaceStartedState();
@@ -1169,7 +1205,7 @@ function updateRace(delta: number) {
 
     animateHorseStride(runner, progress, eliminatedNow, frenzyActive ? raceProgress.multiplier * 1.7 : raceProgress.multiplier);
     applySkillPose(runner, activeSkill);
-    updateFrenzyVortex(runner, frenzyActive);
+    updateFrenzyVortex(runner, frenzyActive && usesDetailedGraphics());
     updateFrenzyFire(runner, frenzyActive);
     updateRunnerLabel(runner, activeSkill);
   });
@@ -1221,14 +1257,34 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
 }
 
 function ensureHelicopterVisualLoading() {
+  if (!usesDetailedGraphics()) {
+    resetHelicopterVisualToFallback();
+    return Promise.resolve<'fallback'>('fallback');
+  }
+
   if (!helicopterVisualPromise) {
-    helicopterVisualPromise = installHelicopterVisual(helicopterAssetSlot).then((status) => {
+    const loadToken = ++helicopterVisualLoadToken;
+    helicopterVisualPromise = installHelicopterVisual(
+      helicopterAssetSlot,
+      () => loadToken === helicopterVisualLoadToken && usesDetailedGraphics()
+    ).then((status) => {
+      if (loadToken !== helicopterVisualLoadToken || !usesDetailedGraphics()) {
+        return 'fallback';
+      }
+
       raceStage.dataset.helicopterAsset = status;
       return status;
     });
   }
 
   return helicopterVisualPromise;
+}
+
+function resetHelicopterVisualToFallback() {
+  helicopterVisualLoadToken += 1;
+  helicopterVisualPromise = null;
+  raceStage.dataset.helicopterAsset = 'fallback';
+  installHelicopterFallback(helicopterAssetSlot);
 }
 
 function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
@@ -1271,7 +1327,7 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
     : new THREE.Vector3(finishX + 26, 13.4, -(trackVisualWidth / 2 + 20));
   helicopterGroup.position.copy(entryPosition.lerp(hoverPosition, arrivalProgress));
   helicopterGroup.scale.setScalar(mobile ? 1.18 : 1);
-  helicopterGroup.rotation.y = Math.PI / 2 + Math.sin(raceElapsed * 1.6) * 0.16;
+  helicopterGroup.rotation.y = getHelicopterYawToward(targetPosition) + Math.sin(raceElapsed * 1.6) * 0.08;
   spinHelicopterRotors(helicopterGroup, raceElapsed);
   aimSniperRigAt(targetPosition);
 
@@ -1298,7 +1354,43 @@ function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
     positionImpactBurst(targetPosition, raceElapsed - hazardEvent.triggerSeconds);
   }
 
+  updateBallisticsFrameState(muzzlePosition, targetPosition, bulletActive);
   raceStage.dataset.cinematic = impactActive ? 'hit' : bulletActive || flashActive ? 'shot' : 'approach';
+}
+
+function getHelicopterYawToward(targetPosition: THREE.Vector3) {
+  const forward = targetPosition.clone().sub(helicopterGroup.position);
+  forward.y = 0;
+
+  if (forward.lengthSq() < 0.0001) {
+    return helicopterGroup.rotation.y;
+  }
+
+  forward.normalize();
+  return Math.atan2(-forward.z, forward.x);
+}
+
+function updateBallisticsFrameState(muzzlePosition: THREE.Vector3, targetPosition: THREE.Vector3, bulletActive: boolean) {
+  const shotDirection = targetPosition.clone().sub(muzzlePosition).normalize();
+  const helicopterForward = new THREE.Vector3(1, 0, 0).applyQuaternion(helicopterGroup.quaternion);
+  helicopterForward.y = 0;
+
+  if (helicopterForward.lengthSq() > 0.0001) {
+    const flatShotDirection = shotDirection.clone();
+    flatShotDirection.y = 0;
+
+    if (flatShotDirection.lengthSq() > 0.0001) {
+      raceStage.dataset.helicopterForwardDot = helicopterForward.normalize().dot(flatShotDirection.normalize()).toFixed(3);
+    }
+  }
+
+  if (!bulletActive) {
+    delete raceStage.dataset.bulletDirectionDot;
+    return;
+  }
+
+  const bulletForward = new THREE.Vector3(0, 1, 0).applyQuaternion(bulletMesh.quaternion).normalize();
+  raceStage.dataset.bulletDirectionDot = bulletForward.dot(shotDirection).toFixed(3);
 }
 
 function setCameraControlLocked(locked: boolean) {
@@ -1398,7 +1490,7 @@ function getMobileHelicopterCameraView(targetPoint?: THREE.Vector3) {
   const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
   const target = visualCenter
     .clone()
-    .add(right.multiplyScalar(0.35))
+    .add(right.multiplyScalar(-0.35))
     .add(new THREE.Vector3(0, -0.08, 0));
 
   if (targetPoint) {
@@ -1550,12 +1642,12 @@ function getHorseForwardDirection(runner: VisualRunner) {
 }
 
 function getMuzzleWorldPosition() {
-  return helicopterSniperRig.localToWorld(new THREE.Vector3(0, 0, -1.4));
+  return helicopterSniperRig.localToWorld(new THREE.Vector3(0, 0, 1.4));
 }
 
 function aimSniperRigAt(targetWorldPosition: THREE.Vector3) {
-  const localTarget = helicopterGroup.worldToLocal(targetWorldPosition.clone());
-  helicopterSniperRig.lookAt(localTarget);
+  helicopterGroup.updateMatrixWorld(true);
+  helicopterSniperRig.lookAt(targetWorldPosition);
 }
 
 function positionBullet(start: THREE.Vector3, end: THREE.Vector3, progress: number) {
@@ -1964,10 +2056,10 @@ function applySkillPose(runner: VisualRunner, active: boolean) {
     const hitShake = fallProgress < 0.55 ? Math.sin(raceElapsed * 32) * (1 - fallProgress) * 0.18 : 0;
     rider.root.rotation.z = lerpNumber(0, -1.24, fallProgress) + hitShake;
     rider.root.position.y = lerpNumber(riderMountY, 0.62, fallProgress);
-    rider.leftArm.rotation.z = lerpNumber(0.72, 2.1, fallProgress);
-    rider.rightArm.rotation.z = lerpNumber(0.72, -1.7, fallProgress);
-    rider.leftLeg.rotation.z = lerpNumber(-0.72, 0.8, fallProgress);
-    rider.rightLeg.rotation.z = lerpNumber(-0.72, -0.2, fallProgress);
+    rider.leftArm.rotation.z = lerpNumber(1.16, 2.1, fallProgress);
+    rider.rightArm.rotation.z = lerpNumber(1.16, -1.7, fallProgress);
+    rider.leftLeg.rotation.z = lerpNumber(-0.2, 0.8, fallProgress);
+    rider.rightLeg.rotation.z = lerpNumber(-0.2, -0.2, fallProgress);
     return;
   }
 
@@ -1981,17 +2073,18 @@ function applySkillPose(runner: VisualRunner, active: boolean) {
 function resetRiderPose(rider: RiderParts) {
   rider.root.position.set(riderMountX, riderMountY, 0);
   rider.root.rotation.set(0, 0, 0);
-  rider.torso.rotation.set(0, 0, 0);
-  rider.head.position.set(0, 0.78, 0);
+  rider.torso.position.set(0.12, 0.22, 0);
+  rider.torso.rotation.set(0, 0, -0.42);
+  rider.head.position.set(0.28, 0.64, 0);
   rider.head.rotation.set(0, 0, 0);
-  rider.leftArm.position.set(0.08, 0.32, 0.28);
-  rider.leftArm.rotation.set(0, 0, 0.72);
-  rider.rightArm.position.set(0.08, 0.32, -0.28);
-  rider.rightArm.rotation.set(0, 0, 0.72);
-  rider.leftLeg.position.set(-0.1, -0.18, riderLegZ);
-  rider.leftLeg.rotation.set(0, 0, -0.72);
-  rider.rightLeg.position.set(-0.1, -0.18, -riderLegZ);
-  rider.rightLeg.rotation.set(0, 0, -0.72);
+  rider.leftArm.position.set(0.24, 0.24, 0.28);
+  rider.leftArm.rotation.set(0, 0, 1.16);
+  rider.rightArm.position.set(0.24, 0.24, -0.28);
+  rider.rightArm.rotation.set(0, 0, 1.16);
+  rider.leftLeg.position.set(0.02, -0.08, riderLegZ);
+  rider.leftLeg.rotation.set(0.1, 0, -0.2);
+  rider.rightLeg.position.set(0.02, -0.08, -riderLegZ);
+  rider.rightLeg.rotation.set(-0.1, 0, -0.2);
 }
 
 function poseRider(pose: SkillPose, rider: RiderParts, time: number) {
@@ -2020,7 +2113,7 @@ function poseRider(pose: SkillPose, rider: RiderParts, time: number) {
     rider.root.rotation.z = Math.sin(time * 11) * 0.42;
     rider.leftArm.rotation.z = 1.6 + Math.sin(time * 12) * 0.6;
     rider.rightArm.rotation.z = -1.2 + Math.cos(time * 12) * 0.6;
-    rider.head.position.x = Math.sin(time * 10) * 0.1;
+    rider.head.position.x = 0.28 + Math.sin(time * 10) * 0.1;
     return;
   }
 
@@ -2175,7 +2268,8 @@ function buildResultItems(race: RaceResult, reveal: boolean) {
 
     rank.textContent = reveal ? String(placement.rank) : '-';
     name.textContent = placement.entry.name;
-    detail.textContent = reveal ? resultDetail(placement, race) : '동일 출발 / 랜덤 페이스';
+    detail.textContent = reveal ? resultDetail(placement) : '';
+    detail.hidden = !reveal;
     body.append(name, detail);
     item.append(rank, body);
     item.classList.toggle('qualified', reveal && placement.qualified);
@@ -2184,26 +2278,8 @@ function buildResultItems(race: RaceResult, reveal: boolean) {
   });
 }
 
-function resultDetail(placement: RacePlacement, race: RaceResult) {
-  if (placement.eliminatedByHelicopter) {
-    return '헬기 탈락 / 탈락';
-  }
-
-  const skillText = getPlacementSkillText(placement);
-  const advanceText = placement.qualified ? (race.isFinal ? '우승' : '진출') : '탈락';
-  return `${placement.finishSeconds.toFixed(2)}초 / ${advanceText}${skillText}`;
-}
-
-function getPlacementSkillText(placement: RacePlacement) {
-  const names = [...new Set(getSkillEvents(placement).map((skillEvent) => skillEvent.skill.name))];
-
-  if (names.length === 0) {
-    return '';
-  }
-
-  const visibleNames = names.slice(0, 2).join(', ');
-  const suffix = names.length > 2 ? ` 외 ${names.length - 2}` : '';
-  return ` / ${visibleNames}${suffix}`;
+function resultDetail(placement: RacePlacement) {
+  return `${placement.finishSeconds.toFixed(2)}초`;
 }
 
 function renderLeaderboard() {
@@ -2364,6 +2440,44 @@ function saveRecentParticipants() {
     }
   } catch {
     // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function loadGraphicsQuality() {
+  try {
+    const value = window.localStorage.getItem(graphicsStorageKey);
+    return value === 'performance' ? 'performance' : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
+
+function saveGraphicsQuality() {
+  try {
+    window.localStorage.setItem(graphicsStorageKey, getGraphicsQuality());
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function getGraphicsQuality() {
+  return graphicsSelect.value === 'performance' ? 'performance' : 'standard';
+}
+
+function usesDetailedGraphics() {
+  return getGraphicsQuality() === 'standard';
+}
+
+function applyGraphicsQuality() {
+  raceStage.dataset.graphicsQuality = getGraphicsQuality();
+
+  if (!usesDetailedGraphics()) {
+    resetHelicopterVisualToFallback();
+    return;
+  }
+
+  if (raceStarted) {
+    void ensureHelicopterVisualLoading();
   }
 }
 
@@ -2989,11 +3103,7 @@ function getResultScreenshotRows(race: RaceResult | null) {
       .map((runner, index) => ({
         rank: index + 1,
         name: runner.placement.entry.name,
-        detail: runner.eliminated
-          ? '헬기 탈락'
-          : isSkillActive(runner.placement)
-            ? getActiveSkillEvent(runner.placement)?.skill.name ?? '스킬 발동'
-            : '진행 중',
+        detail: '',
         qualified: false,
         eliminated: runner.eliminated
       }));
@@ -3002,7 +3112,7 @@ function getResultScreenshotRows(race: RaceResult | null) {
   return race.placements.slice(0, 8).map((placement) => ({
     rank: placement.rank || race.placements.indexOf(placement) + 1,
     name: placement.entry.name,
-    detail: raceFinished ? resultDetail(placement, race) : '출발 대기',
+    detail: raceFinished ? resultDetail(placement) : '',
     qualified: placement.qualified,
     eliminated: placement.eliminatedByHelicopter
   }));
@@ -3095,6 +3205,10 @@ participantInput.addEventListener('input', () => {
   syncOptionBounds();
 });
 fieldSizeInput.addEventListener('input', () => syncOptionBounds());
+graphicsSelect.addEventListener('change', () => {
+  saveGraphicsQuality();
+  applyGraphicsQuality();
+});
 startButton.addEventListener('click', startTournament);
 randomSeedButton.addEventListener('click', rollSeed);
 leaderboardList.addEventListener('click', (event) => {
@@ -3184,5 +3298,6 @@ initializeCaptureControls();
 raceStage.dataset.helicopterAsset = 'fallback';
 raceStage.dataset.helicopterAssetUrl = MILITARY_HELICOPTER_ASSET_URL;
 installHelicopterFallback(helicopterAssetSlot);
+applyGraphicsQuality();
 prepareTournament();
 animate();

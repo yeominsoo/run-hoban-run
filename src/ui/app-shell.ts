@@ -82,6 +82,13 @@ export function renderAppShell(app: HTMLElement) {
                 <option value="muddy">불량</option>
               </select>
             </label>
+            <label>
+              <span>그래픽</span>
+              <select id="graphics-select">
+                <option value="standard" selected>기본</option>
+                <option value="performance">경량</option>
+              </select>
+            </label>
           </div>
         </aside>
 

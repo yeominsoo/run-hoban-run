@@ -175,6 +175,27 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
   expect(deferredAssetRequests).toEqual([]);
 });
 
+test('keeps performance graphics on fallback assets during race start', async ({ page }) => {
+  const deferredAssetRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    const viteUrlImportProbe = url.searchParams.has('import') || url.searchParams.has('url');
+
+    if ((/freepixel-helicopter.*\.glb$/.test(url.pathname) && !viteUrlImportProbe) || url.pathname.includes('/assets/frenzy/')) {
+      deferredAssetRequests.push(url.pathname);
+    }
+  });
+
+  await page.goto('/');
+  await page.locator('#graphics-select').selectOption('performance');
+  await page.locator('#start-tournament').click();
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-graphics-quality', 'performance');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'fallback');
+  await page.waitForTimeout(3000);
+
+  expect(deferredAssetRequests).toEqual([]);
+});
+
 test('downloads a composited result screenshot', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#download-result-shot')).toBeVisible();
@@ -502,6 +523,10 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
     const stage = document.querySelector('#race-stage');
     return stage?.getAttribute('data-cinematic') === 'shot' || stage?.getAttribute('data-cinematic') === 'hit';
   }, undefined, { timeout: 95_000 });
+  await page.waitForFunction(() => {
+    const stage = document.querySelector('#race-stage');
+    return Number(stage?.getAttribute('data-helicopter-forward-dot')) > 0.92 && Number(stage?.getAttribute('data-bullet-direction-dot')) > 0.98;
+  }, undefined, { timeout: 8_000 });
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
 
   await expect(page.locator('.runner-tag.eliminated').first()).toBeVisible({ timeout: 12_000 });
