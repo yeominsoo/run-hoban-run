@@ -2,10 +2,16 @@ import * as THREE from 'three';
 import { MILITARY_HELICOPTER_ASSET_URL } from '../assets/helicopter';
 import { clearGroup } from './scene-utils';
 
-export function installHelicopterVisual(slot: THREE.Group): Promise<'loaded' | 'fallback'> {
+export function installHelicopterFallback(slot: THREE.Group) {
   clearGroup(slot);
   slot.userData.assetStatus = 'fallback';
   slot.add(createMilitaryFallbackHelicopter());
+}
+
+export function installHelicopterVisual(slot: THREE.Group): Promise<'loaded' | 'fallback'> {
+  if (slot.userData.assetStatus !== 'fallback') {
+    installHelicopterFallback(slot);
+  }
 
   return new Promise((resolve) => {
     scheduleHeavyAssetLoad(() => {

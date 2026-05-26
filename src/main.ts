@@ -21,6 +21,7 @@ import {
   createHelicopterSniperRig,
   createImpactBurst,
   createMuzzleFlash,
+  installHelicopterFallback,
   installHelicopterVisual,
   spinHelicopterRotors
 } from './render/helicopter';
@@ -234,11 +235,20 @@ let recordingFrameRequest = 0;
 const overviewCameraZoomMin = 0.72;
 const overviewCameraZoomMax = 1.65;
 const frenzyTextureLoader = new THREE.TextureLoader();
-const frenzyParticleTextures = FRENZY_PARTICLE_TEXTURES.map((url) => {
-  const texture = frenzyTextureLoader.load(url);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-});
+let frenzyParticleTextures: THREE.Texture[] | null = null;
+let helicopterVisualPromise: Promise<'loaded' | 'fallback'> | null = null;
+
+function getFrenzyParticleTextures() {
+  if (!frenzyParticleTextures) {
+    frenzyParticleTextures = FRENZY_PARTICLE_TEXTURES.map((url) => {
+      const texture = frenzyTextureLoader.load(url);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    });
+  }
+
+  return frenzyParticleTextures;
+}
 
 function createRaceRenderer(canvas: HTMLCanvasElement): RaceRenderer {
   try {
@@ -733,18 +743,10 @@ function createHorse(profile: HorseProfile) {
   effect.visible = false;
   group.add(effect);
 
-  const frenzyVortex = createFrenzyVortex(profile.secondaryColor);
-  group.add(frenzyVortex.root);
-
-  const frenzyFire = createFrenzyFire();
-  group.add(frenzyFire.root);
-
   group.userData.rider = rider;
   group.userData.effect = effect;
   group.userData.legs = legParts;
   group.userData.motionStyle = motionStyle;
-  group.userData.frenzyVortex = frenzyVortex;
-  group.userData.frenzyFire = frenzyFire;
 
   return group;
 }
@@ -811,6 +813,7 @@ function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
   const smokeSprites: THREE.Sprite[] = [];
   const smokeMaterials: THREE.SpriteMaterial[] = [];
   const ringColors = [0xffffff, accentColor, 0xff4d4d];
+  const textures = getFrenzyParticleTextures();
 
   root.position.y = 0.12;
   root.visible = false;
@@ -848,7 +851,7 @@ function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
 
   for (let index = 0; index < 14; index += 1) {
     const material = new THREE.SpriteMaterial({
-      alphaMap: frenzyParticleTextures[index % frenzyParticleTextures.length],
+      alphaMap: textures[index % textures.length],
       color: index % 4 === 0 ? 0xff7a2a : 0xf7fbff,
       transparent: true,
       opacity: 0,
@@ -1066,6 +1069,9 @@ function setCurrentRace(index: number) {
   });
 
   updateHelicopterState(race.hazardEvents);
+  if (raceStarted) {
+    void ensureHelicopterVisualLoading();
+  }
   syncRaceStartedState();
   renderRaceStaticState();
   renderLeaderboard();
@@ -1212,6 +1218,17 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
   );
   helicopterGroup.rotation.set(0, Math.PI / 2, 0);
   helicopterGroup.scale.setScalar(mobile ? 1.18 : 1);
+}
+
+function ensureHelicopterVisualLoading() {
+  if (!helicopterVisualPromise) {
+    helicopterVisualPromise = installHelicopterVisual(helicopterAssetSlot).then((status) => {
+      raceStage.dataset.helicopterAsset = status;
+      return status;
+    });
+  }
+
+  return helicopterVisualPromise;
 }
 
 function updateHelicopterAnimation(hazardEvents: HazardEvent[]) {
@@ -1565,8 +1582,21 @@ function positionImpactBurst(position: THREE.Vector3, elapsedSinceImpact: number
   }
 }
 
+function ensureFrenzyVortex(runner: VisualRunner) {
+  const existing = runner.mesh.userData.frenzyVortex as FrenzyVortexParts | undefined;
+
+  if (existing) {
+    return existing;
+  }
+
+  const vortex = createFrenzyVortex(runner.placement.entry.profile.secondaryColor);
+  runner.mesh.add(vortex.root);
+  runner.mesh.userData.frenzyVortex = vortex;
+  return vortex;
+}
+
 function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
-  const vortex = runner.mesh.userData.frenzyVortex as FrenzyVortexParts | undefined;
+  const vortex = active ? ensureFrenzyVortex(runner) : (runner.mesh.userData.frenzyVortex as FrenzyVortexParts | undefined);
 
   if (!vortex) {
     return;
@@ -1622,8 +1652,21 @@ function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
   });
 }
 
+function ensureFrenzyFire(runner: VisualRunner) {
+  const existing = runner.mesh.userData.frenzyFire as FrenzyFireParts | undefined;
+
+  if (existing) {
+    return existing;
+  }
+
+  const fire = createFrenzyFire();
+  runner.mesh.add(fire.root);
+  runner.mesh.userData.frenzyFire = fire;
+  return fire;
+}
+
 function updateFrenzyFire(runner: VisualRunner, active: boolean) {
-  const fire = runner.mesh.userData.frenzyFire as FrenzyFireParts | undefined;
+  const fire = active ? ensureFrenzyFire(runner) : (runner.mesh.userData.frenzyFire as FrenzyFireParts | undefined);
 
   if (!fire) {
     return;
@@ -3140,8 +3183,6 @@ window.addEventListener('resize', resize);
 initializeCaptureControls();
 raceStage.dataset.helicopterAsset = 'fallback';
 raceStage.dataset.helicopterAssetUrl = MILITARY_HELICOPTER_ASSET_URL;
-void installHelicopterVisual(helicopterAssetSlot).then((status) => {
-  raceStage.dataset.helicopterAsset = status;
-});
+installHelicopterFallback(helicopterAssetSlot);
 prepareTournament();
 animate();

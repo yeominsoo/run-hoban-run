@@ -121,8 +121,10 @@ for (const viewport of viewports) {
   });
 }
 
-test('loads the military helicopter GLB asset into the scene', async ({ page }) => {
+test('loads the military helicopter GLB asset into the scene after race start', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'fallback');
+  await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'loaded', { timeout: 10_000 });
 
   const assetUrl = await page.locator('#race-stage').getAttribute('data-helicopter-asset-url');
@@ -151,11 +153,18 @@ test('serves the frenzy particle texture assets', async ({ page }) => {
 
 test('keeps initial runtime asset requests local', async ({ page }) => {
   const externalRequests: string[] = [];
+  const deferredAssetRequests: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
 
     if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
       externalRequests.push(request.url());
+    }
+
+    const viteUrlImportProbe = url.searchParams.has('import') || url.searchParams.has('url');
+
+    if ((/freepixel-helicopter.*\.glb$/.test(url.pathname) && !viteUrlImportProbe) || url.pathname.includes('/assets/frenzy/')) {
+      deferredAssetRequests.push(url.pathname);
     }
   });
 
@@ -163,6 +172,7 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
   await page.waitForLoadState('networkidle');
 
   expect(externalRequests).toEqual([]);
+  expect(deferredAssetRequests).toEqual([]);
 });
 
 test('downloads a composited result screenshot', async ({ page }) => {
