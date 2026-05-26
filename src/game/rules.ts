@@ -43,11 +43,14 @@ export type SkillEvent = {
   skill: SkillDefinition;
   triggerProgress: number;
   triggerSeconds?: number;
+  baseTriggerSeconds?: number;
   durationSeconds: number;
   speedMultiplier?: number;
   speedSegmentSpan?: FrenzySpeedSegmentSpan;
   speedSegmentStartIndex?: number;
   speedSegmentEndIndex?: number;
+  triggerSegmentIndex?: number;
+  rollMode?: 'segment-arrival';
 };
 
 export type HazardEvent = {
@@ -64,6 +67,9 @@ export type SpeedSegment = {
   endProgress: number;
   multiplier: number;
   label: string;
+  rollMode: 'segment-arrival';
+  rollProgress: number;
+  rollSeed: string;
 };
 
 export type RacePlacement = {
@@ -74,6 +80,7 @@ export type RacePlacement = {
   finishSeconds: number;
   qualified: boolean;
   skillEvent: SkillEvent | null;
+  skillEvents: SkillEvent[];
   eliminatedByHelicopter: boolean;
   speedSegments: SpeedSegment[];
 };
@@ -108,6 +115,8 @@ const MAX_FIELD_SIZE = 18;
 export const FRENZY_SKILL_ID = 'frenzy-surge';
 const FRENZY_TWO_SEGMENT_CHANCE_PER_RACE = 0.035;
 const FRENZY_SPEED_MULTIPLIER = 3;
+const MOTION_EVENT_CHANCE_PER_SEGMENT = 0.04;
+const FRENZY_EVENT_CHANCE_PER_SEGMENT = 0.006;
 
 export const FRENZY_SPEED_SEGMENT_SPAN_CHANCES: ReadonlyArray<{
   span: FrenzySpeedSegmentSpan;
@@ -371,13 +380,11 @@ function simulateRace(
   const { options, round, group, isFinal } = context;
   const laneIndexes = assignRaceLaneIndexes(entries, options, round, group);
   const placements = entries.map((entry) => {
-    const rng = createRng(`${options.seed}:race:${round}:${group}:${entry.id}`);
-    const assignedSkill = pick(SKILLS, rng);
-    const skillEvent = rollSkillEvent(assignedSkill, options, rng);
     const speedSegments = rollHorseSpeedSegments(entry, options, round, group);
     const segmentScale =
       speedSegments.reduce((sum, segment) => sum + 1 / Math.max(0.1, segment.multiplier), 0) / speedSegments.length;
     const finishSeconds = clampNumber(BASE_FINISH_SECONDS * segmentScale, 62, 118);
+    const skillEvents = rollSkillEvents(entry, options, round, group, speedSegments, finishSeconds);
 
     return {
       entry,
@@ -386,21 +393,22 @@ function simulateRace(
       baseFinishSeconds: finishSeconds,
       finishSeconds,
       qualified: false,
-      skillEvent,
+      skillEvent: getPrimarySkillEvent(skillEvents),
+      skillEvents,
       eliminatedByHelicopter: false,
       speedSegments
     };
   });
 
   applyDanceFrenzyModes(placements, options, round, group);
+  applyRandomFrenzySkills(placements, options, round, group);
+  placements.forEach(finalizePlacementSkillEvents);
 
   const hazardDrafts = rollHelicopterHazards(placements, options, round, group);
   const hazardTargetIds = new Set(hazardDrafts.map((hazard) => hazard.targetEntryId));
   placements.forEach((placement) => {
     placement.eliminatedByHelicopter = hazardTargetIds.has(placement.entry.id);
   });
-
-  applyFrenzySkill(placements, options, round, group, hazardTargetIds);
 
   const leadPlacement = placements.reduce((lead, placement) => (placement.finishSeconds < lead.finishSeconds ? placement : lead), placements[0]);
   const firstShotSeconds = Number((leadPlacement ? getRaceClockAtProgress(leadPlacement, 0.5) : 0).toFixed(3));
@@ -466,68 +474,51 @@ function simulateRace(
 
 function applyDanceFrenzyModes(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {
   placements.forEach((placement) => {
-    if (!placement.skillEvent || placement.skillEvent.skill.pose !== 'dance' || hasSpeedSkill(placement.skillEvent)) {
-      return;
-    }
+    placement.skillEvents.forEach((skillEvent, eventIndex) => {
+      if (skillEvent.skill.pose !== 'dance' || hasSpeedSkill(skillEvent)) {
+        return;
+      }
 
-    const rng = createRng(`${options.seed}:dance-frenzy:${round}:${group}:${placement.entry.id}`);
-    const speedSegmentSpan = rollGuaranteedFrenzySpeedSegmentSpan(rng);
-    const segmentTiming = rollFrenzySpeedSegmentTiming(placement, speedSegmentSpan, rng);
-    applyFrenzyModeToPlacement(placement, withFrenzyCinematic(placement.skillEvent.skill), segmentTiming, speedSegmentSpan);
+      const rng = createRng(`${options.seed}:dance-frenzy:${round}:${group}:${placement.entry.id}:${eventIndex}`);
+      const speedSegmentSpan = rollGuaranteedFrenzySpeedSegmentSpan(rng);
+      applyFrenzyModeToSkillEvent(placement, skillEvent, withFrenzyCinematic(skillEvent.skill), speedSegmentSpan);
+    });
   });
 }
 
-function applyFrenzySkill(
-  placements: RacePlacement[],
-  options: RaceOptions,
-  round: number,
-  group: number,
-  hazardTargetIds: Set<string>
-) {
-  if (placements.length < 2) {
-    return;
-  }
+function applyRandomFrenzySkills(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {
+  placements.forEach((placement) => {
+    placement.speedSegments.forEach((segment) => {
+      const rng = createRng(`${options.seed}:frenzy-arrival:${round}:${group}:${placement.entry.id}:${segment.index}`);
 
-  const entrySignature = placements.map((placement) => placement.entry.id).join('|');
-  const rng = createRng(`${options.seed}:frenzy:${round}:${group}:${placements.length}:${entrySignature}`);
+      if (rng() >= FRENZY_EVENT_CHANCE_PER_SEGMENT) {
+        return;
+      }
 
-  const speedSegmentSpan = rollFrenzySpeedSegmentSpan(rng);
-
-  if (!speedSegmentSpan) {
-    return;
-  }
-
-  const laggingPlacements = [...placements]
-    .sort((left, right) => right.baseFinishSeconds - left.baseFinishSeconds)
-    .slice(0, Math.max(1, Math.ceil(placements.length / 2)));
-  const candidates = laggingPlacements.filter((placement) => !hazardTargetIds.has(placement.entry.id) && !hasSpeedSkill(placement.skillEvent));
-  const target = pick(candidates, rng);
-
-  if (!target) {
-    return;
-  }
-
-  const segmentTiming = rollFrenzySpeedSegmentTiming(target, speedSegmentSpan, rng);
-  applyFrenzyModeToPlacement(target, FRENZY_SKILL, segmentTiming, speedSegmentSpan);
+      const speedSegmentSpan = rollGuaranteedFrenzySpeedSegmentSpan(rng);
+      const event = createSegmentSkillEvent(FRENZY_SKILL, placement, segment, rng, 0.72);
+      applyFrenzyModeToSkillEvent(placement, event, FRENZY_SKILL, speedSegmentSpan);
+      placement.skillEvents.push(event);
+    });
+  });
 }
 
-function applyFrenzyModeToPlacement(
+function applyFrenzyModeToSkillEvent(
   placement: RacePlacement,
+  skillEvent: SkillEvent,
   skill: SkillDefinition,
-  segmentTiming: ReturnType<typeof rollFrenzySpeedSegmentTiming>,
   speedSegmentSpan: FrenzySpeedSegmentSpan
 ) {
-  placement.skillEvent = {
-    skill,
-    triggerProgress: segmentTiming.triggerProgress,
-    triggerSeconds: segmentTiming.triggerSeconds,
-    durationSeconds: segmentTiming.durationSeconds,
-    speedMultiplier: FRENZY_SPEED_MULTIPLIER,
-    speedSegmentSpan,
-    speedSegmentStartIndex: segmentTiming.startIndex,
-    speedSegmentEndIndex: segmentTiming.endIndex
-  };
-  placement.finishSeconds = Number(getBoostedFinishSeconds(placement.baseFinishSeconds, placement.skillEvent).toFixed(3));
+  const segmentTiming = getFrenzyTimingFromSegment(placement, skillEvent.triggerSegmentIndex ?? 0, speedSegmentSpan);
+
+  skillEvent.skill = skill;
+  skillEvent.triggerProgress = segmentTiming.triggerProgress;
+  skillEvent.baseTriggerSeconds = segmentTiming.baseTriggerSeconds;
+  skillEvent.durationSeconds = segmentTiming.durationSeconds;
+  skillEvent.speedMultiplier = FRENZY_SPEED_MULTIPLIER;
+  skillEvent.speedSegmentSpan = speedSegmentSpan;
+  skillEvent.speedSegmentStartIndex = segmentTiming.startIndex;
+  skillEvent.speedSegmentEndIndex = segmentTiming.endIndex;
 }
 
 function withFrenzyCinematic(skill: SkillDefinition): SkillDefinition {
@@ -539,20 +530,6 @@ function withFrenzyCinematic(skill: SkillDefinition): SkillDefinition {
     ...skill,
     cinematic: 'frenzy'
   };
-}
-
-function rollFrenzySpeedSegmentSpan(rng: () => number): FrenzySpeedSegmentSpan | null {
-  let roll = rng();
-
-  for (const item of FRENZY_SPEED_SEGMENT_SPAN_CHANCES) {
-    if (roll < item.chance) {
-      return item.span;
-    }
-
-    roll -= item.chance;
-  }
-
-  return null;
 }
 
 function rollGuaranteedFrenzySpeedSegmentSpan(rng: () => number): FrenzySpeedSegmentSpan {
@@ -570,29 +547,22 @@ function rollGuaranteedFrenzySpeedSegmentSpan(rng: () => number): FrenzySpeedSeg
   return FRENZY_SPEED_SEGMENT_SPAN_CHANCES[FRENZY_SPEED_SEGMENT_SPAN_CHANCES.length - 1]?.span ?? 1;
 }
 
-function rollFrenzySpeedSegmentTiming(placement: RacePlacement, span: FrenzySpeedSegmentSpan, rng: () => number) {
+function getFrenzyTimingFromSegment(placement: RacePlacement, segmentIndex: number, span: FrenzySpeedSegmentSpan) {
   const segmentCount = Math.max(1, placement.speedSegments.length);
   const clampedSpan = Math.min(span, segmentCount) as FrenzySpeedSegmentSpan;
-  const maxStartIndex = Math.max(0, segmentCount - clampedSpan);
-  const preferredMinStartIndex = Math.min(maxStartIndex, Math.max(1, Math.floor(segmentCount * 0.14)));
-  const preferredMaxStartIndex = Math.max(
-    preferredMinStartIndex,
-    Math.min(maxStartIndex, segmentCount - clampedSpan - Math.max(1, Math.floor(segmentCount * 0.08)))
-  );
-  const startIndex =
-    preferredMinStartIndex + Math.floor(rng() * (preferredMaxStartIndex - preferredMinStartIndex + 1));
+  const startIndex = clampInteger(segmentIndex, 0, Math.max(0, segmentCount - clampedSpan));
   const endIndex = Math.min(segmentCount, startIndex + clampedSpan);
   const startProgress = placement.speedSegments[startIndex]?.startProgress ?? startIndex / segmentCount;
   const endProgress = placement.speedSegments[endIndex - 1]?.endProgress ?? endIndex / segmentCount;
-  const triggerSeconds = getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, startProgress);
+  const baseTriggerSeconds = getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, startProgress);
   const boostEndBaseSeconds = getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, endProgress);
-  const baseSpanSeconds = Math.max(0.3, boostEndBaseSeconds - triggerSeconds);
+  const baseSpanSeconds = Math.max(0.3, boostEndBaseSeconds - baseTriggerSeconds);
 
   return {
     startIndex,
     endIndex,
     triggerProgress: Number(startProgress.toFixed(3)),
-    triggerSeconds: Number(triggerSeconds.toFixed(3)),
+    baseTriggerSeconds: Number(baseTriggerSeconds.toFixed(3)),
     durationSeconds: Number((baseSpanSeconds / FRENZY_SPEED_MULTIPLIER).toFixed(3))
   };
 }
@@ -642,7 +612,6 @@ function shuffleItems<T>(items: T[], rng: () => number) {
 }
 
 function rollHorseSpeedSegments(entry: RaceEntry, options: RaceOptions, round: number, group: number): SpeedSegment[] {
-  const rng = createRng(`${options.seed}:speed-segments:${round}:${group}:${entry.id}:${options.distance}:${options.condition}`);
   const segmentCount = 20;
   const buckets = [
     { label: '감속', min: 0.58, max: 0.84 },
@@ -652,6 +621,8 @@ function rollHorseSpeedSegments(entry: RaceEntry, options: RaceOptions, round: n
   ];
 
   return Array.from({ length: segmentCount }, (_, index) => {
+    const rollSeed = `${options.seed}:speed-arrival:${round}:${group}:${entry.id}:${options.distance}:${options.condition}:${index}`;
+    const rng = createRng(rollSeed);
     const bucketRoll = rng();
     const bucket = bucketRoll < 0.24 ? buckets[0] : bucketRoll < 0.58 ? buckets[1] : bucketRoll < 0.9 ? buckets[2] : buckets[3];
     const multiplier = Number((bucket.min + rng() * (bucket.max - bucket.min)).toFixed(2));
@@ -661,9 +632,118 @@ function rollHorseSpeedSegments(entry: RaceEntry, options: RaceOptions, round: n
       startProgress: index / segmentCount,
       endProgress: (index + 1) / segmentCount,
       multiplier,
-      label: bucket.label
+      label: bucket.label,
+      rollMode: 'segment-arrival',
+      rollProgress: index / segmentCount,
+      rollSeed
     };
   });
+}
+
+function rollSkillEvents(
+  entry: RaceEntry,
+  options: RaceOptions,
+  round: number,
+  group: number,
+  speedSegments: SpeedSegment[],
+  baseFinishSeconds: number
+) {
+  const events: SkillEvent[] = [];
+
+  speedSegments.forEach((segment) => {
+    const rng = createRng(`${options.seed}:motion-arrival:${round}:${group}:${entry.id}:${segment.index}`);
+    const skill = pick(getEligibleSkillsForSegment(segment), rng);
+    const chance = getSegmentSkillChance(skill, options);
+
+    if (rng() >= chance) {
+      return;
+    }
+
+    events.push(createSegmentSkillEvent(skill, { baseFinishSeconds, speedSegments }, segment, rng));
+  });
+
+  return sortSkillEvents(events);
+}
+
+function getEligibleSkillsForSegment(segment: SpeedSegment) {
+  const midpoint = (segment.startProgress + segment.endProgress) / 2;
+  const eligible = SKILLS.filter((skill) => {
+    if (skill.phase === 'start') {
+      return midpoint <= 0.22;
+    }
+
+    if (skill.phase === 'corner') {
+      return midpoint >= 0.24 && midpoint <= 0.58;
+    }
+
+    if (skill.phase === 'last') {
+      return midpoint >= 0.66;
+    }
+
+    return midpoint >= 0.18 && midpoint <= 0.72;
+  });
+
+  return eligible.length > 0 ? eligible : SKILLS;
+}
+
+function getSegmentSkillChance(skill: SkillDefinition, options: RaceOptions) {
+  const surfaceBonus =
+    (skill.id === 'mud-splash' && (options.surface === 'dirt' || options.condition === 'muddy')) ||
+    (skill.id === 'turf-slide' && options.surface === 'turf' && options.condition === 'firm')
+      ? 0.018
+      : 0;
+
+  return MOTION_EVENT_CHANCE_PER_SEGMENT + surfaceBonus;
+}
+
+function createSegmentSkillEvent(
+  skill: SkillDefinition,
+  placement: Pick<RacePlacement, 'baseFinishSeconds' | 'speedSegments'>,
+  segment: SpeedSegment,
+  rng: () => number,
+  durationScale = 1
+): SkillEvent {
+  const baseTriggerSeconds = getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, segment.startProgress);
+
+  return {
+    skill,
+    triggerProgress: Number(segment.startProgress.toFixed(3)),
+    baseTriggerSeconds: Number(baseTriggerSeconds.toFixed(3)),
+    durationSeconds: Number(((2.6 + rng() * 2.4) * durationScale).toFixed(3)),
+    triggerSegmentIndex: segment.index,
+    rollMode: 'segment-arrival'
+  };
+}
+
+function finalizePlacementSkillEvents(placement: RacePlacement) {
+  const events = sortSkillEvents(placement.skillEvents);
+  const speedEvents: Array<SkillEvent & { speedMultiplier: number }> = [];
+
+  events.forEach((event) => {
+    const baseTriggerSeconds = event.baseTriggerSeconds ?? placement.baseFinishSeconds * event.triggerProgress;
+    event.baseTriggerSeconds = Number(baseTriggerSeconds.toFixed(3));
+    event.triggerSeconds = Number(getRaceClockFromBaseElapsed(baseTriggerSeconds, speedEvents).toFixed(3));
+
+    if (hasSpeedSkill(event)) {
+      speedEvents.push(event);
+    }
+  });
+
+  placement.skillEvents = events;
+  placement.skillEvent = getPrimarySkillEvent(events);
+  placement.finishSeconds = Number(getRaceClockFromBaseElapsed(placement.baseFinishSeconds, speedEvents).toFixed(3));
+}
+
+function sortSkillEvents(events: SkillEvent[]) {
+  return [...events].sort((left, right) => {
+    const leftSeconds = left.baseTriggerSeconds ?? left.triggerSeconds ?? left.triggerProgress;
+    const rightSeconds = right.baseTriggerSeconds ?? right.triggerSeconds ?? right.triggerProgress;
+    return leftSeconds - rightSeconds;
+  });
+}
+
+function getPrimarySkillEvent(events: SkillEvent[]) {
+  return events.find((event) => event.skill.cinematic === 'frenzy') ?? events[0] ?? null;
 }
 
 function getSegmentedTimeAtProgress(finishSeconds: number, speedSegments: SpeedSegment[], progress: number) {
@@ -691,43 +771,58 @@ function getSegmentedTimeAtProgress(finishSeconds: number, speedSegments: SpeedS
 function getRaceClockAtProgress(placement: RacePlacement, progress: number) {
   const baseFinishSeconds = getProgressBaseFinishSeconds(placement);
   const baseElapsedSeconds = getSegmentedTimeAtProgress(baseFinishSeconds, placement.speedSegments, progress);
-
-  if (!hasSpeedSkill(placement.skillEvent)) {
-    return baseElapsedSeconds;
-  }
-
-  return getRaceClockFromBoostedElapsed(baseElapsedSeconds, placement.skillEvent);
+  return getRaceClockFromBaseElapsed(baseElapsedSeconds, placement.skillEvents.filter(hasSpeedSkill));
 }
 
 function getProgressBaseFinishSeconds(placement: RacePlacement) {
-  return hasSpeedSkill(placement.skillEvent) ? placement.baseFinishSeconds : placement.finishSeconds;
+  return placement.skillEvents.some(hasSpeedSkill) ? placement.baseFinishSeconds : placement.finishSeconds;
 }
 
-function hasSpeedSkill(skillEvent: SkillEvent | null): skillEvent is SkillEvent & { triggerSeconds: number; speedMultiplier: number } {
-  return Boolean(skillEvent && skillEvent.triggerSeconds !== undefined && skillEvent.speedMultiplier !== undefined);
+function hasSpeedSkill(skillEvent: SkillEvent | null | undefined): skillEvent is SkillEvent & { speedMultiplier: number } {
+  return Boolean(skillEvent && skillEvent.speedMultiplier !== undefined && skillEvent.speedMultiplier > 1);
 }
 
-function getBoostedFinishSeconds(baseFinishSeconds: number, skillEvent: SkillEvent) {
-  if (!hasSpeedSkill(skillEvent)) {
-    return baseFinishSeconds;
-  }
+function getRaceClockFromBaseElapsed(baseElapsedSeconds: number, skillEvents: Array<SkillEvent & { speedMultiplier: number }>) {
+  const activeEvents = skillEvents
+    .map((skillEvent) => {
+      const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds ?? 0;
+      const multiplier = Math.max(1, skillEvent.speedMultiplier);
+      return {
+        start: baseStart,
+        end: baseStart + skillEvent.durationSeconds * multiplier,
+        multiplier
+      };
+    })
+    .filter((event) => event.end > 0 && event.start < baseElapsedSeconds)
+    .sort((left, right) => left.start - right.start);
 
-  return getRaceClockFromBoostedElapsed(baseFinishSeconds, skillEvent);
-}
-
-function getRaceClockFromBoostedElapsed(baseElapsedSeconds: number, skillEvent: SkillEvent & { triggerSeconds: number; speedMultiplier: number }) {
-  const boostStart = skillEvent.triggerSeconds;
-  const boostEndBase = boostStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
-
-  if (baseElapsedSeconds <= boostStart) {
+  if (activeEvents.length === 0) {
     return baseElapsedSeconds;
   }
 
-  if (baseElapsedSeconds <= boostEndBase) {
-    return boostStart + (baseElapsedSeconds - boostStart) / skillEvent.speedMultiplier;
+  const boundaries = new Set<number>([0, baseElapsedSeconds]);
+
+  activeEvents.forEach((event) => {
+    boundaries.add(clampNumber(event.start, 0, baseElapsedSeconds));
+    boundaries.add(clampNumber(event.end, 0, baseElapsedSeconds));
+  });
+
+  const points = [...boundaries].sort((left, right) => left - right);
+  let raceClock = 0;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index] ?? 0;
+    const end = points[index + 1] ?? start;
+    const midpoint = (start + end) / 2;
+    const multiplier = activeEvents.reduce(
+      (current, event) => (midpoint >= event.start && midpoint < event.end ? Math.max(current, event.multiplier) : current),
+      1
+    );
+
+    raceClock += (end - start) / multiplier;
   }
 
-  return baseElapsedSeconds - skillEvent.durationSeconds * (skillEvent.speedMultiplier - 1);
+  return raceClock;
 }
 
 function pickUnique<T>(items: T[], count: number, rng: () => number) {
@@ -744,40 +839,6 @@ function pickUnique<T>(items: T[], count: number, rng: () => number) {
   }
 
   return selected;
-}
-
-function rollSkillEvent(skill: SkillDefinition, options: RaceOptions, rng: () => number): SkillEvent | null {
-  const surfaceBonus =
-    (skill.id === 'mud-splash' && (options.surface === 'dirt' || options.condition === 'muddy')) ||
-    (skill.id === 'turf-slide' && options.surface === 'turf' && options.condition === 'firm')
-      ? 0.01
-      : 0;
-
-  if (rng() > 0.03 + surfaceBonus) {
-    return null;
-  }
-
-  return {
-    skill,
-    triggerProgress: getSkillTrigger(skill.phase, rng),
-    durationSeconds: 5
-  };
-}
-
-function getSkillTrigger(phase: SkillDefinition['phase'], rng: () => number) {
-  if (phase === 'start') {
-    return 0.08 + rng() * 0.1;
-  }
-
-  if (phase === 'corner') {
-    return 0.3 + rng() * 0.18;
-  }
-
-  if (phase === 'last') {
-    return 0.72 + rng() * 0.16;
-  }
-
-  return 0.48 + rng() * 0.16;
 }
 
 function makeBalancedGroups<T>(items: T[], fieldSize: number) {

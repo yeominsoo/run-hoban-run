@@ -9,6 +9,7 @@ import {
   type RaceOptions,
   type RacePlacement,
   type RaceResult,
+  type SkillEvent,
   type SkillPose,
   type SpeedSegment,
   type TournamentResult
@@ -55,6 +56,8 @@ type LeaderboardItemParts = {
 };
 
 type HorseMotionStyle = 'rush' | 'run' | 'walk' | 'stroll';
+
+type SpeedSkillEvent = SkillEvent & { triggerSeconds: number; speedMultiplier: number };
 
 type HorseLegParts = {
   hip: THREE.Group;
@@ -224,6 +227,9 @@ let activePinchDistance: number | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 let recordedVideoChunks: Blob[] = [];
 let recordingMimeType = '';
+let recordingCanvas: HTMLCanvasElement | null = null;
+let recordingContext: CanvasRenderingContext2D | null = null;
+let recordingFrameRequest = 0;
 const overviewCameraZoomMin = 0.72;
 const overviewCameraZoomMax = 1.65;
 const frenzyTextureLoader = new THREE.TextureLoader();
@@ -1393,13 +1399,7 @@ function getRaceTimeScale(hazardEvents: HazardEvent[]) {
 function getActiveFrenzyCinematicRunner() {
   return (
     visualRunners.find((runner) => {
-      if (runner.eliminated || !isFrenzySkillEvent(runner.placement.skillEvent)) {
-        return false;
-      }
-
-      const start = getSkillStartSeconds(runner.placement);
-      const end = start + (runner.placement.skillEvent?.durationSeconds ?? 0);
-      return raceElapsed >= start - frenzyCutsceneLeadSeconds && raceElapsed <= Math.min(runner.placement.finishSeconds, end);
+      return !runner.eliminated && Boolean(getActiveFrenzySkillEvent(runner.placement, frenzyCutsceneLeadSeconds));
     }) ?? null
   );
 }
@@ -1620,7 +1620,9 @@ function updateFrenzySnorts(runner: VisualRunner | null) {
     return;
   }
 
-  if (!runner || !isFrenzySkillEvent(runner.placement.skillEvent)) {
+  const skillEvent = runner ? getActiveFrenzySkillEvent(runner.placement, frenzyCutsceneLeadSeconds) : null;
+
+  if (!runner || !skillEvent) {
     frenzySnortGroup.visible = false;
     puffs.forEach((puff) => {
       puff.mesh.visible = false;
@@ -1629,7 +1631,7 @@ function updateFrenzySnorts(runner: VisualRunner | null) {
     return;
   }
 
-  const skillStart = getSkillStartSeconds(runner.placement);
+  const skillStart = getSkillStartSeconds(runner.placement, skillEvent);
   const cutsceneElapsed = raceElapsed - skillStart;
   const burstOffsets = [-0.48, 0.18];
   let visible = false;
@@ -1660,31 +1662,51 @@ function updateFrenzySnorts(runner: VisualRunner | null) {
 }
 
 function isSkillActive(placement: RacePlacement) {
-  if (!placement.skillEvent) {
-    return false;
-  }
-
-  const start = getSkillStartSeconds(placement);
-  const end = Math.min(placement.finishSeconds, start + placement.skillEvent.durationSeconds);
-  return raceElapsed >= start && raceElapsed <= end;
+  return Boolean(getActiveSkillEvent(placement));
 }
 
 function isFrenzySkillActive(placement: RacePlacement) {
-  return isFrenzySkillEvent(placement.skillEvent) && isSkillActive(placement);
+  return Boolean(getActiveFrenzySkillEvent(placement));
 }
 
-function isFrenzySkillEvent(skillEvent: RacePlacement['skillEvent']) {
+function getActiveSkillEvent(placement: RacePlacement, leadSeconds = 0) {
+  const activeEvents = getSkillEvents(placement).filter((skillEvent) => {
+    const start = getSkillStartSeconds(placement, skillEvent);
+    const end = Math.min(placement.finishSeconds, start + skillEvent.durationSeconds);
+    return raceElapsed >= start - leadSeconds && raceElapsed <= end;
+  });
+
+  return activeEvents.find(isFrenzySkillEvent) ?? activeEvents[0] ?? null;
+}
+
+function getActiveFrenzySkillEvent(placement: RacePlacement, leadSeconds = 0) {
+  return (
+    getSkillEvents(placement).find((skillEvent) => {
+      if (!isFrenzySkillEvent(skillEvent)) {
+        return false;
+      }
+
+      const start = getSkillStartSeconds(placement, skillEvent);
+      const end = Math.min(placement.finishSeconds, start + skillEvent.durationSeconds);
+      return raceElapsed >= start - leadSeconds && raceElapsed <= end;
+    }) ?? null
+  );
+}
+
+function getSkillEvents(placement: RacePlacement) {
+  return placement.skillEvents.length > 0 ? placement.skillEvents : placement.skillEvent ? [placement.skillEvent] : [];
+}
+
+function isFrenzySkillEvent(skillEvent: SkillEvent | null | undefined) {
   return skillEvent?.skill.cinematic === 'frenzy' && hasSpeedSkillEvent(skillEvent);
 }
 
-function hasSpeedSkillEvent(
-  skillEvent: RacePlacement['skillEvent']
-): skillEvent is NonNullable<RacePlacement['skillEvent']> & { triggerSeconds: number; speedMultiplier: number } {
-  return Boolean(skillEvent?.triggerSeconds !== undefined && skillEvent.speedMultiplier !== undefined);
+function hasSpeedSkillEvent(skillEvent: SkillEvent | null | undefined): skillEvent is SpeedSkillEvent {
+  return Boolean(skillEvent?.triggerSeconds !== undefined && skillEvent.speedMultiplier !== undefined && skillEvent.speedMultiplier > 1);
 }
 
-function getSkillStartSeconds(placement: RacePlacement) {
-  return placement.skillEvent?.triggerSeconds ?? placement.finishSeconds * (placement.skillEvent?.triggerProgress ?? 0);
+function getSkillStartSeconds(placement: RacePlacement, skillEvent: SkillEvent | null | undefined = placement.skillEvent) {
+  return skillEvent?.triggerSeconds ?? placement.finishSeconds * (skillEvent?.triggerProgress ?? 0);
 }
 
 function getSegmentedRaceProgress(elapsedSeconds: number, placement: RacePlacement, speedSegments: SpeedSegment[]) {
@@ -1725,47 +1747,71 @@ function getSegmentedRaceProgress(elapsedSeconds: number, placement: RacePlaceme
 
   return {
     progress: 1,
-    multiplier: lastSegment?.multiplier ?? 1,
+    multiplier: (lastSegment?.multiplier ?? 1) * getActiveSpeedMultiplier(elapsedSeconds, placement),
     segmentIndex: Math.max(0, speedSegments.length - 1)
   };
 }
 
 function getProgressFinishSeconds(placement: RacePlacement) {
-  return hasSpeedSkillEvent(placement.skillEvent) ? placement.baseFinishSeconds : placement.finishSeconds;
+  return getSpeedSkillEvents(placement).length > 0 ? placement.baseFinishSeconds : placement.finishSeconds;
 }
 
 function getProgressElapsedSeconds(elapsedSeconds: number, placement: RacePlacement) {
-  const skillEvent = placement.skillEvent;
+  const speedEvents = getSpeedSkillEvents(placement);
 
-  if (!hasSpeedSkillEvent(skillEvent)) {
+  if (speedEvents.length === 0) {
     return elapsedSeconds;
   }
 
-  const boostStart = skillEvent.triggerSeconds ?? 0;
-  const boostEnd = boostStart + skillEvent.durationSeconds;
-  const multiplier = skillEvent.speedMultiplier ?? 1;
+  const boundaries = new Set<number>([0, placement.baseFinishSeconds]);
 
-  if (elapsedSeconds <= boostStart) {
-    return elapsedSeconds;
+  speedEvents.forEach((skillEvent) => {
+    const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds;
+    const baseEnd = baseStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+    boundaries.add(clampNumber(baseStart, 0, placement.baseFinishSeconds));
+    boundaries.add(clampNumber(baseEnd, 0, placement.baseFinishSeconds));
+  });
+
+  const points = [...boundaries].sort((left, right) => left - right);
+  let raceClockCursor = 0;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index] ?? 0;
+    const end = points[index + 1] ?? start;
+    const midpoint = (start + end) / 2;
+    const multiplier = getSpeedMultiplierAtBaseElapsed(midpoint, speedEvents);
+    const duration = (end - start) / multiplier;
+
+    if (elapsedSeconds <= raceClockCursor + duration) {
+      return start + (elapsedSeconds - raceClockCursor) * multiplier;
+    }
+
+    raceClockCursor += duration;
   }
 
-  if (elapsedSeconds <= boostEnd) {
-    return boostStart + (elapsedSeconds - boostStart) * multiplier;
-  }
-
-  return elapsedSeconds + skillEvent.durationSeconds * (multiplier - 1);
+  return placement.baseFinishSeconds + Math.max(0, elapsedSeconds - raceClockCursor);
 }
 
 function getActiveSpeedMultiplier(elapsedSeconds: number, placement: RacePlacement) {
-  const skillEvent = placement.skillEvent;
+  return getSpeedSkillEvents(placement).reduce((multiplier, skillEvent) => {
+    const start = skillEvent.triggerSeconds;
+    const end = start + skillEvent.durationSeconds;
+    return elapsedSeconds >= start && elapsedSeconds <= end ? Math.max(multiplier, skillEvent.speedMultiplier) : multiplier;
+  }, 1);
+}
 
-  if (!hasSpeedSkillEvent(skillEvent)) {
-    return 1;
-  }
+function getSpeedSkillEvents(placement: RacePlacement) {
+  return getSkillEvents(placement)
+    .filter(hasSpeedSkillEvent)
+    .sort((left, right) => (left.baseTriggerSeconds ?? left.triggerSeconds) - (right.baseTriggerSeconds ?? right.triggerSeconds));
+}
 
-  const start = skillEvent.triggerSeconds ?? 0;
-  const end = start + skillEvent.durationSeconds;
-  return elapsedSeconds >= start && elapsedSeconds <= end ? (skillEvent.speedMultiplier ?? 1) : 1;
+function getSpeedMultiplierAtBaseElapsed(baseElapsedSeconds: number, speedEvents: SpeedSkillEvent[]) {
+  return speedEvents.reduce((multiplier, skillEvent) => {
+    const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds;
+    const baseEnd = baseStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+    return baseElapsedSeconds >= baseStart && baseElapsedSeconds < baseEnd ? Math.max(multiplier, skillEvent.speedMultiplier) : multiplier;
+  }, 1);
 }
 
 function animateHorseStride(runner: VisualRunner, progress: number, eliminated: boolean, speedMultiplier: number) {
@@ -1816,7 +1862,7 @@ function getHorseMotionConfig(style: HorseMotionStyle) {
 function applySkillPose(runner: VisualRunner, active: boolean) {
   const rider = runner.mesh.userData.rider as RiderParts | undefined;
   const effect = runner.mesh.userData.effect as THREE.Mesh | undefined;
-  const pose = runner.placement.skillEvent?.skill.pose;
+  const pose = getActiveSkillEvent(runner.placement)?.skill.pose;
 
   if (effect) {
     effect.visible = active;
@@ -1910,7 +1956,7 @@ function poseRider(pose: SkillPose, rider: RiderParts, time: number) {
 }
 
 function updateRunnerLabel(runner: VisualRunner, activeSkill: boolean) {
-  const skill = runner.placement.skillEvent?.skill;
+  const skill = getActiveSkillEvent(runner.placement)?.skill;
   const liveRank = getLiveRunnerRank(runner);
   runner.label.textContent = runner.eliminated
     ? `${runner.placement.entry.name} - 탈락`
@@ -2059,9 +2105,21 @@ function resultDetail(placement: RacePlacement, race: RaceResult) {
     return '헬기 탈락 / 탈락';
   }
 
-  const skillText = placement.skillEvent ? ` / ${placement.skillEvent.skill.name}` : '';
+  const skillText = getPlacementSkillText(placement);
   const advanceText = placement.qualified ? (race.isFinal ? '우승' : '진출') : '탈락';
   return `${placement.finishSeconds.toFixed(2)}초 / ${advanceText}${skillText}`;
+}
+
+function getPlacementSkillText(placement: RacePlacement) {
+  const names = [...new Set(getSkillEvents(placement).map((skillEvent) => skillEvent.skill.name))];
+
+  if (names.length === 0) {
+    return '';
+  }
+
+  const visibleNames = names.slice(0, 2).join(', ');
+  const suffix = names.length > 2 ? ` 외 ${names.length - 2}` : '';
+  return ` / ${visibleNames}${suffix}`;
 }
 
 function renderLeaderboard() {
@@ -2408,7 +2466,8 @@ function updateCamera(hazardEvent: HazardEvent | null, frenzyRunner: VisualRunne
 }
 
 function getFrenzyCameraView(runner: VisualRunner, width: number) {
-  const start = getSkillStartSeconds(runner.placement);
+  const skillEvent = getActiveFrenzySkillEvent(runner.placement, frenzyCutsceneLeadSeconds);
+  const start = getSkillStartSeconds(runner.placement, skillEvent);
   const elapsed = raceElapsed - start;
   const facePoint = getHorseFacePoint(runner);
   const forward = getHorseForwardDirection(runner);
@@ -2471,22 +2530,22 @@ function getOverviewCameraView(width: number) {
 
   if (!leadRunner) {
     return {
-      position: width < 760 ? new THREE.Vector3(-8, 20.5, 29) : new THREE.Vector3(-4, 15.5, 22),
+      position: width < 760 ? new THREE.Vector3(-9, 21.6, 31.5) : new THREE.Vector3(-3.5, 16.4, 24.6),
       target: new THREE.Vector3(0, 0, 0)
     };
   }
 
   const mobile = width < 760;
   const zoomScale = 1 / overviewCameraZoom;
-  const framingScale = mobile ? 0.42 : 0.36;
+  const framingScale = mobile ? 0.48 : 0.43;
   const leadX = clampNumber(leadRunner.mesh.position.x, startX + 8, finishX - 4);
   const lookBack = (mobile ? 50 : 56) * framingScale * zoomScale;
   const lookAhead = (mobile ? 18 : 22) * framingScale * zoomScale;
   const centerX = clampNumber(leadX - lookBack * 0.26 + lookAhead * 0.16, startX + 8, finishX - 6);
   const targetX = clampNumber(leadX - lookBack * 0.06 + lookAhead * 0.42, startX + 6, finishX - 2);
-  const height = (mobile ? 16.5 : 13.5) + lookBack * (mobile ? 0.1 : 0.06);
-  const depth = (mobile ? 22 : 17.5) + lookBack * (mobile ? 0.1 : 0.07);
-  const back = (mobile ? 7.4 : 5.5) + lookBack * 0.05;
+  const height = (mobile ? 17.6 : 14.4) + lookBack * (mobile ? 0.1 : 0.06);
+  const depth = (mobile ? 24 : 19.5) + lookBack * (mobile ? 0.1 : 0.07);
+  const back = (mobile ? 8.2 : 6.2) + lookBack * 0.05;
 
   return {
     position: new THREE.Vector3(centerX - back, height, depth),
@@ -2542,7 +2601,7 @@ function initializeCaptureControls() {
 }
 
 function isVideoCaptureSupported() {
-  return typeof MediaRecorder !== 'undefined' && typeof raceCanvas.captureStream === 'function';
+  return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
 }
 
 function toggleRaceRecording() {
@@ -2560,7 +2619,7 @@ function startRaceRecording() {
     return;
   }
 
-  const stream = raceCanvas.captureStream(60);
+  const stream = createRecordingStream();
   const mimeType = getSupportedRecordingMimeType();
   const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
@@ -2575,6 +2634,7 @@ function startRaceRecording() {
   });
 
   recorder.addEventListener('stop', () => {
+    stopRecordingCompositeLoop();
     stream.getTracks().forEach((track) => track.stop());
     const chunks = recordedVideoChunks;
     recordedVideoChunks = [];
@@ -2591,6 +2651,14 @@ function startRaceRecording() {
 
   recorder.start(500);
   setRecordingActive(true);
+}
+
+function createRecordingStream() {
+  recordingCanvas = document.createElement('canvas');
+  recordingContext = recordingCanvas.getContext('2d');
+  syncRecordingCanvasSize();
+  drawRecordingCompositeFrame();
+  return recordingCanvas.captureStream(60);
 }
 
 function stopRaceRecording() {
@@ -2612,6 +2680,41 @@ function setRecordingActive(active: boolean) {
   toggleRecordingButton.classList.toggle('recording', active);
   toggleRecordingButton.setAttribute('aria-pressed', String(active));
   toggleRecordingButton.title = active ? '영상 캡처 중지' : '화면 영상 캡처';
+}
+
+function syncRecordingCanvasSize() {
+  if (!recordingCanvas) {
+    return;
+  }
+
+  recordingCanvas.width = Math.max(1, raceCanvas.width);
+  recordingCanvas.height = Math.max(1, raceCanvas.height);
+}
+
+function drawRecordingCompositeFrame() {
+  if (!recordingCanvas || !recordingContext) {
+    return;
+  }
+
+  if (recordingCanvas.width !== raceCanvas.width || recordingCanvas.height !== raceCanvas.height) {
+    syncRecordingCanvasSize();
+  }
+
+  recordingContext.clearRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+  recordingContext.drawImage(raceCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+  raceStage.dataset.recordingRunnerLabels = String(drawRunnerNameLabels(recordingContext, recordingCanvas.width, recordingCanvas.height));
+  recordingFrameRequest = window.requestAnimationFrame(drawRecordingCompositeFrame);
+}
+
+function stopRecordingCompositeLoop() {
+  if (recordingFrameRequest) {
+    window.cancelAnimationFrame(recordingFrameRequest);
+    recordingFrameRequest = 0;
+  }
+
+  recordingCanvas = null;
+  recordingContext = null;
+  raceStage.dataset.recordingRunnerLabels = '0';
 }
 
 function getSupportedRecordingMimeType() {
@@ -2644,8 +2747,63 @@ function createResultScreenshotCanvas() {
   }
 
   context.drawImage(raceCanvas, 0, 0, width, height);
+  raceStage.dataset.lastScreenshotRunnerLabels = String(drawRunnerNameLabels(context, width, height));
   drawResultScreenshotOverlay(context, width, height);
   return screenshot;
+}
+
+function drawRunnerNameLabels(context: CanvasRenderingContext2D, width: number, height: number) {
+  const canvasRect = raceCanvas.getBoundingClientRect();
+  const scaleX = width / Math.max(1, canvasRect.width);
+  const scaleY = height / Math.max(1, canvasRect.height);
+  let drawnCount = 0;
+
+  context.save();
+  context.scale(scaleX, scaleY);
+
+  visualRunners.forEach((runner) => {
+    const label = runner.label;
+    const labelRect = label.getBoundingClientRect();
+    const labelStyle = window.getComputedStyle(label);
+    const opacity = Number(labelStyle.opacity);
+
+    if (
+      opacity <= 0.03 ||
+      labelRect.width <= 0 ||
+      labelRect.height <= 0 ||
+      labelRect.right < canvasRect.left ||
+      labelRect.left > canvasRect.right ||
+      labelRect.bottom < canvasRect.top ||
+      labelRect.top > canvasRect.bottom
+    ) {
+      return;
+    }
+
+    const x = labelRect.left - canvasRect.left;
+    const y = labelRect.top - canvasRect.top;
+    const radius = Math.min(labelRect.height / 2, 999);
+
+    context.save();
+    context.globalAlpha = opacity;
+    context.shadowColor = 'rgba(15, 28, 24, 0.18)';
+    context.shadowBlur = 14;
+    context.shadowOffsetY = 4;
+    context.fillStyle = labelStyle.backgroundColor || 'rgba(255, 255, 255, 0.92)';
+    fillRoundedRect(context, x, y, labelRect.width, labelRect.height, radius);
+    context.shadowColor = 'transparent';
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
+    context.fillStyle = labelStyle.color || '#0f1c18';
+    context.font = labelStyle.font;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(fitCanvasText(context, label.textContent ?? '', labelRect.width - 16), x + labelRect.width / 2, y + labelRect.height / 2);
+    context.restore();
+    drawnCount += 1;
+  });
+
+  context.restore();
+  return drawnCount;
 }
 
 function drawResultScreenshotOverlay(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -2750,7 +2908,7 @@ function getResultScreenshotRows(race: RaceResult | null) {
         detail: runner.eliminated
           ? '헬기 탈락'
           : isSkillActive(runner.placement)
-            ? runner.placement.skillEvent?.skill.name ?? '스킬 발동'
+            ? getActiveSkillEvent(runner.placement)?.skill.name ?? '스킬 발동'
             : '진행 중',
         qualified: false,
         eliminated: runner.eliminated

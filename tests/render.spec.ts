@@ -147,11 +147,18 @@ test('serves the frenzy particle texture assets', async ({ page }) => {
 test('downloads a composited result screenshot', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#download-result-shot')).toBeVisible();
+  await page.locator('#start-tournament').click();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.runner-tag')].some(
+      (element) => element.textContent?.trim() && Number(window.getComputedStyle(element).opacity) > 0.03
+    )
+  );
 
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#download-result-shot').click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^run-hoban-run-.*-result-.*\.png$/);
+  expect(Number(await page.locator('#race-stage').getAttribute('data-last-screenshot-runner-labels'))).toBeGreaterThan(0);
 
   const downloadPath = await download.path();
   expect(downloadPath).toBeTruthy();
@@ -164,16 +171,26 @@ test('downloads a composited result screenshot', async ({ page }) => {
 test('records the race canvas to a downloadable video', async ({ page }) => {
   await page.goto('/');
   const supported = await page.evaluate(() => {
-    const canvas = document.querySelector('canvas');
-    return typeof MediaRecorder !== 'undefined' && typeof canvas?.captureStream === 'function';
+    return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
   });
 
   test.skip(!supported, 'MediaRecorder canvas capture is not available in this browser');
   await expect(page.locator('#toggle-recording')).toBeEnabled();
+  await page.locator('#start-tournament').click();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.runner-tag')].some(
+      (element) => element.textContent?.trim() && Number(window.getComputedStyle(element).opacity) > 0.03
+    )
+  );
 
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#toggle-recording').click();
   await expect(page.locator('#race-stage')).toHaveAttribute('data-recording', 'active');
+  await expect
+    .poll(async () => Number((await page.locator('#race-stage').getAttribute('data-recording-runner-labels')) ?? 0), {
+      timeout: 5_000
+    })
+    .toBeGreaterThan(0);
   await page.waitForTimeout(1200);
   await page.locator('#toggle-recording').click();
   const download = await downloadPromise;
@@ -373,16 +390,20 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
 test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await page.locator('#seed-input').fill('광폭빠름-00127');
+  await page.locator('#seed-input').fill('광폭빠름-00001');
   await page.locator('#start-tournament').click();
 
-  await page.waitForFunction(() => document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy', undefined, {
-    timeout: 35_000
-  });
+  await page.waitForFunction(
+    () =>
+      document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
+      [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('광폭 질주')),
+    undefined,
+    { timeout: 35_000 }
+  );
 
   await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
-  await expect(page.locator('.runner-tag.skill')).toContainText('광폭 질주');
+  await expect(page.locator('.runner-tag.skill').filter({ hasText: '광폭 질주' })).toBeVisible();
   await page.screenshot({
     path: 'test-results/frenzy-cutscene.png',
     fullPage: true
