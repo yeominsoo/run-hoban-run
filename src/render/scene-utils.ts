@@ -14,6 +14,10 @@ export function disposeObject(object: THREE.Object3D) {
       return;
     }
 
+    if (child.userData.preserveSharedAsset) {
+      return;
+    }
+
     child.geometry.dispose();
 
     if (Array.isArray(child.material)) {

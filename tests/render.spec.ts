@@ -276,10 +276,18 @@ test('shows an immediate loading state before the app bundle is ready', async ({
 
 test('uses a faster default race pace and exposes upgraded racer visuals', async ({ page }) => {
   await page.goto('/');
+  const raceStage = page.locator('#race-stage');
+
   await expect(page.locator('#race-speed-select')).toHaveCount(0);
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-race-pace', '1.25');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-horse-visual-style', 'flashy-racehorse-v2');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-rider-visual-style', 'jockey-silks-v2');
+  await expect(raceStage).toHaveAttribute('data-race-pace', '1.25');
+  await expect(raceStage).toHaveAttribute('data-horse-asset', 'quaternius-ultimate-animated-animal-horse');
+  await expect(raceStage).toHaveAttribute('data-rider-asset', 'quaternius-rpg-character-monk-rider');
+  await expect(raceStage).toHaveAttribute('data-horse-asset-license', 'CC0-1.0');
+  await expect(raceStage).toHaveAttribute('data-rider-asset-license', 'CC0-1.0');
+  await expect(raceStage).toHaveAttribute('data-horse-asset-status', 'loaded', { timeout: 10_000 });
+  await expect(raceStage).toHaveAttribute('data-rider-asset-status', 'loaded', { timeout: 10_000 });
+  await expect(raceStage).toHaveAttribute('data-horse-visual-style', 'cc0-gltf-asset');
+  await expect(raceStage).toHaveAttribute('data-rider-visual-style', 'cc0-gltf-asset');
 
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-summary')).not.toContainText('속도');
