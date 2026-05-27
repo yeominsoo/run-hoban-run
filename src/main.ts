@@ -15,7 +15,6 @@ import {
   type TournamentResult
 } from './game/rules';
 import { FRENZY_PARTICLE_TEXTURES } from './assets/frenzy';
-import { MILITARY_HELICOPTER_ASSET_URL } from './assets/helicopter';
 import {
   createBulletMesh,
   createHelicopterSniperRig,
@@ -84,6 +83,22 @@ type FrenzyVortexParts = {
 type FrenzyFireParts = {
   root: THREE.Group;
   flames: THREE.Mesh[];
+  materials: THREE.MeshBasicMaterial[];
+};
+
+type DanceMirrorBallParts = {
+  root: THREE.Group;
+  ball: THREE.Mesh;
+  beams: THREE.Mesh[];
+  sparkles: THREE.Mesh[];
+  materials: THREE.MeshBasicMaterial[];
+};
+
+type FlatGlideParts = {
+  root: THREE.Group;
+  streaks: THREE.Mesh[];
+  ripples: THREE.Mesh[];
+  dust: THREE.Mesh[];
   materials: THREE.MeshBasicMaterial[];
 };
 
@@ -253,7 +268,7 @@ const overviewCameraZoomMin = 0.72;
 const overviewCameraZoomMax = 1.65;
 const frenzyTextureLoader = new THREE.TextureLoader();
 let frenzyParticleTextures: THREE.Texture[] | null = null;
-let helicopterVisualPromise: Promise<'loaded' | 'fallback'> | null = null;
+let helicopterVisualPromise: Promise<'generated'> | null = null;
 let helicopterVisualLoadToken = 0;
 
 function getFrenzyParticleTextures() {
@@ -967,6 +982,158 @@ function createFrenzyVortex(accentColor: number): FrenzyVortexParts {
   return { root, rings, dust, smokeSprites, smokeMaterials };
 }
 
+function createDanceMirrorBall(accentColor: number): DanceMirrorBallParts {
+  const root = new THREE.Group();
+  const beams: THREE.Mesh[] = [];
+  const sparkles: THREE.Mesh[] = [];
+  const materials: THREE.MeshBasicMaterial[] = [];
+  const beamColors = [0xffffff, accentColor, 0x74d7ff, 0xff78cf, 0xfff06a];
+
+  root.visible = false;
+  root.position.set(-0.34, 2.78, -0.16);
+
+  const hangerMaterial = new THREE.MeshBasicMaterial({ color: 0xdce7f2, transparent: true, opacity: 0.54 });
+  const hanger = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.96, 8), hangerMaterial);
+  hanger.position.y = 0.66;
+  root.add(hanger);
+  materials.push(hangerMaterial);
+
+  const ball = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.46, 2),
+    new THREE.MeshStandardMaterial({
+      color: 0xdfe8ff,
+      metalness: 0.72,
+      roughness: 0.18,
+      emissive: 0x607dff,
+      emissiveIntensity: 0.28
+    })
+  );
+  ball.position.y = 0.1;
+  ball.castShadow = true;
+  root.add(ball);
+
+  const tileMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false
+  });
+  const tiles = new THREE.Mesh(new THREE.IcosahedronGeometry(0.476, 2), tileMaterial);
+  tiles.name = 'dance-mirrorball-tiles';
+  tiles.position.copy(ball.position);
+  root.add(tiles);
+  materials.push(tileMaterial);
+
+  for (let index = 0; index < 6; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: beamColors[index % beamColors.length] ?? 0xffffff,
+      transparent: true,
+      opacity: 0.12,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide
+    });
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(0.18, 1.18, 4, 1, true), material);
+    beam.userData.phase = index * 0.72;
+    beam.position.set(Math.cos(index * 1.05) * 0.52, -0.72, Math.sin(index * 1.05) * 0.52);
+    beam.rotation.x = Math.PI + 0.58 + Math.sin(index) * 0.1;
+    beam.rotation.z = index * 1.05;
+    beam.renderOrder = 9;
+    root.add(beam);
+    beams.push(beam);
+    materials.push(material);
+  }
+
+  for (let index = 0; index < 14; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: beamColors[(index + 1) % beamColors.length] ?? 0xffffff,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+      depthTest: false
+    });
+    const sparkle = new THREE.Mesh(new THREE.SphereGeometry(0.035 + (index % 3) * 0.01, 8, 6), material);
+    sparkle.userData.phase = index * 0.53;
+    sparkle.renderOrder = 10;
+    root.add(sparkle);
+    sparkles.push(sparkle);
+    materials.push(material);
+  }
+
+  materials.forEach((material) => {
+    material.userData.baseOpacity = material.opacity;
+  });
+
+  return { root, ball, beams, sparkles, materials };
+}
+
+function createFlatGlideEffect(accentColor: number): FlatGlideParts {
+  const root = new THREE.Group();
+  const streaks: THREE.Mesh[] = [];
+  const ripples: THREE.Mesh[] = [];
+  const dust: THREE.Mesh[] = [];
+  const materials: THREE.MeshBasicMaterial[] = [];
+  const trailColors = [0xff4d6d, 0xff9f1c, 0xffe45c, 0x52d66b, 0x54d8ff, 0x5f7cff, 0xb86cff];
+
+  root.visible = false;
+  root.position.set(-0.58, -0.22, 0);
+
+  for (let index = 0; index < 9; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: trailColors[index % trailColors.length] ?? accentColor,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide
+    });
+    const streak = new THREE.Mesh(new THREE.BoxGeometry(1.58 + (index % 3) * 0.5, 0.034, 0.068), material);
+    streak.userData.phase = index * 0.47;
+    streak.userData.baseZ = (index - 4) * 0.16;
+    streak.userData.baseLength = 1.58 + (index % 3) * 0.5;
+    streak.renderOrder = 11;
+    root.add(streak);
+    streaks.push(streak);
+    materials.push(material);
+  }
+
+  for (let index = 0; index < 4; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index % 2 === 0 ? 0xffffff : 0x8fe8ff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false
+    });
+    const ripple = new THREE.Mesh(new THREE.TorusGeometry(0.34 + index * 0.08, 0.018, 8, 64), material);
+    ripple.rotation.x = Math.PI / 2;
+    ripple.userData.phase = index * 0.23;
+    ripple.renderOrder = 7;
+    root.add(ripple);
+    ripples.push(ripple);
+    materials.push(material);
+  }
+
+  for (let index = 0; index < 12; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index % 3 === 0 ? 0xffffff : (trailColors[index % trailColors.length] ?? 0xb9f2ff),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false
+    });
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.035 + (index % 4) * 0.01, 8, 6), material);
+    puff.userData.phase = index * 0.39;
+    puff.renderOrder = 10;
+    root.add(puff);
+    dust.push(puff);
+    materials.push(material);
+  }
+
+  return { root, streaks, ripples, dust, materials };
+}
+
 function createRider(accentColor: number): RiderParts {
   const root = new THREE.Group();
   const skinMaterial = new THREE.MeshStandardMaterial({ color: 0xf4d6b0, roughness: 0.52 });
@@ -1116,11 +1283,13 @@ function addPattern(group: THREE.Group, pattern: HorseProfile['pattern'], materi
   }
 
   for (const x of [-0.42, 0.02, 0.46]) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.74, 1.08), material);
-    stripe.position.set(x, 0.12, 0);
-    stripe.rotation.z = -0.25;
-    stripe.castShadow = true;
-    group.add(stripe);
+    for (const z of [-0.47, 0.47]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.055), material);
+      stripe.position.set(x, 0.18, z);
+      stripe.rotation.z = -0.24;
+      stripe.castShadow = true;
+      group.add(stripe);
+    }
   }
 }
 
@@ -1237,6 +1406,8 @@ function updateRace(delta: number) {
       animateHorseStride(runner, 0, false, 1);
       applySkillPose(runner, false);
       updateFrenzyVortex(runner, false);
+      updateDanceMirrorBall(runner, false);
+      updateFlatGlideEffect(runner, false);
       updateFrenzyFire(runner, false);
       updateRocketFart(runner, false);
       updateRunnerLabel(runner, false);
@@ -1244,6 +1415,10 @@ function updateRace(delta: number) {
     updateHelicopterAnimation([]);
     updateFrenzySnorts(null);
     raceStage.dataset.frenzy = 'idle';
+    raceStage.dataset.frenzyVortex = 'idle';
+    raceStage.dataset.frenzySpin = 'idle';
+    raceStage.dataset.mirrorBall = 'idle';
+    raceStage.dataset.flatGlide = 'idle';
     raceStage.dataset.rocketFart = 'idle';
     updateCamera(null, null);
     updateHelicopterFrameState();
@@ -1267,14 +1442,22 @@ function updateRace(delta: number) {
     const progress = raceProgress.progress;
     const bob = Math.sin(raceElapsed * 5.4 * raceProgress.multiplier + runner.phase) * 0.14;
     const laneSway = Math.sin(raceElapsed * 1.6 * raceProgress.multiplier + runner.phase) * 0.1;
-    const activeSkill = !eliminatedNow && isSkillActive(runner.placement);
-    const frenzyActive = !eliminatedNow && isFrenzySkillActive(runner.placement);
+    const activeSkillEvent = getActiveSkillEvent(runner.placement);
+    const activeFrenzySkillEvent = getActiveFrenzySkillEvent(runner.placement);
+    const activeSkill = !eliminatedNow && Boolean(activeSkillEvent);
+    const frenzyActive = !eliminatedNow && Boolean(activeFrenzySkillEvent);
+    const frenzyVortexActive =
+      frenzyActive &&
+      activeFrenzySkillEvent?.skill.pose !== 'dance' &&
+      activeFrenzySkillEvent?.skill.pose !== 'lie-flat';
+    const mirrorBallActive = activeSkill && activeSkillEvent?.skill.pose === 'dance';
+    const flatGlideActive = activeSkill && activeSkillEvent?.skill.pose === 'lie-flat';
     const skillPulse = frenzyActive ? 1 + Math.sin(raceElapsed * 16) * 0.065 : activeSkill ? 1 + Math.sin(raceElapsed * 9) * 0.035 : 1;
 
     runner.mesh.position.x = startX + progress * (finishX - startX);
     runner.mesh.position.z = laneZ(runner.lane, visualRunners.length) + (eliminatedNow ? 0 : laneSway);
     runner.mesh.position.y = eliminatedNow ? lerpNumber(horseBaseY, 0.42, fallProgress) : horseBaseY + Math.abs(bob) * 0.24;
-    if (frenzyActive) {
+    if (frenzyVortexActive) {
       const spin = raceElapsed * (10.8 + raceProgress.multiplier * 0.42) + runner.phase;
       runner.mesh.rotation.x = Math.sin(spin * 0.72) * 0.16;
       runner.mesh.rotation.y = spin;
@@ -1290,13 +1473,25 @@ function updateRace(delta: number) {
 
     animateHorseStride(runner, progress, eliminatedNow, frenzyActive ? raceProgress.multiplier * 1.7 : raceProgress.multiplier);
     applySkillPose(runner, activeSkill);
-    updateFrenzyVortex(runner, frenzyActive && usesDetailedGraphics());
+    updateFrenzyVortex(runner, frenzyVortexActive && usesDetailedGraphics());
+    updateDanceMirrorBall(runner, mirrorBallActive && usesDetailedGraphics());
+    updateFlatGlideEffect(runner, flatGlideActive && usesDetailedGraphics());
     updateFrenzyFire(runner, frenzyActive);
-    updateRocketFart(runner, !eliminatedNow && getActiveSkillEvent(runner.placement)?.skill.id === 'rocket-start');
+    updateRocketFart(runner, !eliminatedNow && activeSkillEvent?.skill.id === 'rocket-start');
     updateRunnerLabel(runner, activeSkill);
   });
 
   raceStage.dataset.frenzy = visualRunners.some((runner) => !runner.eliminated && isFrenzySkillActive(runner.placement)) ? 'active' : 'idle';
+  raceStage.dataset.frenzyVortex = visualRunners.some((runner) => !runner.eliminated && shouldShowFrenzyVortex(runner.placement))
+    ? 'active'
+    : 'idle';
+  raceStage.dataset.frenzySpin = raceStage.dataset.frenzyVortex;
+  raceStage.dataset.mirrorBall = visualRunners.some((runner) => !runner.eliminated && getActiveSkillEvent(runner.placement)?.skill.pose === 'dance')
+    ? 'active'
+    : 'idle';
+  raceStage.dataset.flatGlide = visualRunners.some((runner) => !runner.eliminated && getActiveSkillEvent(runner.placement)?.skill.pose === 'lie-flat')
+    ? 'active'
+    : 'idle';
   raceStage.dataset.rocketFart = visualRunners.some(
     (runner) => !runner.eliminated && getActiveSkillEvent(runner.placement)?.skill.id === 'rocket-start'
   )
@@ -1351,7 +1546,7 @@ function updateHelicopterState(hazardEvents: HazardEvent[]) {
 function ensureHelicopterVisualLoading() {
   if (!usesDetailedGraphics()) {
     resetHelicopterVisualToFallback();
-    return Promise.resolve<'fallback'>('fallback');
+    return Promise.resolve<'generated'>('generated');
   }
 
   if (!helicopterVisualPromise) {
@@ -1361,7 +1556,7 @@ function ensureHelicopterVisualLoading() {
       () => loadToken === helicopterVisualLoadToken && usesDetailedGraphics()
     ).then((status) => {
       if (loadToken !== helicopterVisualLoadToken || !usesDetailedGraphics()) {
-        return 'fallback';
+        return 'generated';
       }
 
       raceStage.dataset.helicopterAsset = status;
@@ -1375,7 +1570,7 @@ function ensureHelicopterVisualLoading() {
 function resetHelicopterVisualToFallback() {
   helicopterVisualLoadToken += 1;
   helicopterVisualPromise = null;
-  raceStage.dataset.helicopterAsset = 'fallback';
+  raceStage.dataset.helicopterAsset = 'generated';
   installHelicopterFallback(helicopterAssetSlot);
 }
 
@@ -1534,11 +1729,16 @@ function resetHelicopterModelDiagnostics() {
   raceStage.dataset.helicopterTailRotorAttached = 'false';
   raceStage.dataset.helicopterMuzzleForward = 'false';
   raceStage.dataset.helicopterShotOrigin = 'unknown';
+  raceStage.dataset.helicopterGeneratedRootCount = '0';
+  raceStage.dataset.helicopterMainRotorCount = '0';
+  raceStage.dataset.helicopterTailRotorCount = '0';
+  raceStage.dataset.helicopterStaticRotorBladeCount = '0';
 }
 
 function updateHelicopterModelDiagnostics(targetPosition: THREE.Vector3, muzzleWorldPosition: THREE.Vector3) {
   helicopterGroup.updateMatrixWorld(true);
   helicopterSniperRig.updateMatrixWorld(true);
+  const assemblyCounts = getHelicopterAssemblyCounts();
 
   const nosePosition = helicopterGroup.localToWorld(new THREE.Vector3(helicopterNoseLocalX, 0, 0));
   const tailPosition = helicopterGroup.localToWorld(new THREE.Vector3(helicopterTailLocalX, 0.12, 0));
@@ -1552,7 +1752,16 @@ function updateHelicopterModelDiagnostics(targetPosition: THREE.Vector3, muzzleW
   const mainRotorClear = mainRotorClearance > 0.55;
   const tailRotorAttached = tailRotorGap < 0.18;
   const noseFacesTarget = noseTargetBias > 0.2;
+  const singleRotorAssembly =
+    assemblyCounts.generatedRootCount === 1 &&
+    assemblyCounts.mainRotorCount === 1 &&
+    assemblyCounts.tailRotorCount === 1 &&
+    assemblyCounts.staticRotorBladeCount === 0;
 
+  raceStage.dataset.helicopterGeneratedRootCount = String(assemblyCounts.generatedRootCount);
+  raceStage.dataset.helicopterMainRotorCount = String(assemblyCounts.mainRotorCount);
+  raceStage.dataset.helicopterTailRotorCount = String(assemblyCounts.tailRotorCount);
+  raceStage.dataset.helicopterStaticRotorBladeCount = String(assemblyCounts.staticRotorBladeCount);
   raceStage.dataset.helicopterMainRotorClearance = mainRotorClearance.toFixed(3);
   raceStage.dataset.helicopterTailRotorGap = tailRotorGap.toFixed(3);
   raceStage.dataset.helicopterMuzzleLocalX = muzzleLocal.x.toFixed(3);
@@ -1561,7 +1770,51 @@ function updateHelicopterModelDiagnostics(targetPosition: THREE.Vector3, muzzleW
   raceStage.dataset.helicopterTailRotorAttached = String(tailRotorAttached);
   raceStage.dataset.helicopterMuzzleForward = String(muzzleForward);
   raceStage.dataset.helicopterShotOrigin = muzzleForward && noseFacesTarget ? 'nose' : 'tail';
-  raceStage.dataset.helicopterModelClean = String(mainRotorClear && tailRotorAttached && muzzleForward && noseFacesTarget);
+  raceStage.dataset.helicopterModelClean = String(singleRotorAssembly && mainRotorClear && tailRotorAttached && muzzleForward && noseFacesTarget);
+}
+
+function getHelicopterAssemblyCounts() {
+  let mainRotorCount = 0;
+  let tailRotorCount = 0;
+  let staticRotorBladeCount = 0;
+
+  helicopterAssetSlot.traverse((child) => {
+    if (child.name === 'main-rotor') {
+      mainRotorCount += 1;
+    }
+
+    if (child.name === 'tail-rotor') {
+      tailRotorCount += 1;
+    }
+
+    if (
+      (child.name === 'main-rotor-blade' && !hasAncestorNamed(child, 'main-rotor')) ||
+      (child.name === 'tail-rotor-blade' && !hasAncestorNamed(child, 'tail-rotor'))
+    ) {
+      staticRotorBladeCount += 1;
+    }
+  });
+
+  return {
+    generatedRootCount: helicopterAssetSlot.children.length,
+    mainRotorCount,
+    tailRotorCount,
+    staticRotorBladeCount
+  };
+}
+
+function hasAncestorNamed(object: THREE.Object3D, name: string) {
+  let parent = object.parent;
+
+  while (parent) {
+    if (parent.name === name) {
+      return true;
+    }
+
+    parent = parent.parent;
+  }
+
+  return false;
 }
 
 function getProjectedHelicopterVisualBounds() {
@@ -1876,6 +2129,138 @@ function updateFrenzyVortex(runner: VisualRunner, active: boolean) {
   });
 }
 
+function ensureDanceMirrorBall(runner: VisualRunner) {
+  const existing = runner.mesh.userData.danceMirrorBall as DanceMirrorBallParts | undefined;
+
+  if (existing) {
+    return existing;
+  }
+
+  const mirrorBall = createDanceMirrorBall(runner.placement.entry.profile.secondaryColor);
+  runner.mesh.add(mirrorBall.root);
+  runner.mesh.userData.danceMirrorBall = mirrorBall;
+  return mirrorBall;
+}
+
+function updateDanceMirrorBall(runner: VisualRunner, active: boolean) {
+  const mirrorBall = active ? ensureDanceMirrorBall(runner) : (runner.mesh.userData.danceMirrorBall as DanceMirrorBallParts | undefined);
+
+  if (!mirrorBall) {
+    return;
+  }
+
+  mirrorBall.root.visible = active;
+
+  if (!active) {
+    mirrorBall.materials.forEach((material) => {
+      material.opacity = 0;
+    });
+    return;
+  }
+
+  mirrorBall.materials.forEach((material) => {
+    material.opacity = Number(material.userData.baseOpacity ?? 0.5);
+  });
+  mirrorBall.root.position.y = 2.78 + Math.sin(raceElapsed * 4.5 + runner.phase) * 0.08;
+  mirrorBall.root.rotation.y = raceElapsed * 2.8 + runner.phase;
+  mirrorBall.ball.rotation.set(raceElapsed * 2.4, raceElapsed * 5.6, raceElapsed * 1.7);
+
+  mirrorBall.beams.forEach((beam, index) => {
+    const phase = Number(beam.userData.phase ?? 0);
+    beam.rotation.z = raceElapsed * (1.4 + index * 0.08) + phase;
+    beam.scale.set(1 + Math.sin(raceElapsed * 7 + phase) * 0.16, 1, 1 + Math.cos(raceElapsed * 6 + phase) * 0.12);
+
+    const material = beam.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = 0.1 + Math.sin(raceElapsed * 8 + phase) * 0.035;
+    }
+  });
+
+  mirrorBall.sparkles.forEach((sparkle, index) => {
+    const phase = Number(sparkle.userData.phase ?? 0);
+    const angle = raceElapsed * (3.4 + (index % 5) * 0.18) + phase;
+    const radius = 0.48 + (index % 4) * 0.11;
+    sparkle.position.set(Math.cos(angle) * radius, 0.02 + Math.sin(raceElapsed * 5 + phase) * 0.22, Math.sin(angle) * radius);
+    sparkle.scale.setScalar(0.82 + Math.sin(raceElapsed * 12 + phase) * 0.28);
+
+    const material = sparkle.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = 0.5 + Math.sin(raceElapsed * 10 + phase) * 0.24;
+    }
+  });
+}
+
+function ensureFlatGlideEffect(runner: VisualRunner) {
+  const existing = runner.mesh.userData.flatGlide as FlatGlideParts | undefined;
+
+  if (existing) {
+    return existing;
+  }
+
+  const glide = createFlatGlideEffect(runner.placement.entry.profile.secondaryColor);
+  runner.mesh.add(glide.root);
+  runner.mesh.userData.flatGlide = glide;
+  return glide;
+}
+
+function updateFlatGlideEffect(runner: VisualRunner, active: boolean) {
+  const glide = active ? ensureFlatGlideEffect(runner) : (runner.mesh.userData.flatGlide as FlatGlideParts | undefined);
+
+  if (!glide) {
+    return;
+  }
+
+  glide.root.visible = active;
+
+  if (!active) {
+    glide.materials.forEach((material) => {
+      material.opacity = 0;
+    });
+    return;
+  }
+
+  glide.root.rotation.y = Math.sin(raceElapsed * 5 + runner.phase) * 0.08;
+
+  glide.streaks.forEach((streak) => {
+    const phase = Number(streak.userData.phase ?? 0);
+    const cycle = (raceElapsed * 3.7 + phase) % 1;
+    const baseZ = Number(streak.userData.baseZ ?? 0);
+    const baseLength = Number(streak.userData.baseLength ?? 1);
+    streak.position.set(-0.42 - cycle * 1.7, 0.2 + Math.sin(raceElapsed * 11 + phase) * 0.026, baseZ + Math.sin(raceElapsed * 7 + phase) * 0.05);
+    streak.scale.set(0.68 + cycle * 1.35, 1, 1);
+
+    const material = streak.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = (0.78 - cycle * 0.52) * (baseLength / 2.55);
+    }
+  });
+
+  glide.ripples.forEach((ripple, index) => {
+    const phase = Number(ripple.userData.phase ?? 0);
+    const cycle = (raceElapsed * 1.65 + phase) % 1;
+    ripple.position.set(-0.16 - cycle * 0.62, 0.006 + index * 0.005, Math.sin(raceElapsed * 4 + phase) * 0.04);
+    ripple.scale.set(1.3 + cycle * 2.55, 0.34 + cycle * 0.42, 0.58 + cycle * 0.42);
+
+    const material = ripple.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = Math.max(0, 0.5 * (1 - cycle));
+    }
+  });
+
+  glide.dust.forEach((puff, index) => {
+    const phase = Number(puff.userData.phase ?? 0);
+    const cycle = (raceElapsed * 2.35 + phase) % 1;
+    const side = index % 2 === 0 ? 1 : -1;
+    puff.position.set(-0.88 - cycle * 1.22, 0.14 + cycle * 0.22, side * (0.3 + (index % 5) * 0.1 + cycle * 0.28));
+    puff.scale.setScalar(0.78 + cycle * 1.65);
+
+    const material = puff.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = Math.max(0, 0.44 * (1 - cycle));
+    }
+  });
+}
+
 function ensureFrenzyFire(runner: VisualRunner) {
   const existing = runner.mesh.userData.frenzyFire as FrenzyFireParts | undefined;
 
@@ -2022,12 +2407,13 @@ function updateFrenzySnorts(runner: VisualRunner | null) {
   frenzySnortGroup.visible = visible;
 }
 
-function isSkillActive(placement: RacePlacement) {
-  return Boolean(getActiveSkillEvent(placement));
-}
-
 function isFrenzySkillActive(placement: RacePlacement) {
   return Boolean(getActiveFrenzySkillEvent(placement));
+}
+
+function shouldShowFrenzyVortex(placement: RacePlacement) {
+  const event = getActiveFrenzySkillEvent(placement);
+  return Boolean(event && event.skill.pose !== 'dance' && event.skill.pose !== 'lie-flat');
 }
 
 function getActiveSkillEvent(placement: RacePlacement, leadSeconds = 0) {
@@ -2226,7 +2612,7 @@ function applySkillPose(runner: VisualRunner, active: boolean) {
   const pose = getActiveSkillEvent(runner.placement)?.skill.pose;
 
   if (effect) {
-    effect.visible = active;
+    effect.visible = active && pose !== 'dance' && pose !== 'lie-flat';
     effect.rotation.z += active ? 0.12 : 0;
   }
 
@@ -3480,8 +3866,8 @@ window.addEventListener('beforeunload', () => {
 window.addEventListener('resize', resize);
 
 initializeCaptureControls();
-raceStage.dataset.helicopterAsset = 'fallback';
-raceStage.dataset.helicopterAssetUrl = MILITARY_HELICOPTER_ASSET_URL;
+raceStage.dataset.helicopterAsset = 'generated';
+raceStage.dataset.helicopterAssetUrl = 'generated';
 installHelicopterFallback(helicopterAssetSlot);
 applyGraphicsQuality();
 prepareTournament();

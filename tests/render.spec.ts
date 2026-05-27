@@ -121,20 +121,25 @@ for (const viewport of viewports) {
   });
 }
 
-test('loads the military helicopter GLB asset into the scene after race start', async ({ page }) => {
+test('uses a single generated helicopter model without loading the GLB asset', async ({ page }) => {
+  const modelRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    const viteUrlImportProbe = url.searchParams.has('import') || url.searchParams.has('url');
+
+    if (/freepixel-helicopter.*\.glb$/.test(url.pathname) && !viteUrlImportProbe) {
+      modelRequests.push(url.pathname);
+    }
+  });
+
   await page.goto('/');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'fallback');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
   await page.locator('#start-tournament').click();
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'loaded', { timeout: 10_000 });
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
 
   const assetUrl = await page.locator('#race-stage').getAttribute('data-helicopter-asset-url');
-  expect(assetUrl).toMatch(/freepixel-helicopter.*\.glb/);
-
-  const response = await page.request.get(assetUrl ?? '');
-  expect(response.ok()).toBe(true);
-  const byteLength = (await response.body()).byteLength;
-  expect(byteLength).toBeGreaterThan(1_000_000);
-  expect(byteLength).toBeLessThan(2_000_000);
+  expect(assetUrl).toBe('generated');
+  expect(modelRequests).toEqual([]);
 });
 
 test('serves the frenzy particle texture assets', async ({ page }) => {
@@ -175,7 +180,7 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
   expect(deferredAssetRequests).toEqual([]);
 });
 
-test('keeps performance graphics on fallback assets during race start', async ({ page }) => {
+test('keeps performance graphics on generated assets during race start', async ({ page }) => {
   const deferredAssetRequests: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
@@ -190,7 +195,7 @@ test('keeps performance graphics on fallback assets during race start', async ({
   await page.locator('#graphics-select').selectOption('performance');
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveAttribute('data-graphics-quality', 'performance');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'fallback');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
   await page.waitForTimeout(3000);
 
   expect(deferredAssetRequests).toEqual([]);
@@ -383,6 +388,10 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
     const distance = Number(stage?.getAttribute('data-helicopter-camera-distance'));
     const mainRotorClearance = Number(stage?.getAttribute('data-helicopter-main-rotor-clearance'));
     const tailRotorGap = Number(stage?.getAttribute('data-helicopter-tail-rotor-gap'));
+    const generatedRootCount = Number(stage?.getAttribute('data-helicopter-generated-root-count'));
+    const mainRotorCount = Number(stage?.getAttribute('data-helicopter-main-rotor-count'));
+    const tailRotorCount = Number(stage?.getAttribute('data-helicopter-tail-rotor-count'));
+    const staticRotorBladeCount = Number(stage?.getAttribute('data-helicopter-static-rotor-blade-count'));
     const muzzleLocalX = Number(stage?.getAttribute('data-helicopter-muzzle-local-x'));
     const noseTargetBias = Number(stage?.getAttribute('data-helicopter-nose-target-bias'));
     return (
@@ -399,6 +408,10 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       Number.isFinite(distance) &&
       Number.isFinite(mainRotorClearance) &&
       Number.isFinite(tailRotorGap) &&
+      generatedRootCount === 1 &&
+      mainRotorCount === 1 &&
+      tailRotorCount === 1 &&
+      staticRotorBladeCount === 0 &&
       Number.isFinite(muzzleLocalX) &&
       Number.isFinite(noseTargetBias) &&
       x > 0.43 &&
@@ -436,6 +449,10 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
       helicopterShotOrigin: stage?.getAttribute('data-helicopter-shot-origin'),
       helicopterMainRotorClearance: Number(stage?.getAttribute('data-helicopter-main-rotor-clearance')),
       helicopterTailRotorGap: Number(stage?.getAttribute('data-helicopter-tail-rotor-gap')),
+      helicopterGeneratedRootCount: Number(stage?.getAttribute('data-helicopter-generated-root-count')),
+      helicopterMainRotorCount: Number(stage?.getAttribute('data-helicopter-main-rotor-count')),
+      helicopterTailRotorCount: Number(stage?.getAttribute('data-helicopter-tail-rotor-count')),
+      helicopterStaticRotorBladeCount: Number(stage?.getAttribute('data-helicopter-static-rotor-blade-count')),
       helicopterMuzzleLocalX: Number(stage?.getAttribute('data-helicopter-muzzle-local-x')),
       helicopterNoseTargetBias: Number(stage?.getAttribute('data-helicopter-nose-target-bias')),
       leaderboardBottomSpace: leaderboardBox ? window.innerHeight - leaderboardBox.bottom : -1
@@ -457,6 +474,10 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
   expect(frame.helicopterCameraDistance).toBeLessThan(28);
   expect(frame.helicopterMainRotorClearance).toBeGreaterThan(0.55);
   expect(frame.helicopterTailRotorGap).toBeLessThan(0.18);
+  expect(frame.helicopterGeneratedRootCount).toBe(1);
+  expect(frame.helicopterMainRotorCount).toBe(1);
+  expect(frame.helicopterTailRotorCount).toBe(1);
+  expect(frame.helicopterStaticRotorBladeCount).toBe(0);
   expect(frame.helicopterMuzzleLocalX).toBeGreaterThan(1.25);
   expect(frame.helicopterNoseTargetBias).toBeGreaterThan(0.2);
   expect(frame.leaderboardBottomSpace).toBeGreaterThan(52);
@@ -476,14 +497,20 @@ test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
   await page.waitForFunction(
     () =>
       document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy') === 'active' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy-vortex') === 'active' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy-spin') === 'active' &&
+      document.querySelector('#race-stage')?.getAttribute('data-mirror-ball') === 'idle' &&
       [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('광폭 질주')),
     undefined,
     { timeout: 35_000 }
   );
 
   await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-vortex', 'active');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-spin', 'active');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-mirror-ball', 'idle');
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
-  await expect(page.locator('.runner-tag.skill').filter({ hasText: '광폭 질주' }).first()).toBeVisible();
   await page.screenshot({
     path: 'test-results/frenzy-cutscene.png',
     fullPage: true
@@ -499,15 +526,23 @@ test('plays dance skills with the frenzy mode effect active', async ({ page }) =
   await page.waitForFunction(
     () =>
       document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy-vortex') === 'idle' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy-spin') === 'idle' &&
+      document.querySelector('#race-stage')?.getAttribute('data-mirror-ball') === 'active' &&
+      document.querySelector('#race-stage')?.getAttribute('data-flat-glide') === 'idle' &&
       [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('코너 댄스')),
     undefined,
     { timeout: 40_000 }
   );
 
   await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-vortex', 'idle');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-spin', 'idle');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-mirror-ball', 'active');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-flat-glide', 'idle');
   await expect(page.locator('.runner-tag.skill').filter({ hasText: '코너 댄스' })).toBeVisible();
   await page.screenshot({
-    path: 'test-results/dance-frenzy-cutscene.png',
+    path: 'test-results/dance-mirrorball-cutscene.png',
     fullPage: true
   });
 });
@@ -523,12 +558,20 @@ test('plays lie-flat skills with the frenzy mode speed effect active', async ({ 
     () =>
       document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
       document.querySelector('#race-stage')?.getAttribute('data-frenzy') === 'active' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy-vortex') === 'idle' &&
+      document.querySelector('#race-stage')?.getAttribute('data-frenzy-spin') === 'idle' &&
+      document.querySelector('#race-stage')?.getAttribute('data-mirror-ball') === 'idle' &&
+      document.querySelector('#race-stage')?.getAttribute('data-flat-glide') === 'active' &&
       [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('납작 활주')),
     undefined,
     { timeout: 45_000 }
   );
 
   await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-vortex', 'idle');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-spin', 'idle');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-mirror-ball', 'idle');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-flat-glide', 'active');
   await expect(page.locator('.runner-tag.skill').filter({ hasText: '납작 활주' })).toBeVisible();
   await page.screenshot({
     path: 'test-results/lie-flat-frenzy-cutscene.png',
@@ -605,6 +648,10 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
       mainRotorClear: stage?.getAttribute('data-helicopter-main-rotor-clear'),
       tailRotorAttached: stage?.getAttribute('data-helicopter-tail-rotor-attached'),
       muzzleForward: stage?.getAttribute('data-helicopter-muzzle-forward'),
+      generatedRootCount: Number(stage?.getAttribute('data-helicopter-generated-root-count')),
+      mainRotorCount: Number(stage?.getAttribute('data-helicopter-main-rotor-count')),
+      tailRotorCount: Number(stage?.getAttribute('data-helicopter-tail-rotor-count')),
+      staticRotorBladeCount: Number(stage?.getAttribute('data-helicopter-static-rotor-blade-count')),
       mainRotorClearance: Number(stage?.getAttribute('data-helicopter-main-rotor-clearance')),
       tailRotorGap: Number(stage?.getAttribute('data-helicopter-tail-rotor-gap')),
       muzzleLocalX: Number(stage?.getAttribute('data-helicopter-muzzle-local-x')),
@@ -617,6 +664,10 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
   expect(helicopterModel.mainRotorClear).toBe('true');
   expect(helicopterModel.tailRotorAttached).toBe('true');
   expect(helicopterModel.muzzleForward).toBe('true');
+  expect(helicopterModel.generatedRootCount).toBe(1);
+  expect(helicopterModel.mainRotorCount).toBe(1);
+  expect(helicopterModel.tailRotorCount).toBe(1);
+  expect(helicopterModel.staticRotorBladeCount).toBe(0);
   expect(helicopterModel.mainRotorClearance).toBeGreaterThan(0.55);
   expect(helicopterModel.tailRotorGap).toBeLessThan(0.18);
   expect(helicopterModel.muzzleLocalX).toBeGreaterThan(1.25);
