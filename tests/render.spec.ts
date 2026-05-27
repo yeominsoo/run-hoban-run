@@ -180,25 +180,25 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
   expect(deferredAssetRequests).toEqual([]);
 });
 
-test('keeps performance graphics on generated assets during race start', async ({ page }) => {
-  const deferredAssetRequests: string[] = [];
+test('uses detailed graphics as the only race graphics mode', async ({ page }) => {
+  const modelRequests: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
     const viteUrlImportProbe = url.searchParams.has('import') || url.searchParams.has('url');
 
-    if ((/freepixel-helicopter.*\.glb$/.test(url.pathname) && !viteUrlImportProbe) || url.pathname.includes('/assets/frenzy/')) {
-      deferredAssetRequests.push(url.pathname);
+    if (/freepixel-helicopter.*\.glb$/.test(url.pathname) && !viteUrlImportProbe) {
+      modelRequests.push(url.pathname);
     }
   });
 
   await page.goto('/');
-  await page.locator('#graphics-select').selectOption('performance');
+  await expect(page.locator('#graphics-select')).toHaveCount(0);
   await page.locator('#start-tournament').click();
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-graphics-quality', 'performance');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-graphics-quality', 'standard');
   await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
   await page.waitForTimeout(3000);
 
-  expect(deferredAssetRequests).toEqual([]);
+  expect(modelRequests).toEqual([]);
 });
 
 test('downloads a composited result screenshot', async ({ page }) => {

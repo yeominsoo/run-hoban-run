@@ -167,7 +167,6 @@ const winnerCountInput = query<HTMLInputElement>('#winner-count');
 const surfaceSelect = query<HTMLSelectElement>('#surface-select');
 const distanceSelect = query<HTMLSelectElement>('#distance-select');
 const conditionSelect = query<HTMLSelectElement>('#condition-select');
-const graphicsSelect = query<HTMLSelectElement>('#graphics-select');
 const sample18Button = query<HTMLButtonElement>('#sample-18');
 const sample64Button = query<HTMLButtonElement>('#sample-64');
 const startButton = query<HTMLButtonElement>('#start-tournament');
@@ -197,10 +196,8 @@ const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
   muddy: '불량'
 };
 const recentParticipantsStorageKey = 'run-hoban-run:recent-participants';
-const graphicsStorageKey = 'run-hoban-run:graphics-quality';
 
 participantInput.value = loadRecentParticipants() ?? createSampleParticipants(18).join('\n');
-graphicsSelect.value = loadGraphicsQuality();
 let lastFieldSizeMax = getRaceOptionBounds(normalizeParticipants(participantInput.value.split(/\r?\n/)).length).fieldSize.max;
 
 const scene = new THREE.Scene();
@@ -3014,38 +3011,16 @@ function saveRecentParticipants() {
   }
 }
 
-function loadGraphicsQuality() {
-  try {
-    const value = window.localStorage.getItem(graphicsStorageKey);
-    return value === 'performance' ? 'performance' : 'standard';
-  } catch {
-    return 'standard';
-  }
-}
-
-function saveGraphicsQuality() {
-  try {
-    window.localStorage.setItem(graphicsStorageKey, getGraphicsQuality());
-  } catch {
-    // Storage can be unavailable in private or restricted browser contexts.
-  }
-}
-
 function getGraphicsQuality() {
-  return graphicsSelect.value === 'performance' ? 'performance' : 'standard';
+  return 'standard';
 }
 
 function usesDetailedGraphics() {
-  return getGraphicsQuality() === 'standard';
+  return true;
 }
 
 function applyGraphicsQuality() {
   raceStage.dataset.graphicsQuality = getGraphicsQuality();
-
-  if (!usesDetailedGraphics()) {
-    resetHelicopterVisualToFallback();
-    return;
-  }
 
   if (raceStarted) {
     void ensureHelicopterVisualLoading();
@@ -3776,10 +3751,6 @@ participantInput.addEventListener('input', () => {
   syncOptionBounds();
 });
 fieldSizeInput.addEventListener('input', () => syncOptionBounds());
-graphicsSelect.addEventListener('change', () => {
-  saveGraphicsQuality();
-  applyGraphicsQuality();
-});
 startButton.addEventListener('click', startTournament);
 randomSeedButton.addEventListener('click', rollSeed);
 leaderboardList.addEventListener('click', (event) => {
