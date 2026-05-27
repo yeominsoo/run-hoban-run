@@ -208,6 +208,9 @@ const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
   muddy: '불량'
 };
 const recentParticipantsStorageKey = 'run-hoban-run:recent-participants';
+const horseVisualStyle = 'flashy-racehorse-v2';
+const riderVisualStyle = 'jockey-silks-v2';
+const defaultRacePaceMultiplier = 1.25;
 
 participantInput.value = loadRecentParticipants() ?? createSampleParticipants(18).join('\n');
 let lastFieldSizeMax = getRaceOptionBounds(normalizeParticipants(participantInput.value.split(/\r?\n/)).length).fieldSize.max;
@@ -776,11 +779,25 @@ function createCapsuleBetween(start: THREE.Vector3, end: THREE.Vector3, radius: 
 
 function createHorse(profile: HorseProfile) {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: profile.color, roughness: 0.62 });
-  const accentMaterial = new THREE.MeshStandardMaterial({ color: profile.secondaryColor, roughness: 0.7 });
+  const bodyMaterial = new THREE.MeshStandardMaterial({
+    color: profile.color,
+    roughness: 0.48,
+    metalness: 0.04,
+    emissive: profile.color,
+    emissiveIntensity: 0.04
+  });
+  const accentMaterial = new THREE.MeshStandardMaterial({
+    color: profile.secondaryColor,
+    roughness: 0.42,
+    metalness: 0.06,
+    emissive: profile.secondaryColor,
+    emissiveIntensity: 0.1
+  });
   const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x2d2020, roughness: 0.72 });
   const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x090909, roughness: 0.38 });
   const saddleMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.5 });
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: 0xfff06a, roughness: 0.3, metalness: 0.2, emissive: 0x8a5200, emissiveIntensity: 0.12 });
+  const whiteMaterial = new THREE.MeshStandardMaterial({ color: 0xf7fbff, roughness: 0.36 });
   const effectMaterial = new THREE.MeshBasicMaterial({
     color: profile.secondaryColor,
     transparent: true,
@@ -791,19 +808,19 @@ function createHorse(profile: HorseProfile) {
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.54, 2.24, 8, 18), bodyMaterial);
   body.rotation.z = Math.PI / 2;
   body.position.y = 0.25;
-  body.scale.set(1.32, 0.84, 0.72);
+  body.scale.set(1.42, 0.78, 0.66);
   body.castShadow = true;
   group.add(body);
 
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 12), bodyMaterial);
   chest.position.set(0.78, 0.36, 0);
-  chest.scale.set(0.9, 1.1, 0.82);
+  chest.scale.set(0.86, 1.16, 0.76);
   chest.castShadow = true;
   group.add(chest);
 
   const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.56, 18, 12), bodyMaterial);
   haunch.position.set(-0.88, 0.32, 0);
-  haunch.scale.set(1.08, 1.02, 0.9);
+  haunch.scale.set(1.12, 1, 0.82);
   haunch.castShadow = true;
   group.add(haunch);
 
@@ -852,18 +869,67 @@ function createHorse(profile: HorseProfile) {
 
   addPattern(group, profile.pattern, accentMaterial);
 
-  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.02, 0.14), darkMaterial);
-  mane.rotation.z = -0.62;
-  mane.position.set(0.93, 1.18, 0);
-  mane.castShadow = true;
-  group.add(mane);
+  for (const side of [-1, 1]) {
+    const bodyStripe = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.052, 0.045), trimMaterial);
+    bodyStripe.position.set(-0.04, 0.54, side * 0.5);
+    bodyStripe.rotation.z = -0.28;
+    bodyStripe.castShadow = true;
+    group.add(bodyStripe);
+
+    const flankBolt = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 3), trimMaterial);
+    flankBolt.position.set(-0.54, 0.5, side * 0.54);
+    flankBolt.rotation.set(Math.PI / 2, 0, side > 0 ? Math.PI * 0.38 : -Math.PI * 0.38);
+    flankBolt.scale.set(0.72, 1.34, 1);
+    flankBolt.castShadow = true;
+    group.add(flankBolt);
+
+    const cheekFlash = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.035, 0.035), trimMaterial);
+    cheekFlash.position.set(1.82, 1.24, side * 0.34);
+    cheekFlash.rotation.z = -0.18;
+    cheekFlash.castShadow = true;
+    group.add(cheekFlash);
+  }
+
+  for (let index = 0; index < 6; index += 1) {
+    const maneTuft = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.34, 7), index % 2 === 0 ? darkMaterial : accentMaterial);
+    maneTuft.position.set(0.72 + index * 0.11, 1.48 - index * 0.07, 0);
+    maneTuft.rotation.z = -0.72;
+    maneTuft.scale.set(0.8, 1, 0.62);
+    maneTuft.castShadow = true;
+    group.add(maneTuft);
+  }
+
+  const bridle = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.018, 6, 28), trimMaterial);
+  bridle.position.set(1.64, 1.18, 0);
+  bridle.rotation.y = Math.PI / 2;
+  bridle.scale.set(0.72, 1, 0.72);
+  bridle.castShadow = true;
+  group.add(bridle);
+
+  const saddleBlanket = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.065, 0.86), accentMaterial);
+  saddleBlanket.position.set(-0.08, 0.82, 0);
+  saddleBlanket.castShadow = true;
+  group.add(saddleBlanket);
+
+  for (const z of [-0.46, 0.46]) {
+    const blanketTrim = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.038, 0.035), trimMaterial);
+    blanketTrim.position.set(-0.08, 0.88, z);
+    blanketTrim.castShadow = true;
+    group.add(blanketTrim);
+  }
+
+  const numberBadge = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.028, 24), whiteMaterial);
+  numberBadge.position.set(-0.22, 0.9, 0.48);
+  numberBadge.rotation.x = Math.PI / 2;
+  numberBadge.castShadow = true;
+  group.add(numberBadge);
 
   const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.14, 0.72), saddleMaterial);
-  saddle.position.set(-0.06, 0.9, 0);
+  saddle.position.set(-0.06, 0.96, 0);
   saddle.castShadow = true;
   group.add(saddle);
 
-  const rider = createRider(profile.color);
+  const rider = createRider(profile.color, profile.secondaryColor);
   group.add(rider.root);
 
   const legParts: HorseLegParts[] = [];
@@ -899,6 +965,11 @@ function createHorse(profile: HorseProfile) {
       lowerLeg.position.set(x < 0 ? -0.02 : 0.02, -0.37, 0);
       lowerLeg.castShadow = true;
       kneeJoint.add(lowerLeg);
+
+      const legWrap = new THREE.Mesh(new THREE.CapsuleGeometry(0.083, 0.26, 4, 8), x > 0 ? trimMaterial : accentMaterial);
+      legWrap.position.set(x < 0 ? -0.02 : 0.02, -0.5, 0);
+      legWrap.castShadow = true;
+      kneeJoint.add(legWrap);
 
       const hoofJoint = new THREE.Group();
       hoofJoint.position.set(x < 0 ? -0.03 : 0.03, -0.74, 0);
@@ -936,6 +1007,12 @@ function createHorse(profile: HorseProfile) {
   tail.position.set(-1.62, 0.52, 0);
   tail.castShadow = true;
   group.add(tail);
+
+  const tailRibbon = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.045, 0.08), accentMaterial);
+  tailRibbon.position.set(-1.82, 0.7, 0);
+  tailRibbon.rotation.z = 0.84;
+  tailRibbon.castShadow = true;
+  group.add(tailRibbon);
 
   const effect = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.05, 8, 44), effectMaterial);
   effect.rotation.x = Math.PI / 2;
@@ -1250,13 +1327,21 @@ function createFlatGlideEffect(accentColor: number): FlatGlideParts {
   return { root, streaks, ripples, dust, materials };
 }
 
-function createRider(accentColor: number): RiderParts {
+function createRider(primaryColor: number, secondaryColor: number): RiderParts {
   const root = new THREE.Group();
   const skinMaterial = new THREE.MeshStandardMaterial({ color: 0xf4d6b0, roughness: 0.52 });
-  const shirtMaterial = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5 });
+  const shirtMaterial = new THREE.MeshStandardMaterial({ color: primaryColor, roughness: 0.42, metalness: 0.04, emissive: primaryColor, emissiveIntensity: 0.08 });
+  const silkAccentMaterial = new THREE.MeshStandardMaterial({
+    color: secondaryColor,
+    roughness: 0.38,
+    metalness: 0.08,
+    emissive: secondaryColor,
+    emissiveIntensity: 0.12
+  });
   const tightsMaterial = new THREE.MeshStandardMaterial({ color: 0xf6f4ec, roughness: 0.46 });
   const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.68 });
   const trimMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42 });
+  const goldMaterial = new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.34, metalness: 0.18, emissive: 0x7a4c00, emissiveIntensity: 0.12 });
   const goggleMaterial = new THREE.MeshStandardMaterial({ color: 0x101820, roughness: 0.34, metalness: 0.08 });
 
   root.position.set(riderMountX, riderMountY, 0);
@@ -1274,6 +1359,18 @@ function createRider(accentColor: number): RiderParts {
   shirtPanel.rotation.z = -0.12;
   shirtPanel.castShadow = true;
   torso.add(shirtPanel);
+
+  const diagonalSilk = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.42, 0.34), silkAccentMaterial);
+  diagonalSilk.position.set(0.19, 0.22, 0);
+  diagonalSilk.rotation.z = -0.78;
+  diagonalSilk.castShadow = true;
+  torso.add(diagonalSilk);
+
+  const bib = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.024, 20), goldMaterial);
+  bib.position.set(0.24, 0.1, 0);
+  bib.rotation.set(0, Math.PI / 2, 0);
+  bib.castShadow = true;
+  root.add(bib);
 
   const collar = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 6, 18, Math.PI * 1.2), trimMaterial);
   collar.position.set(0.14, 0.54, 0);
@@ -1296,10 +1393,17 @@ function createRider(accentColor: number): RiderParts {
   helmet.castShadow = true;
   head.add(helmet);
 
-  const helmetStripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.34), trimMaterial);
+  const helmetStripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.08, 0.34), silkAccentMaterial);
   helmetStripe.position.set(0.03, 0.2, 0);
   helmetStripe.castShadow = true;
   head.add(helmetStripe);
+
+  const helmetCrest = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.28, 8), goldMaterial);
+  helmetCrest.position.set(-0.03, 0.3, 0);
+  helmetCrest.rotation.z = -0.36;
+  helmetCrest.scale.set(0.7, 1, 0.5);
+  helmetCrest.castShadow = true;
+  head.add(helmetCrest);
 
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.055, 0.3), goggleMaterial);
   visor.position.set(0.16, 0.02, 0);
@@ -1312,6 +1416,11 @@ function createRider(accentColor: number): RiderParts {
   leftArm.castShadow = true;
   root.add(leftArm);
 
+  const leftCuff = new THREE.Mesh(new THREE.SphereGeometry(0.066, 8, 6), silkAccentMaterial);
+  leftCuff.position.set(0.03, -0.2, 0);
+  leftCuff.scale.set(1, 0.46, 1);
+  leftArm.add(leftCuff);
+
   const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), skinMaterial);
   leftHand.position.set(0.03, -0.28, 0);
   leftHand.castShadow = true;
@@ -1322,6 +1431,11 @@ function createRider(accentColor: number): RiderParts {
   rightArm.rotation.z = 1.16;
   rightArm.castShadow = true;
   root.add(rightArm);
+
+  const rightCuff = new THREE.Mesh(new THREE.SphereGeometry(0.066, 8, 6), silkAccentMaterial);
+  rightCuff.position.set(0.03, -0.2, 0);
+  rightCuff.scale.set(1, 0.46, 1);
+  rightArm.add(rightCuff);
 
   const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), skinMaterial);
   rightHand.position.set(0.03, -0.28, 0);
@@ -1549,7 +1663,7 @@ function updateRace(delta: number) {
     return;
   }
 
-  raceElapsed += delta * getRaceTimeScale(race.hazardEvents);
+  raceElapsed += delta * getRaceTimeScale(race.hazardEvents) * defaultRacePaceMultiplier;
   const maxFinish = Math.max(...race.placements.map((placement) => placement.finishSeconds));
 
   visualRunners.forEach((runner) => {
@@ -2718,18 +2832,18 @@ function animateHorseStride(runner: VisualRunner, progress: number, eliminated: 
 
 function getHorseMotionConfig(style: HorseMotionStyle) {
   if (style === 'rush') {
-    return { speed: 15.5, swing: 0.72, lift: 0.18 };
+    return { speed: 17.8, swing: 0.82, lift: 0.22 };
   }
 
   if (style === 'walk') {
-    return { speed: 5.8, swing: 0.28, lift: 0.08 };
+    return { speed: 6.8, swing: 0.34, lift: 0.1 };
   }
 
   if (style === 'stroll') {
-    return { speed: 3.6, swing: 0.18, lift: 0.05 };
+    return { speed: 4.8, swing: 0.24, lift: 0.07 };
   }
 
-  return { speed: 9.4, swing: 0.48, lift: 0.12 };
+  return { speed: 11.2, swing: 0.58, lift: 0.15 };
 }
 
 function applySkillPose(runner: VisualRunner, active: boolean) {
@@ -3279,6 +3393,15 @@ function setPanelsHidden(hidden: boolean) {
 function syncRaceStartedState() {
   raceStage.classList.toggle('race-started', raceStarted);
   raceStage.dataset.raceStarted = String(raceStarted);
+}
+
+function syncVisualStyleState() {
+  raceStage.dataset.horseVisualStyle = horseVisualStyle;
+  raceStage.dataset.riderVisualStyle = riderVisualStyle;
+}
+
+function syncRacePaceState() {
+  raceStage.dataset.racePace = defaultRacePaceMultiplier.toFixed(2);
 }
 
 function rollSeed() {
@@ -4175,5 +4298,7 @@ raceStage.dataset.helicopterAsset = 'generated';
 raceStage.dataset.helicopterAssetUrl = 'generated';
 installHelicopterFallback(helicopterAssetSlot);
 applyGraphicsQuality();
+syncVisualStyleState();
+syncRacePaceState();
 prepareTournament();
 animate();

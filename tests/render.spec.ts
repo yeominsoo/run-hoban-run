@@ -274,6 +274,17 @@ test('shows an immediate loading state before the app bundle is ready', async ({
   await expect(page.locator('#boot-loader')).toBeHidden({ timeout: 6_000 });
 });
 
+test('uses a faster default race pace and exposes upgraded racer visuals', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#race-speed-select')).toHaveCount(0);
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-race-pace', '1.25');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-horse-visual-style', 'flashy-racehorse-v2');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-rider-visual-style', 'jockey-silks-v2');
+
+  await page.locator('#start-tournament').click();
+  await expect(page.locator('#race-summary')).not.toContainText('속도');
+});
+
 test('starts a 64 runner tournament and advances to the final race', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#race-stage')).not.toHaveClass(/panels-hidden/);
@@ -581,25 +592,46 @@ test('plays lie-flat skills with the frenzy mode speed effect active', async ({ 
   await page.locator('#seed-input').fill('flat-six-00002');
   await page.locator('#start-tournament').click();
 
-  await page.waitForFunction(
-    () =>
-      document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'frenzy' &&
-      document.querySelector('#race-stage')?.getAttribute('data-frenzy') === 'active' &&
-      document.querySelector('#race-stage')?.getAttribute('data-frenzy-vortex') === 'idle' &&
-      document.querySelector('#race-stage')?.getAttribute('data-frenzy-spin') === 'idle' &&
-      document.querySelector('#race-stage')?.getAttribute('data-mirror-ball') === 'idle' &&
-      document.querySelector('#race-stage')?.getAttribute('data-flat-glide') === 'active' &&
-      [...document.querySelectorAll('.runner-tag.skill')].some((element) => element.textContent?.includes('납작 활주')),
+  const flatGlideState = await page.waitForFunction(
+    () => {
+      const stage = document.querySelector('#race-stage');
+      const hasFlatGlideLabel = [...document.querySelectorAll('.runner-tag.skill')].some((element) =>
+        element.textContent?.includes('납작 활주')
+      );
+      const active =
+        stage?.getAttribute('data-cinematic') === 'frenzy' &&
+        stage.getAttribute('data-frenzy') === 'active' &&
+        stage.getAttribute('data-frenzy-vortex') === 'idle' &&
+        stage.getAttribute('data-frenzy-spin') === 'idle' &&
+        stage.getAttribute('data-mirror-ball') === 'idle' &&
+        stage.getAttribute('data-flat-glide') === 'active' &&
+        hasFlatGlideLabel;
+
+      if (!active) {
+        return false;
+      }
+
+      return {
+        frenzy: stage.getAttribute('data-frenzy'),
+        frenzyVortex: stage.getAttribute('data-frenzy-vortex'),
+        frenzySpin: stage.getAttribute('data-frenzy-spin'),
+        mirrorBall: stage.getAttribute('data-mirror-ball'),
+        flatGlide: stage.getAttribute('data-flat-glide'),
+        hasFlatGlideLabel
+      };
+    },
     undefined,
     { timeout: 45_000 }
   );
 
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-vortex', 'idle');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy-spin', 'idle');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-mirror-ball', 'idle');
-  await expect(page.locator('#race-stage')).toHaveAttribute('data-flat-glide', 'active');
-  await expect(page.locator('.runner-tag.skill').filter({ hasText: '납작 활주' })).toBeVisible();
+  expect(await flatGlideState.jsonValue()).toMatchObject({
+    frenzy: 'active',
+    frenzyVortex: 'idle',
+    frenzySpin: 'idle',
+    mirrorBall: 'idle',
+    flatGlide: 'active',
+    hasFlatGlideLabel: true
+  });
   await page.screenshot({
     path: 'test-results/lie-flat-frenzy-cutscene.png',
     fullPage: true
