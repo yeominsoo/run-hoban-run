@@ -1,12 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 namespace: run-hoban-run
 
 resources:
 - namespace.yaml
 - ../../base
-
-images:
-- name: ghcr.io/yeominsoo/run-hoban-run
-  newName: ghcr.io/yeominsoo/run-hoban-run
-  newTag: 82197ce9024f812d99785a8c08ab2bfe5152ff7a
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
