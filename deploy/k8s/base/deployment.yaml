@@ -16,8 +16,6 @@ spec:
       labels:
         app.kubernetes.io/name: run-hoban-run
     spec:
-      imagePullSecrets:
-        - name: ghcr-pull-secret
       containers:
         - name: app
           image: ghcr.io/yeominsoo/run-hoban-run:master
