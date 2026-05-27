@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: run-hoban-run-firebase-deploy
+  labels:
+    app.kubernetes.io/name: run-hoban-run
+data:
+  sourceRepo: https://github.com/yeominsoo/run-hoban-run.git
+  sourceRevision: master
+  sourceSha: "5a83649d14aa45a3c0ce058d51018f3cffa3f7f0"
+  firebaseProject: hoban-lakepark-ab19
