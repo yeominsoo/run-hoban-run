@@ -9,3 +9,4 @@ data:
   sourceRevision: master
   sourceSha: "87716eee7bed0c1c7565b0af5775871ea5491267"
   firebaseProject: hoban-lakepark-ab19
+  image: ghcr.io/yeominsoo/run-hoban-run:firebase
