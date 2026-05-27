@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test:render": "playwright test"
+    "test:render": "playwright test",
+    "firebase:login": "npx firebase-tools login --no-localhost",
+    "firebase:projects": "npx firebase-tools projects:list",
+    "deploy:firebase": "npm run build && npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19"
   },
   "dependencies": {
     "three": "^0.181.2"
