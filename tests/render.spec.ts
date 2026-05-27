@@ -162,7 +162,12 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
   page.on('request', (request) => {
     const url = new URL(request.url());
 
-    if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+    const isLocalRequest =
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1' ||
+      (url.protocol === 'blob:' && (request.url().startsWith('blob:http://localhost') || request.url().startsWith('blob:http://127.0.0.1')));
+
+    if (!isLocalRequest) {
       externalRequests.push(request.url());
     }
 
@@ -280,14 +285,14 @@ test('uses a faster default race pace and exposes upgraded racer visuals', async
 
   await expect(page.locator('#race-speed-select')).toHaveCount(0);
   await expect(raceStage).toHaveAttribute('data-race-pace', '1.25');
-  await expect(raceStage).toHaveAttribute('data-horse-asset', 'quaternius-ultimate-animated-animal-horse');
-  await expect(raceStage).toHaveAttribute('data-rider-asset', 'quaternius-rpg-character-monk-rider');
-  await expect(raceStage).toHaveAttribute('data-horse-asset-license', 'CC0-1.0');
+  await expect(raceStage).toHaveAttribute('data-horse-asset', 'poly-google-bridle-horse');
+  await expect(raceStage).toHaveAttribute('data-rider-asset', 'eclair-sitting-rider');
+  await expect(raceStage).toHaveAttribute('data-horse-asset-license', 'CC-BY-3.0');
   await expect(raceStage).toHaveAttribute('data-rider-asset-license', 'CC0-1.0');
   await expect(raceStage).toHaveAttribute('data-horse-asset-status', 'loaded', { timeout: 10_000 });
   await expect(raceStage).toHaveAttribute('data-rider-asset-status', 'loaded', { timeout: 10_000 });
-  await expect(raceStage).toHaveAttribute('data-horse-visual-style', 'cc0-gltf-asset');
-  await expect(raceStage).toHaveAttribute('data-rider-visual-style', 'cc0-gltf-asset');
+  await expect(raceStage).toHaveAttribute('data-horse-visual-style', 'free-gltf-asset');
+  await expect(raceStage).toHaveAttribute('data-rider-visual-style', 'free-gltf-asset');
 
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-summary')).not.toContainText('속도');

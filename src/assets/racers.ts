@@ -1,20 +1,20 @@
-import quaterniusHorseAssetUrl from './racers/quaternius-horse.gltf?url';
-import quaterniusMonkRiderAssetUrl from './racers/quaternius-monk-rider.gltf?url';
+import polyGoogleHorseAssetUrl from './racers/poly-google-bridle-horse.glb?url';
+import eclairSittingRiderAssetUrl from './racers/eclair-male-sitting-rider.glb?url';
 
-export const QUATERNIUS_HORSE_ASSET_URL = quaterniusHorseAssetUrl;
-export const QUATERNIUS_MONK_RIDER_ASSET_URL = quaterniusMonkRiderAssetUrl;
+export const RACER_HORSE_ASSET_URL = polyGoogleHorseAssetUrl;
+export const RACER_RIDER_ASSET_URL = eclairSittingRiderAssetUrl;
 
 export const RACER_ASSET_SOURCES = {
   horse: {
-    name: 'Quaternius Ultimate Animated Animal Pack - Horse',
-    license: 'CC0-1.0',
-    pageUrl: 'https://quaternius.com/packs/ultimateanimatedanimals.html',
-    downloadUrl: 'https://drive.google.com/drive/folders/1uJ3N5HfB7jKTseJUNQr3N4YaN0UuEtHk?usp=sharing'
+    name: 'Poly by Google Horse',
+    license: 'CC-BY-3.0',
+    pageUrl: 'https://poly.pizza/m/f0_m8hH9BI9',
+    downloadUrl: 'https://static.poly.pizza/660ab29d-a30f-40cf-b35d-16365666fd9f.glb'
   },
   rider: {
-    name: 'Quaternius RPG Character Pack - Monk',
+    name: 'Eclair Assets Background Posed Humans - Male Sitting',
     license: 'CC0-1.0',
-    pageUrl: 'https://quaternius.com/packs/rpgcharacters.html',
-    downloadUrl: 'https://drive.google.com/drive/folders/1MIRQXLfTd21HMI5rwOb6Xy0rv0xv1m8b?usp=sharing'
+    pageUrl: 'https://eclair-assets.itch.io/background-posed-humans-glb-pack-28-free-cc0-3d-models',
+    downloadUrl: 'https://eclair-assets.itch.io/background-posed-humans-glb-pack-28-free-cc0-3d-models'
   }
 } as const;

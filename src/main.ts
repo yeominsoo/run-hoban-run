@@ -18,7 +18,7 @@ import {
   type TournamentResult
 } from './game/rules';
 import { FRENZY_PARTICLE_TEXTURES } from './assets/frenzy';
-import { QUATERNIUS_HORSE_ASSET_URL, QUATERNIUS_MONK_RIDER_ASSET_URL, RACER_ASSET_SOURCES } from './assets/racers';
+import { RACER_HORSE_ASSET_URL, RACER_RIDER_ASSET_URL, RACER_ASSET_SOURCES } from './assets/racers';
 import {
   createBulletMesh,
   createHelicopterSniperRig,
@@ -231,8 +231,8 @@ const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
   muddy: '불량'
 };
 const recentParticipantsStorageKey = 'run-hoban-run:recent-participants';
-const horseAssetId = 'quaternius-ultimate-animated-animal-horse';
-const riderAssetId = 'quaternius-rpg-character-monk-rider';
+const horseAssetId = 'poly-google-bridle-horse';
+const riderAssetId = 'eclair-sitting-rider';
 const defaultRacePaceMultiplier = 1.25;
 
 participantInput.value = loadRecentParticipants() ?? createSampleParticipants(18).join('\n');
@@ -339,8 +339,8 @@ function ensureRacerAssetLoading() {
   syncVisualStyleState();
 
   racerAssetPromise = Promise.allSettled([
-    loadRacerAsset(QUATERNIUS_HORSE_ASSET_URL),
-    loadRacerAsset(QUATERNIUS_MONK_RIDER_ASSET_URL)
+    loadRacerAsset(RACER_HORSE_ASSET_URL),
+    loadRacerAsset(RACER_RIDER_ASSET_URL)
   ]).then(([horseResult, riderResult]) => {
     if (horseResult.status === 'fulfilled') {
       horseAssetTemplate = horseResult.value;
@@ -968,10 +968,10 @@ function createAssetHorse() {
 
   const root = new THREE.Group();
   const model = instantiateRacerAsset(horseAssetTemplate);
-  model.name = 'quaternius-horse';
+  model.name = 'poly-google-bridle-horse';
   model.rotation.y = Math.PI / 2;
-  model.position.set(-0.38, -1.34, 0);
-  model.scale.setScalar(0.62);
+  model.position.set(-0.26, -1.36, 0);
+  model.scale.setScalar(0.235);
   root.add(model);
 
   const animation = createRacerAnimationState(model, horseAssetTemplate.animations, 'Gallop', 'Idle', 'Idle_HitReact1') ?? undefined;
@@ -1478,43 +1478,38 @@ function createAssetRider(): RiderParts | null {
   root.userData.assetRider = true;
   const model = instantiateRacerAsset(riderAssetTemplate);
   hideRiderCarryProps(model);
-  model.name = 'quaternius-monk-rider';
+  model.name = 'eclair-sitting-rider';
   model.rotation.y = Math.PI / 2;
-  model.position.set(-0.24, -0.1, 0);
-  model.scale.setScalar(0.36);
-  root.position.set(riderMountX + 0.02, riderMountY + 0.02, 0);
+  model.rotation.z = -0.1;
+  model.position.set(-0.18, -0.24, 0.1);
+  model.scale.setScalar(0.44);
+  root.position.set(riderMountX - 0.1, riderMountY - 0.04, 0);
+  root.rotation.z = -0.08;
   root.add(model);
 
   const torso = new THREE.Group();
-  torso.position.set(0.12, 0.38, 0);
+  torso.position.set(0.04, 0.34, 0);
   root.add(torso);
 
   const head = new THREE.Group();
-  head.position.set(0.26, 1.02, 0);
+  head.position.set(0.0, 1.04, 0.02);
   root.add(head);
 
   const leftArm = new THREE.Group();
-  leftArm.position.set(0.16, 0.42, 0.2);
+  leftArm.position.set(0.0, 0.5, 0.2);
   root.add(leftArm);
 
   const rightArm = new THREE.Group();
-  rightArm.position.set(0.16, 0.42, -0.2);
+  rightArm.position.set(0.0, 0.5, -0.2);
   root.add(rightArm);
 
   const leftLeg = new THREE.Group();
-  leftLeg.position.set(0.0, -0.08, riderLegZ);
+  leftLeg.position.set(-0.02, -0.12, riderLegZ);
   root.add(leftLeg);
 
   const rightLeg = new THREE.Group();
-  rightLeg.position.set(0.0, -0.08, -riderLegZ);
+  rightLeg.position.set(-0.02, -0.12, -riderLegZ);
   root.add(rightLeg);
-
-  const animation = createRacerAnimationState(model, riderAssetTemplate.animations, 'Run', 'Idle', 'RecieveHit') ?? undefined;
-  if (animation) {
-    animation.moveTimeScale = 0.95;
-    animation.idleTimeScale = 0.78;
-    root.userData.racerAnimation = animation;
-  }
 
   return {
     root,
@@ -3132,19 +3127,19 @@ function applySkillPose(runner: VisualRunner, active: boolean) {
 function resetRiderPose(rider: RiderParts) {
   const assetRider = rider.root.userData.assetRider === true;
 
-  rider.root.position.set(riderMountX, assetRider ? riderMountY + 0.02 : riderMountY, 0);
-  rider.root.rotation.set(0, 0, 0);
-  rider.torso.position.set(0.12, assetRider ? 0.38 : 0.22, 0);
+  rider.root.position.set(assetRider ? riderMountX - 0.1 : riderMountX, assetRider ? riderMountY - 0.04 : riderMountY, 0);
+  rider.root.rotation.set(0, 0, assetRider ? -0.08 : 0);
+  rider.torso.position.set(assetRider ? 0.04 : 0.12, assetRider ? 0.34 : 0.22, 0);
   rider.torso.rotation.set(0, 0, -0.42);
-  rider.head.position.set(assetRider ? 0.26 : 0.28, assetRider ? 1.02 : 0.64, 0);
+  rider.head.position.set(assetRider ? 0 : 0.28, assetRider ? 1.04 : 0.64, assetRider ? 0.02 : 0);
   rider.head.rotation.set(0, 0, 0);
-  rider.leftArm.position.set(assetRider ? 0.16 : 0.24, assetRider ? 0.42 : 0.24, assetRider ? 0.2 : 0.28);
+  rider.leftArm.position.set(assetRider ? 0 : 0.24, assetRider ? 0.5 : 0.24, assetRider ? 0.2 : 0.28);
   rider.leftArm.rotation.set(0, 0, 1.16);
-  rider.rightArm.position.set(assetRider ? 0.16 : 0.24, assetRider ? 0.42 : 0.24, assetRider ? -0.2 : -0.28);
+  rider.rightArm.position.set(assetRider ? 0 : 0.24, assetRider ? 0.5 : 0.24, assetRider ? -0.2 : -0.28);
   rider.rightArm.rotation.set(0, 0, 1.16);
-  rider.leftLeg.position.set(assetRider ? 0 : 0.02, -0.08, riderLegZ);
+  rider.leftLeg.position.set(assetRider ? -0.02 : 0.02, assetRider ? -0.12 : -0.08, riderLegZ);
   rider.leftLeg.rotation.set(0.1, 0, -0.2);
-  rider.rightLeg.position.set(assetRider ? 0 : 0.02, -0.08, -riderLegZ);
+  rider.rightLeg.position.set(assetRider ? -0.02 : 0.02, assetRider ? -0.12 : -0.08, -riderLegZ);
   rider.rightLeg.rotation.set(-0.1, 0, -0.2);
 }
 
@@ -3652,8 +3647,8 @@ function syncVisualStyleState() {
   raceStage.dataset.riderAssetStatus = riderAssetStatus;
   raceStage.dataset.horseAssetLicense = RACER_ASSET_SOURCES.horse.license;
   raceStage.dataset.riderAssetLicense = RACER_ASSET_SOURCES.rider.license;
-  raceStage.dataset.horseVisualStyle = horseAssetTemplate ? 'cc0-gltf-asset' : 'plain-generated-fallback';
-  raceStage.dataset.riderVisualStyle = riderAssetTemplate ? 'cc0-gltf-asset' : 'plain-generated-fallback';
+  raceStage.dataset.horseVisualStyle = horseAssetTemplate ? 'free-gltf-asset' : 'plain-generated-fallback';
+  raceStage.dataset.riderVisualStyle = riderAssetTemplate ? 'free-gltf-asset' : 'plain-generated-fallback';
 }
 
 function syncRacePaceState() {
