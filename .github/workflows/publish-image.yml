@@ -1,66 +1,38 @@
-name: Publish image
+name: Request Firebase deploy
 
 on:
   push:
     branches:
       - master
     paths-ignore:
-      - deploy/k8s/overlays/prod/kustomization.yaml
+      - deploy/k8s/base/firebase-deploy-revision.yaml
 
 permissions:
   contents: write
-  packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/yeominsoo/run-hoban-run
-  DEPLOY_PATH: deploy/k8s/overlays/prod
+  DEPLOY_REVISION_PATH: deploy/k8s/base/firebase-deploy-revision.yaml
 
 jobs:
-  publish:
+  request-firebase-deploy:
     runs-on: ubuntu-latest
     concurrency:
-      group: run-hoban-run-master-deploy
+      group: run-hoban-run-firebase-deploy
       cancel-in-progress: true
 
     steps:
       - name: Checkout app
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.IMAGE_NAME }}:master
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Set up Kustomize
-        uses: imranismail/setup-kustomize@v2
-
-      - name: Update deployment image tag
+      - name: Update Argo CD Firebase deploy revision
         run: |
-          cd "${DEPLOY_PATH}"
-          kustomize edit set image "${IMAGE_NAME}=${IMAGE_NAME}:${GITHUB_SHA}"
+          sed -i -E "s/sourceSha: \".*\"/sourceSha: \"${GITHUB_SHA}\"/" "${DEPLOY_REVISION_PATH}"
 
-      - name: Commit deployment manifest change
+      - name: Commit deploy revision change
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${DEPLOY_PATH}/kustomization.yaml"
+          git add "${DEPLOY_REVISION_PATH}"
           git diff --cached --quiet && exit 0
-          git commit -m "deploy(run-hoban-run): ${GITHUB_SHA} [skip ci]"
+          git commit -m "deploy(firebase): ${GITHUB_SHA} [skip ci]"
           git push
