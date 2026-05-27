@@ -280,10 +280,37 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await expect(page.locator('#race-summary')).toContainText('헬기');
   await expect(page.locator('#camera-target')).toHaveCount(0);
+  await expect(page.locator('#toggle-recording svg')).toBeVisible();
+  await expect(page.locator('#download-result-shot svg')).toBeVisible();
+  await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('출전');
+  await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('진출');
+  await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('우승');
+  await expect(page.locator('.option-group').filter({ hasText: '경기 조건' })).toContainText('주로');
   await expect(page.locator('#race-minimap')).toBeHidden();
   await expect(page.locator('.minimap-dot')).toHaveCount(18);
-  await expect(page.locator('#leaderboard li')).toHaveCount(8);
+  await expect(page.locator('#leaderboard li')).toHaveCount(18);
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-mode', 'overview');
+  await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-zoom', '1.00');
+  const rosterScroll = await page.locator('#leaderboard').evaluate((element) => ({
+    canScroll: element.scrollWidth > element.clientWidth,
+    count: element.children.length
+  }));
+  expect(rosterScroll).toEqual({ canScroll: true, count: 18 });
+  const scrollAfterWheel = await page.locator('#leaderboard').evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 320
+      })
+    );
+    return element.scrollLeft;
+  });
+  await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-zoom', '1.00');
+  expect(scrollAfterWheel).toBeGreaterThan(0);
+  await page.locator('#leaderboard').evaluate((element) => {
+    element.scrollLeft = 0;
+  });
   await page.locator('#leaderboard li').nth(1).click();
   await expect(page.locator('#leaderboard li.selected')).toHaveCount(1);
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-mode', 'tracking');

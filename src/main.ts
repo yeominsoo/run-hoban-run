@@ -108,6 +108,15 @@ type RocketFartParts = {
   materials: THREE.MeshBasicMaterial[];
 };
 
+type VictoryEffectParts = {
+  root: THREE.Group;
+  crown: THREE.Group;
+  rings: THREE.Mesh[];
+  beams: THREE.Mesh[];
+  sparks: THREE.Mesh[];
+  materials: THREE.MeshBasicMaterial[];
+};
+
 type SnortPuffParts = {
   mesh: THREE.Mesh;
   material: THREE.MeshBasicMaterial;
@@ -180,6 +189,9 @@ const raceMeta = query<HTMLParagraphElement>('#race-meta');
 const raceTitle = query<HTMLDivElement>('#race-title');
 const raceSummary = query<HTMLDivElement>('#race-summary');
 const resultList = query<HTMLOListElement>('#result-list');
+const winnerBanner = query<HTMLDivElement>('#winner-banner');
+const winnerName = query<HTMLElement>('#winner-name');
+const winnerDetail = query<HTMLElement>('#winner-detail');
 const SURFACE_LABELS: Record<RaceOptions['surface'], string> = {
   turf: '잔디',
   dirt: '더트'
@@ -255,6 +267,11 @@ let visualRunners: VisualRunner[] = [];
 let selectedCameraEntryId = 'overview';
 let overviewCameraZoom = 1;
 let activePinchDistance: number | null = null;
+let leaderboardDragPointerId: number | null = null;
+let leaderboardDragStartX = 0;
+let leaderboardDragStartScrollLeft = 0;
+let leaderboardDragMoved = false;
+let suppressLeaderboardClick = false;
 let mediaRecorder: MediaRecorder | null = null;
 let recordedVideoChunks: Blob[] = [];
 let recordingMimeType = '';
@@ -566,10 +583,11 @@ const bulletMesh = createBulletMesh();
 const muzzleFlash = createMuzzleFlash();
 const impactBurst = createImpactBurst();
 const frenzySnortGroup = createFrenzySnortGroup();
+const victoryEffect = createVictoryEffectGroup();
 helicopterGroup.visible = false;
 helicopterGroup.add(helicopterAssetSlot, helicopterSniperRig);
 scene.add(helicopterGroup);
-scene.add(bulletMesh, muzzleFlash, impactBurst, frenzySnortGroup);
+scene.add(bulletMesh, muzzleFlash, impactBurst, frenzySnortGroup, victoryEffect.root);
 
 const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x4d9d55, roughness: 0.9 });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(groundLength, groundWidth), groundMaterial);
@@ -642,6 +660,107 @@ function createFrenzySnortGroup() {
   group.visible = false;
   group.userData.puffs = puffs;
   return group;
+}
+
+function createVictoryEffectGroup(): VictoryEffectParts {
+  const root = new THREE.Group();
+  const crown = new THREE.Group();
+  const rings: THREE.Mesh[] = [];
+  const beams: THREE.Mesh[] = [];
+  const sparks: THREE.Mesh[] = [];
+  const materials: THREE.MeshBasicMaterial[] = [];
+  const goldMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf2c94c,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  });
+
+  root.visible = false;
+  root.renderOrder = 20;
+  crown.position.y = 3.55;
+  crown.renderOrder = 22;
+  materials.push(goldMaterial);
+
+  const crownBand = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.055, 8, 48), goldMaterial);
+  crownBand.rotation.x = Math.PI / 2;
+  crown.add(crownBand);
+
+  for (let index = 0; index < 5; index += 1) {
+    const angle = (Math.PI * 2 * index) / 5;
+    const point = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.5, 5), goldMaterial);
+    point.position.set(Math.cos(angle) * 0.43, 0.28, Math.sin(angle) * 0.43);
+    point.rotation.z = Math.sin(angle) * 0.18;
+    point.rotation.x = -Math.cos(angle) * 0.18;
+    point.renderOrder = 22;
+    crown.add(point);
+  }
+
+  root.add(crown);
+
+  for (let index = 0; index < 3; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index === 1 ? 0xffffff : 0xf2c94c,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false
+    });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.45 + index * 0.42, 0.035, 8, 80), material);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.2 + index * 0.44;
+    ring.renderOrder = 21;
+    rings.push(ring);
+    materials.push(material);
+    root.add(ring);
+  }
+
+  for (let index = 0; index < 4; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index % 2 === 0 ? 0xffffff : 0x56ccf2,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide
+    });
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(0.2, 4.6, 5, 1, true), material);
+    const angle = (Math.PI * 2 * index) / 4 + Math.PI / 4;
+    beam.position.set(Math.cos(angle) * 1.15, 2.25, Math.sin(angle) * 1.15);
+    beam.rotation.x = Math.PI + 0.42;
+    beam.rotation.z = angle;
+    beam.userData.phase = index * 0.7;
+    beam.renderOrder = 18;
+    beams.push(beam);
+    materials.push(material);
+    root.add(beam);
+  }
+
+  for (let index = 0; index < 24; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index % 3 === 0 ? 0xff4d8d : index % 3 === 1 ? 0xf2c94c : 0x6fcf97,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: false
+    });
+    const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07 + (index % 4) * 0.018, 0), material);
+    spark.userData.phase = index * 0.53;
+    spark.userData.radius = 1.35 + (index % 6) * 0.24;
+    spark.renderOrder = 23;
+    sparks.push(spark);
+    materials.push(material);
+    root.add(spark);
+  }
+
+  return {
+    root,
+    crown,
+    rings,
+    beams,
+    sparks,
+    materials
+  };
 }
 
 function createCapsuleBetween(start: THREE.Vector3, end: THREE.Vector3, radius: number, material: THREE.Material, radialSegments = 8) {
@@ -1326,6 +1445,8 @@ function setCurrentRace(index: number) {
 
   raceElapsed = 0;
   raceFinished = false;
+  syncVictoryPresentation(race);
+  updateVictoryEffect(null);
   clearVisualRunners();
   updateLaneGuides(race.placements.length);
   updateCameraTargetSelection(race);
@@ -1389,6 +1510,8 @@ function updateRace(delta: number) {
   const race = getCurrentRace();
 
   if (!race) {
+    syncVictoryPresentation(null);
+    updateVictoryEffect(null);
     updateCamera(null, null);
     return;
   }
@@ -1417,6 +1540,8 @@ function updateRace(delta: number) {
     raceStage.dataset.mirrorBall = 'idle';
     raceStage.dataset.flatGlide = 'idle';
     raceStage.dataset.rocketFart = 'idle';
+    syncVictoryPresentation(race);
+    updateVictoryEffect(null);
     updateCamera(null, null);
     updateHelicopterFrameState();
     updateMinimap();
@@ -1511,8 +1636,12 @@ function updateRace(delta: number) {
 
   if (!raceFinished && raceElapsed >= maxFinish + 0.8) {
     raceFinished = true;
+    visualRunners.forEach((runner) => updateRunnerLabel(runner, runner.skillActive));
     renderRaceStaticState();
   }
+
+  syncVictoryPresentation(race);
+  updateVictoryEffect(race);
 }
 
 function updateHelicopterState(hazardEvents: HazardEvent[]) {
@@ -2711,8 +2840,8 @@ function updateRunnerLabel(runner: VisualRunner, activeSkill: boolean) {
   runner.label.classList.toggle('skill', activeSkill);
   runner.label.classList.toggle('eliminated', runner.eliminated);
   runner.label.classList.toggle('hit', runner.eliminated && getFallProgress(getCurrentRace()?.hazardEvents ?? [], runner.placement) < 0.7);
-  runner.label.classList.toggle('winner', raceFinished && runner.placement.rank === 1);
-  runner.label.classList.toggle('qualified', raceFinished && runner.placement.qualified && runner.placement.rank !== 1);
+  runner.label.classList.toggle('winner', raceFinished && getCurrentRace()?.isFinal && runner.placement.qualified);
+  runner.label.classList.toggle('qualified', raceFinished && runner.placement.qualified && !getCurrentRace()?.isFinal);
   runner.label.classList.toggle('rank-first', liveRank === 1 && !runner.eliminated);
   runner.label.classList.toggle('rank-second', liveRank === 2 && !runner.eliminated);
   runner.label.classList.toggle('rank-third', liveRank === 3 && !runner.eliminated);
@@ -2810,16 +2939,24 @@ function renderRaceStaticState() {
   raceMeta.textContent = `${finalText} - 경기 ${raceNumber}/${totalRaces}`;
   raceTitle.textContent = !raceStarted ? '출발 대기' : race.isFinal ? '결승전' : `${race.round}라운드 / ${race.group}조`;
   raceSummary.replaceChildren(
-    summaryRow('출전', `${race.placements.length}명`),
-    summaryRow('주로', SURFACE_LABELS[race.options.surface]),
-    summaryRow('거리', DISTANCE_LABELS[race.options.distance]),
-    summaryRow('상태', CONDITION_LABELS[race.options.condition]),
-    summaryRow('헬기', race.hazardEvents.length > 0 ? `출격 x${race.hazardEvents.length}` : '없음'),
-    summaryRow('시드', race.options.seed),
-    summaryRow('전체', `${tournament.participantCount}명`)
+    summaryGroup('진행 방식', [
+      summaryRow('출전', `${race.placements.length}명`),
+      summaryRow(race.isFinal ? '우승' : '진출', `${race.qualifiers.length}명`),
+      summaryRow('전체', `${tournament.participantCount}명`)
+    ]),
+    summaryGroup('경기 조건', [
+      summaryRow('주로', SURFACE_LABELS[race.options.surface]),
+      summaryRow('거리', DISTANCE_LABELS[race.options.distance]),
+      summaryRow('상태', CONDITION_LABELS[race.options.condition])
+    ]),
+    summaryGroup('운영', [
+      summaryRow('헬기', race.hazardEvents.length > 0 ? `출격 x${race.hazardEvents.length}` : '없음'),
+      summaryRow('시드', race.options.seed)
+    ])
   );
 
   resultList.replaceChildren(...buildResultItems(race, raceFinished));
+  syncVictoryPresentation(race);
   replayButton.disabled = false;
   nextButton.disabled = currentRaceIndex >= totalRaces - 1;
 }
@@ -2840,14 +2977,115 @@ function buildResultItems(race: RaceResult, reveal: boolean) {
     detail.hidden = !reveal;
     body.append(name, detail);
     item.append(rank, body);
+    item.classList.toggle('winner', reveal && race.isFinal && placement.qualified);
     item.classList.toggle('qualified', reveal && placement.qualified);
     item.classList.toggle('eliminated', reveal && placement.eliminatedByHelicopter);
     return item;
   });
 }
 
-function resultDetail(placement: RacePlacement) {
-  return `${placement.finishSeconds.toFixed(2)}초`;
+function resultDetail(placement: RacePlacement, race = getCurrentRace()) {
+  const time = `${placement.finishSeconds.toFixed(2)}초`;
+
+  if (placement.eliminatedByHelicopter) {
+    return `${time} / 헬기 탈락`;
+  }
+
+  if (!placement.qualified) {
+    return time;
+  }
+
+  return race?.isFinal ? `${time} / 우승` : `${time} / 진출`;
+}
+
+function syncVictoryPresentation(race: RaceResult | null) {
+  const winners = race ? getWinnerPlacements(race) : [];
+  const show = Boolean(raceStarted && raceFinished && race?.isFinal && winners.length > 0);
+
+  raceStage.classList.toggle('victory-active', show);
+  raceStage.dataset.victory = show ? 'active' : 'idle';
+  winnerBanner.setAttribute('aria-hidden', String(!show));
+
+  if (!show || !race) {
+    winnerName.textContent = '-';
+    winnerDetail.textContent = '';
+    return;
+  }
+
+  winnerName.textContent = winners.map((placement) => placement.entry.name).join(', ');
+  winnerDetail.textContent = winners.length > 1
+    ? `결승 상위 ${winners.length}명 / ${race.options.seed}`
+    : `결승 ${winners[0]?.finishSeconds.toFixed(2)}초 / ${race.options.seed}`;
+}
+
+function updateVictoryEffect(race: RaceResult | null) {
+  const primaryWinner = race ? getWinnerPlacements(race)[0] : null;
+  const winnerRunner = primaryWinner
+    ? visualRunners.find((runner) => runner.placement.entry.id === primaryWinner.entry.id)
+    : null;
+
+  if (!raceStarted || !raceFinished || !race?.isFinal || !winnerRunner) {
+    victoryEffect.root.visible = false;
+    victoryEffect.materials.forEach((material) => {
+      material.opacity = 0;
+    });
+    return;
+  }
+
+  const pulse = 1 + Math.sin(raceElapsed * 5.2) * 0.08;
+  victoryEffect.root.visible = true;
+  victoryEffect.root.position.copy(winnerRunner.mesh.position);
+  victoryEffect.root.position.y = horseBaseY + 0.04;
+  victoryEffect.root.scale.setScalar(winnerRunner.baseScale * pulse);
+  victoryEffect.crown.rotation.y = raceElapsed * 1.2;
+  victoryEffect.crown.position.y = 3.55 + Math.sin(raceElapsed * 3.6) * 0.16;
+
+  victoryEffect.rings.forEach((ring, index) => {
+    ring.rotation.z = raceElapsed * (1.1 + index * 0.26) + index * 0.7;
+    ring.scale.setScalar(1 + Math.sin(raceElapsed * 4.4 + index) * 0.08);
+
+    const material = ring.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = 0.36 + Math.sin(raceElapsed * 5.8 + index) * 0.08;
+    }
+  });
+
+  victoryEffect.beams.forEach((beam, index) => {
+    const phase = Number(beam.userData.phase ?? 0);
+    beam.rotation.z = raceElapsed * (0.7 + index * 0.08) + phase;
+
+    const material = beam.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = 0.12 + Math.sin(raceElapsed * 4.8 + phase) * 0.035;
+    }
+  });
+
+  victoryEffect.sparks.forEach((spark, index) => {
+    const phase = Number(spark.userData.phase ?? 0);
+    const radius = Number(spark.userData.radius ?? 1.6);
+    const cycle = (raceElapsed * 0.72 + index * 0.041) % 1;
+    const angle = raceElapsed * (2.2 + (index % 5) * 0.18) + phase;
+    spark.position.set(Math.cos(angle) * radius, 0.78 + cycle * 3.2, Math.sin(angle) * radius);
+    spark.rotation.set(raceElapsed * 2 + phase, raceElapsed * 3.4 + phase, raceElapsed * 1.5);
+    spark.scale.setScalar(0.78 + Math.sin(raceElapsed * 8 + phase) * 0.22);
+
+    const material = spark.material;
+    if (material instanceof THREE.MeshBasicMaterial) {
+      material.opacity = Math.max(0, 0.74 * (1 - cycle * 0.82));
+    }
+  });
+
+  victoryEffect.materials.forEach((material) => {
+    if (material.opacity === 0) {
+      material.opacity = 0.62;
+    }
+  });
+}
+
+function getWinnerPlacements(race: RaceResult) {
+  return race.placements
+    .filter((placement) => placement.qualified)
+    .sort((left, right) => left.rank - right.rank);
 }
 
 function renderLeaderboard() {
@@ -2870,7 +3108,7 @@ function renderLeaderboard() {
 
   const visibleIds = new Set<string>();
 
-  ranked.slice(0, 8).forEach((placement, index) => {
+  ranked.forEach((placement, index) => {
     const runner = visualRunners.find((candidate) => candidate.placement === placement);
     const eliminated = runner?.eliminated || (raceFinished && placement.eliminatedByHelicopter);
     const selected = selectedCameraEntryId === placement.entry.id;
@@ -2886,6 +3124,7 @@ function renderLeaderboard() {
     parts.item.setAttribute('role', 'button');
     parts.item.setAttribute('tabindex', cameraSelectionLocked ? '-1' : '0');
     parts.item.setAttribute('aria-pressed', String(selected));
+    parts.item.classList.toggle('winner', raceFinished && race.isFinal && placement.qualified);
     parts.item.classList.toggle('qualified', raceFinished && placement.qualified);
     parts.item.classList.toggle('eliminated', Boolean(eliminated));
     parts.item.classList.toggle('selected', selected);
@@ -2913,6 +3152,71 @@ function selectCameraEntry(entryId: string) {
   selectedCameraEntryId = selectedCameraEntryId === entryId ? 'overview' : entryId;
   renderLeaderboard();
   updateMinimap();
+}
+
+function scrollLeaderboardFromWheel(event: WheelEvent) {
+  const canScroll = leaderboardList.scrollWidth > leaderboardList.clientWidth;
+
+  if (!canScroll) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  leaderboardList.scrollLeft += delta;
+}
+
+function startLeaderboardDrag(event: PointerEvent) {
+  if (event.button !== 0 || leaderboardList.scrollWidth <= leaderboardList.clientWidth) {
+    return;
+  }
+
+  leaderboardDragPointerId = event.pointerId;
+  leaderboardDragStartX = event.clientX;
+  leaderboardDragStartScrollLeft = leaderboardList.scrollLeft;
+  leaderboardDragMoved = false;
+  leaderboardList.classList.add('dragging');
+}
+
+function moveLeaderboardDrag(event: PointerEvent) {
+  if (leaderboardDragPointerId !== event.pointerId) {
+    return;
+  }
+
+  const deltaX = event.clientX - leaderboardDragStartX;
+  if (Math.abs(deltaX) > 3) {
+    leaderboardDragMoved = true;
+  }
+
+  if (leaderboardDragMoved) {
+    event.preventDefault();
+    if (!leaderboardList.hasPointerCapture(event.pointerId)) {
+      leaderboardList.setPointerCapture(event.pointerId);
+    }
+    leaderboardList.scrollLeft = leaderboardDragStartScrollLeft - deltaX;
+  }
+}
+
+function endLeaderboardDrag(event: PointerEvent) {
+  if (leaderboardDragPointerId !== event.pointerId) {
+    return;
+  }
+
+  if (leaderboardDragMoved) {
+    suppressLeaderboardClick = true;
+    window.setTimeout(() => {
+      suppressLeaderboardClick = false;
+    }, 0);
+  }
+
+  leaderboardDragPointerId = null;
+  leaderboardDragMoved = false;
+  leaderboardList.classList.remove('dragging');
+
+  if (leaderboardList.hasPointerCapture(event.pointerId)) {
+    leaderboardList.releasePointerCapture(event.pointerId);
+  }
 }
 
 function adjustOverviewCameraZoom(delta: number) {
@@ -3075,10 +3379,25 @@ function summaryRow(label: string, value: string) {
   const row = document.createElement('div');
   const key = document.createElement('span');
   const text = document.createElement('strong');
+  row.className = 'race-summary-row';
   key.textContent = label;
   text.textContent = value;
   row.append(key, text);
   return row;
+}
+
+function summaryGroup(title: string, rows: HTMLElement[]) {
+  const group = document.createElement('section');
+  const heading = document.createElement('div');
+  const body = document.createElement('div');
+
+  group.className = 'race-summary-group';
+  heading.className = 'race-summary-heading';
+  heading.textContent = title;
+  body.className = 'race-summary-group-body';
+  body.append(...rows);
+  group.append(heading, body);
+  return group;
 }
 
 function laneZ(index: number, count: number) {
@@ -3622,7 +3941,7 @@ function getResultScreenshotTitle(race: RaceResult | null) {
   }
 
   if (raceFinished) {
-    return race.isFinal ? '결승 결과' : `${race.round}라운드 ${race.group}조 결과`;
+    return race.isFinal ? '최종 우승 결과' : `${race.round}라운드 ${race.group}조 결과`;
   }
 
   return raceStarted ? '실시간 순위' : '출발 대기';
@@ -3754,12 +4073,23 @@ fieldSizeInput.addEventListener('input', () => syncOptionBounds());
 startButton.addEventListener('click', startTournament);
 randomSeedButton.addEventListener('click', rollSeed);
 leaderboardList.addEventListener('click', (event) => {
+  if (suppressLeaderboardClick) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+
   const target = event.target instanceof Element ? event.target.closest<HTMLLIElement>('li[data-entry-id]') : null;
 
   if (target) {
     selectCameraEntry(target.dataset.entryId ?? '');
   }
 });
+leaderboardList.addEventListener('wheel', scrollLeaderboardFromWheel, { passive: false });
+leaderboardList.addEventListener('pointerdown', startLeaderboardDrag);
+leaderboardList.addEventListener('pointermove', moveLeaderboardDrag);
+leaderboardList.addEventListener('pointerup', endLeaderboardDrag);
+leaderboardList.addEventListener('pointercancel', endLeaderboardDrag);
 leaderboardList.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' && event.key !== ' ') {
     return;
@@ -3788,6 +4118,10 @@ nextButton.addEventListener('click', () => {
 raceStage.addEventListener(
   'wheel',
   (event) => {
+    if (event.target instanceof Element && event.target.closest('#leaderboard')) {
+      return;
+    }
+
     if (cameraSelectionLocked) {
       return;
     }
