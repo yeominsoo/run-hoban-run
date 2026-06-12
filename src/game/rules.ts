@@ -111,7 +111,7 @@ const PATTERNS: Pattern[] = ['solid', 'spots', 'stripes', 'socks'];
 const BASE_FINISH_SECONDS = 92;
 const HELICOPTER_ENTRANCE_SECONDS = 3;
 const BULLET_FLIGHT_SECONDS = 0.9;
-const MAX_FIELD_SIZE = 18;
+const MAX_FIELD_SIZE = 20;
 export const FRENZY_SKILL_ID = 'frenzy-surge';
 const FRENZY_SPEED_MULTIPLIER = 3;
 const MOTION_EVENT_CHANCE_PER_SEGMENT = 0.04;
@@ -290,7 +290,7 @@ export function normalizeParticipants(input: string[]) {
     });
 
   if (names.length === 0) {
-    return createSampleParticipants(18);
+    return createSampleParticipants(20);
   }
 
   return names;

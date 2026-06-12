@@ -38,12 +38,12 @@ test('does not concentrate six-runner winners on a fixed input order across seed
 
 test('caps race option bounds to the participant count', () => {
   const names = createSampleParticipants(6);
-  const bounds = getRaceOptionBounds(names.length, 18);
+  const bounds = getRaceOptionBounds(names.length, 20);
   const tournament = runTournament(names, {
     seed: '참가자-상한',
-    fieldSize: 18,
+    fieldSize: 20,
     qualifiersPerGroup: 17,
-    winnerCount: 18,
+    winnerCount: 20,
     surface: 'turf',
     distance: 'mile',
     condition: 'firm'
@@ -59,7 +59,7 @@ test('caps race option bounds to the participant count', () => {
 });
 
 test('spreads helicopter shots across randomized lanes and full pre-elimination ranks over 200 runs', () => {
-  const names = createSampleParticipants(18);
+  const names = createSampleParticipants(20);
   const shotLanes = new Map<number, number>();
   const shotBaseRanks = new Map<number, number>();
   const winnerLanes = new Map<number, number>();
@@ -70,7 +70,7 @@ test('spreads helicopter shots across randomized lanes and full pre-elimination 
   for (let index = 1; index <= 200; index += 1) {
     const tournament = runTournament(names, {
       seed: `트랙분포-${String(index).padStart(3, '0')}`,
-      fieldSize: 18,
+      fieldSize: 20,
       qualifiersPerGroup: 2,
       winnerCount: 1,
       surface: 'turf',
@@ -85,7 +85,7 @@ test('spreads helicopter shots across randomized lanes and full pre-elimination 
       continue;
     }
 
-    expect(new Set(race.placements.map((placement) => placement.laneIndex)).size).toBe(18);
+    expect(new Set(race.placements.map((placement) => placement.laneIndex)).size).toBe(20);
 
     const winner = race.placements.find((placement) => placement.rank === 1);
 
@@ -125,8 +125,8 @@ test('spreads helicopter shots across randomized lanes and full pre-elimination 
   const shotBaseRankCounts = [...shotBaseRanks.values()];
   const winnerCounts = [...winnerLanes.values()];
 
-  expect(shotLanes.size).toBe(18);
-  expect(shotBaseRanks.size).toBe(18);
+  expect(shotLanes.size).toBe(20);
+  expect(shotBaseRanks.size).toBe(20);
   expect(winnerLanes.size).toBeGreaterThanOrEqual(15);
   expect(Math.max(...shotCounts)).toBeLessThanOrEqual(90);
   expect(Math.max(...shotBaseRankCounts)).toBeLessThanOrEqual(95);

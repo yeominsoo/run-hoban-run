@@ -1,10 +1,18 @@
 import { stat } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const viewports = [
   { name: 'desktop', size: { width: 1440, height: 900 } },
   { name: 'mobile', size: { width: 390, height: 844 } }
 ];
+
+async function setHiddenSeed(page: Page, seed: string) {
+  await page.locator('#seed-input').evaluate((element, nextSeed) => {
+    if (element instanceof HTMLInputElement) {
+      element.value = nextSeed;
+    }
+  }, seed);
+}
 
 for (const viewport of viewports) {
   test(`renders a nonblank 3d race scene on ${viewport.name}`, async ({ page }) => {
@@ -121,6 +129,118 @@ for (const viewport of viewports) {
   });
 }
 
+for (const viewport of viewports) {
+  test(`keeps race callouts limited on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize(viewport.size);
+    await page.goto('/');
+    await page.locator('#start-tournament').click();
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.runner-tag')].some(
+        (element) => element.textContent?.trim() && Number(window.getComputedStyle(element).opacity) > 0.03
+      )
+    );
+
+    const readFrame = () => page.evaluate(() => {
+      const visibleCallouts = [...document.querySelectorAll('.runner-tag')].filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return Number(style.opacity) > 0.03 && rect.width > 0 && rect.height > 0;
+      });
+      const leaderboardBox = document.querySelector('#leaderboard')?.getBoundingClientRect();
+      const minimapBox = document.querySelector('#race-minimap')?.getBoundingClientRect();
+
+      return {
+        visibleCalloutCount: visibleCallouts.length,
+        leaderboardCount: document.querySelectorAll('#leaderboard li').length,
+        minimapToLeaderboard:
+          leaderboardBox && minimapBox ? Math.round(leaderboardBox.top - minimapBox.bottom) : null
+      };
+    });
+
+    await expect.poll(async () => (await readFrame()).visibleCalloutCount, {
+      timeout: 5_000
+    }).toBeLessThanOrEqual(4);
+
+    const frame = await readFrame();
+
+    expect(frame.visibleCalloutCount).toBeGreaterThan(0);
+    expect(frame.visibleCalloutCount).toBeLessThanOrEqual(4);
+    expect(frame.leaderboardCount).toBe(20);
+
+    if (frame.minimapToLeaderboard !== null) {
+      expect(frame.minimapToLeaderboard).toBeGreaterThan(0);
+    }
+
+    await page.screenshot({
+      path: `test-results/callouts-limited-${viewport.name}.png`,
+      fullPage: true
+    });
+  });
+}
+
+for (const viewport of viewports) {
+  test(`captures the gallop and grounding visual regression frame on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize(viewport.size);
+    await page.goto('/');
+    await page.locator('#participants').fill(['혜성', '민트', '번개', '노을', '바람', '호수'].join('\n'));
+    await setHiddenSeed(page, `p2c-gallop-grounding-${viewport.name}`);
+    await page.locator('#start-tournament').click();
+    await page.waitForFunction(() => {
+      const stage = document.querySelector('#race-stage');
+      const leadProgress = Math.max(
+        ...[...document.querySelectorAll('.minimap-dot')].map((dot) =>
+          Number.parseFloat((dot instanceof HTMLElement ? dot.style.left : '0') || '0')
+        )
+      );
+      return (
+        leadProgress > 42 &&
+        stage?.getAttribute('data-cinematic') === 'idle' &&
+        stage?.getAttribute('data-camera-sequence') !== 'cinematic'
+      );
+    }, undefined, { timeout: 45_000 });
+    await page.waitForTimeout(250);
+
+    const frame = await page.evaluate(() => {
+      const visibleCallouts = [...document.querySelectorAll('.runner-tag')].filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return Number(style.opacity) > 0.03 && rect.width > 0 && rect.height > 0;
+      });
+      const visibleIdentities = [...document.querySelectorAll('.runner-identity')].filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return Number(style.opacity) > 0.03 && rect.width > 0 && rect.height > 0;
+      });
+      const leadProgress = Math.max(
+        ...[...document.querySelectorAll('.minimap-dot')].map((dot) =>
+          Number.parseFloat((dot instanceof HTMLElement ? dot.style.left : '0') || '0')
+        )
+      );
+
+      return {
+        cameraSequence: document.querySelector('#race-stage')?.getAttribute('data-camera-sequence'),
+        leadProgress,
+        visibleCalloutCount: visibleCallouts.length,
+        visibleIdentityCount: visibleIdentities.length,
+        identityLabelCount: document.querySelectorAll('.runner-identity').length,
+        leaderboardCount: document.querySelectorAll('#leaderboard li').length
+      };
+    });
+
+    expect(frame.leaderboardCount).toBe(6);
+    expect(frame.identityLabelCount).toBe(6);
+    expect(frame.leadProgress).toBeGreaterThan(42);
+    expect(frame.visibleCalloutCount).toBeLessThanOrEqual(4);
+    expect(frame.visibleCalloutCount + frame.visibleIdentityCount).toBeGreaterThan(0);
+    expect(['early', 'mid', 'final-stretch']).toContain(frame.cameraSequence);
+
+    await page.screenshot({
+      path: `test-results/p2c-gallop-grounding-${viewport.name}.png`,
+      fullPage: true
+    });
+  });
+}
+
 test('uses a single generated helicopter model without loading the GLB asset', async ({ page }) => {
   const modelRequests: string[] = [];
   page.on('request', (request) => {
@@ -173,7 +293,10 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
 
     const viteUrlImportProbe = url.searchParams.has('import') || url.searchParams.has('url');
 
-    if ((/freepixel-helicopter.*\.glb$/.test(url.pathname) && !viteUrlImportProbe) || url.pathname.includes('/assets/frenzy/')) {
+    if (
+      ((/freepixel-helicopter.*\.glb$/.test(url.pathname) || /racer|horse|rider|bridle|sitting/i.test(url.pathname)) && !viteUrlImportProbe) ||
+      url.pathname.includes('/assets/frenzy/')
+    ) {
       deferredAssetRequests.push(url.pathname);
     }
   });
@@ -285,17 +408,127 @@ test('uses a faster default race pace and exposes upgraded racer visuals', async
 
   await expect(page.locator('#race-speed-select')).toHaveCount(0);
   await expect(raceStage).toHaveAttribute('data-race-pace', '1.25');
-  await expect(raceStage).toHaveAttribute('data-horse-asset', 'poly-google-bridle-horse');
-  await expect(raceStage).toHaveAttribute('data-rider-asset', 'eclair-sitting-rider');
-  await expect(raceStage).toHaveAttribute('data-horse-asset-license', 'CC-BY-3.0');
-  await expect(raceStage).toHaveAttribute('data-rider-asset-license', 'CC0-1.0');
-  await expect(raceStage).toHaveAttribute('data-horse-asset-status', 'loaded', { timeout: 10_000 });
-  await expect(raceStage).toHaveAttribute('data-rider-asset-status', 'loaded', { timeout: 10_000 });
-  await expect(raceStage).toHaveAttribute('data-horse-visual-style', 'free-gltf-asset');
-  await expect(raceStage).toHaveAttribute('data-rider-visual-style', 'free-gltf-asset');
+  await expect(raceStage).toHaveAttribute('data-racer-model-strategy', 'procedural-stylized');
+  await expect(raceStage).toHaveAttribute('data-horse-asset', 'procedural-stylized-horse');
+  await expect(raceStage).toHaveAttribute('data-rider-asset', 'procedural-stylized-jockey');
+  await expect(raceStage).toHaveAttribute('data-horse-asset-license', 'generated-local');
+  await expect(raceStage).toHaveAttribute('data-rider-asset-license', 'generated-local');
+  await expect(raceStage).toHaveAttribute('data-horse-asset-status', 'procedural');
+  await expect(raceStage).toHaveAttribute('data-rider-asset-status', 'procedural');
+  await expect(raceStage).toHaveAttribute('data-horse-visual-style', 'procedural-stylized');
+  await expect(raceStage).toHaveAttribute('data-rider-visual-style', 'procedural-stylized');
 
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-summary')).not.toContainText('속도');
+});
+
+test('moves the overview camera through broadcast, finish, and winner phases', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.locator('#participants').fill(['혜성', '민트', '번개'].join('\n'));
+  await setHiddenSeed(page, 'camera-sequence-0001');
+  await page.locator('#start-tournament').click();
+
+  const waitForBroadcastPhase = async (phase: 'early' | 'mid' | 'final-stretch' | 'finish' | 'winner', timeout: number) => {
+    await page.waitForFunction(
+      (expectedPhase) => {
+        const stage = document.querySelector('#race-stage');
+        return stage?.getAttribute('data-camera-sequence') === expectedPhase && stage?.getAttribute('data-cinematic') === 'idle';
+      },
+      phase,
+      { timeout }
+    );
+
+    if (phase === 'final-stretch') {
+      await page.waitForFunction(() => {
+        const leadProgress = Math.max(
+          ...[...document.querySelectorAll('.minimap-dot')].map((dot) =>
+            Number.parseFloat((dot instanceof HTMLElement ? dot.style.left : '0') || '0')
+          )
+        );
+        return leadProgress > 82;
+      }, undefined, { timeout: 20_000 });
+    }
+
+    await page.waitForTimeout(500);
+    const frame = await page.evaluate(() => {
+      const visibleCallouts = [...document.querySelectorAll('.runner-tag')].filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return Number(style.opacity) > 0.03 && rect.width > 0 && rect.height > 0;
+      });
+      const stage = document.querySelector('#race-stage');
+      const winnerBanner = document.querySelector('#winner-banner');
+
+      return {
+        cameraMode: stage?.getAttribute('data-camera-mode'),
+        cameraSequence: stage?.getAttribute('data-camera-sequence'),
+        cinematic: stage?.getAttribute('data-cinematic'),
+        victory: stage?.getAttribute('data-victory'),
+        winnerBannerHidden: winnerBanner?.getAttribute('aria-hidden'),
+        visibleCalloutCount: visibleCallouts.length,
+        leaderboardCount: document.querySelectorAll('#leaderboard li').length,
+        leadProgress: Math.max(
+          ...[...document.querySelectorAll('.minimap-dot')].map((dot) =>
+            Number.parseFloat((dot instanceof HTMLElement ? dot.style.left : '0') || '0')
+          )
+        )
+      };
+    });
+
+    expect(frame).toMatchObject({
+      cameraMode: 'overview',
+      cameraSequence: phase,
+      cinematic: 'idle',
+      leaderboardCount: 3
+    });
+    expect(frame.visibleCalloutCount).toBeGreaterThan(0);
+    expect(frame.visibleCalloutCount).toBeLessThanOrEqual(4);
+
+    if (phase === 'final-stretch') {
+      expect(frame.leadProgress).toBeGreaterThan(82);
+    }
+
+    if (phase === 'finish') {
+      expect(frame.victory).toBe('active');
+    }
+
+    if (phase === 'winner') {
+      expect(frame.victory).toBe('active');
+      expect(frame.winnerBannerHidden).toBe('false');
+    }
+
+    await page.screenshot({
+      path: phase === 'early' || phase === 'mid'
+        ? `test-results/p3a-camera-sequence-${phase}.png`
+        : phase === 'winner'
+          ? 'test-results/p4a-winner-presentation.png'
+          : `test-results/p3b-${phase}.png`,
+      fullPage: true
+    });
+  };
+
+  await waitForBroadcastPhase('early', 8_000);
+  await waitForBroadcastPhase('mid', 45_000);
+  await waitForBroadcastPhase('final-stretch', 85_000);
+  await waitForBroadcastPhase('finish', 120_000);
+  await waitForBroadcastPhase('winner', 20_000);
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#download-result-shot').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^run-hoban-run-.*-result-.*\.png$/);
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-last-screenshot-winner-banner', 'active');
+
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  await download.saveAs('test-results/p4b-result-capture.png');
+
+  if (downloadPath) {
+    expect((await stat(downloadPath)).size).toBeGreaterThan(30_000);
+  }
+
+  expect((await stat('test-results/p4b-result-capture.png')).size).toBeGreaterThan(30_000);
 });
 
 test('starts a 64 runner tournament and advances to the final race', async ({ page }) => {
@@ -306,20 +539,22 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#camera-target')).toHaveCount(0);
   await expect(page.locator('#toggle-recording svg')).toBeVisible();
   await expect(page.locator('#download-result-shot svg')).toBeVisible();
+  await expect(page.locator('#seed-input')).toBeHidden();
+  await expect(page.locator('#random-seed')).toHaveText('준비');
   await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('출전');
   await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('진출');
   await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('우승');
   await expect(page.locator('.option-group').filter({ hasText: '경기 조건' })).toContainText('주로');
   await expect(page.locator('#race-minimap')).toBeHidden();
-  await expect(page.locator('.minimap-dot')).toHaveCount(18);
-  await expect(page.locator('#leaderboard li')).toHaveCount(18);
+  await expect(page.locator('.minimap-dot')).toHaveCount(20);
+  await expect(page.locator('#leaderboard li')).toHaveCount(20);
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-mode', 'overview');
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-zoom', '1.00');
   const rosterScroll = await page.locator('#leaderboard').evaluate((element) => ({
     canScroll: element.scrollWidth > element.clientWidth,
     count: element.children.length
   }));
-  expect(rosterScroll).toEqual({ canScroll: true, count: 18 });
+  expect(rosterScroll).toEqual({ canScroll: true, count: 20 });
   const scrollAfterWheel = await page.locator('#leaderboard').evaluate((element) => {
     element.dispatchEvent(
       new WheelEvent('wheel', {
@@ -352,6 +587,7 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-stage')).toHaveClass(/panels-hidden/);
   await expect(page.locator('#race-minimap')).toBeVisible();
   await expect(page.locator('#race-summary')).toContainText('64명');
+  await expect(page.locator('#race-summary')).not.toContainText('시드');
   await expect(page.locator('#race-meta')).toContainText('경기 1/5');
   await expect(page.locator('#leaderboard')).not.toContainText(/% 지점/);
 
@@ -365,7 +601,7 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
 
 test('updates field size max from the participant count', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#field-size')).toHaveAttribute('max', '18');
+  await expect(page.locator('#field-size')).toHaveAttribute('max', '20');
   await page.locator('#participants').fill(['1번주자', '2번주자', '3번주자', '4번주자', '5번주자', '6번주자'].join('\n'));
   await expect(page.locator('#field-size')).toHaveAttribute('max', '6');
   await expect(page.locator('#field-size')).toHaveValue('6');
@@ -542,7 +778,7 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
 test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await page.locator('#seed-input').fill('광폭빠름-00001');
+  await setHiddenSeed(page, '광폭빠름-00001');
   await page.locator('#start-tournament').click();
 
   await page.waitForFunction(
@@ -563,7 +799,26 @@ test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
   await expect(page.locator('#race-stage')).toHaveAttribute('data-mirror-ball', 'idle');
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'true');
   await page.screenshot({
-    path: 'test-results/frenzy-cutscene.png',
+    path: 'test-results/p3c-frenzy-brief-cut.png',
+    fullPage: true
+  });
+
+  await page.waitForFunction(() => {
+    const stage = document.querySelector('#race-stage');
+    const leaderboard = document.querySelector('#leaderboard');
+    return (
+      stage?.getAttribute('data-cinematic') === 'idle' &&
+      stage?.getAttribute('data-frenzy') === 'active' &&
+      stage?.getAttribute('data-camera-sequence') !== 'cinematic' &&
+      leaderboard?.getAttribute('data-camera-locked') === 'false'
+    );
+  }, undefined, { timeout: 12_000 });
+  await page.waitForTimeout(150);
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-cinematic', 'idle');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-frenzy', 'active');
+  await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'false');
+  await page.screenshot({
+    path: 'test-results/p3c-frenzy-return.png',
     fullPage: true
   });
 });
@@ -571,7 +826,7 @@ test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
 test('plays dance skills with the frenzy mode effect active', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await page.locator('#seed-input').fill('댄스광폭-0113');
+  await setHiddenSeed(page, '댄스광폭-0113');
   await page.locator('#start-tournament').click();
 
   await page.waitForFunction(
@@ -602,7 +857,7 @@ test('plays lie-flat skills with the frenzy mode speed effect active', async ({ 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await page.locator('#participants').fill(['혜성', '민트', '번개', '남색', '장미', '재빛'].join('\n'));
-  await page.locator('#seed-input').fill('flat-six-00002');
+  await setHiddenSeed(page, 'flat-six-00002');
   await page.locator('#start-tournament').click();
 
   const flatGlideState = await page.waitForFunction(
@@ -655,7 +910,7 @@ test('plays rocket start with rear gas burst effect', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await page.locator('#participants').fill(['혜성', '민트', '번개', '남색', '장미', '재빛'].join('\n'));
-  await page.locator('#seed-input').fill('rocket-six-0002');
+  await setHiddenSeed(page, 'rocket-six-0002');
   await page.locator('#start-tournament').click();
 
   await expect(page.locator('#race-stage')).toHaveAttribute('data-rocket-fart', 'active', { timeout: 25_000 });
@@ -762,12 +1017,18 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
 
   await page.waitForFunction(() => {
     const stage = document.querySelector('#race-stage');
-    return stage?.getAttribute('data-cinematic') !== 'shot' && stage?.getAttribute('data-cinematic') !== 'hit';
-  }, undefined, { timeout: 6_000 });
+    const leaderboard = document.querySelector('#leaderboard');
+    return (
+      stage?.getAttribute('data-cinematic') === 'idle' &&
+      stage?.getAttribute('data-camera-sequence') !== 'cinematic' &&
+      leaderboard?.getAttribute('data-camera-locked') === 'false'
+    );
+  }, undefined, { timeout: 12_000 });
 
   await expect(page.locator('.runner-tag.eliminated').first()).toBeVisible();
+  await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-locked', 'false');
   await page.screenshot({
-    path: 'test-results/helicopter-elimination.png',
+    path: 'test-results/p3c-helicopter-return.png',
     fullPage: true
   });
 });

@@ -40,7 +40,7 @@ export function renderAppShell(app: HTMLElement) {
             <div class="section-title">참가자</div>
             <textarea id="participants" spellcheck="false"></textarea>
             <div class="button-row">
-              <button id="sample-18" type="button">18</button>
+              <button id="sample-20" type="button">20</button>
               <button id="sample-64" type="button">64</button>
               <button id="start-tournament" type="button">시작</button>
             </div>
@@ -48,26 +48,23 @@ export function renderAppShell(app: HTMLElement) {
 
           <div class="panel-section option-panel">
             <div class="seed-control option-group">
-              <label>
-                <span>시드</span>
-                <input id="seed-input" value="호반-2026" />
-              </label>
-              <button id="random-seed" type="button">랜덤</button>
+              <input id="seed-input" type="hidden" value="호반-2026" />
+              <button id="random-seed" type="button">준비</button>
             </div>
             <div class="option-group">
               <div class="option-group-title">진행 방식</div>
               <div class="option-grid">
                 <label>
                   <span>출전</span>
-                  <input id="field-size" type="number" min="2" max="18" value="18" />
+                  <input id="field-size" type="number" min="2" max="20" value="20" />
                 </label>
                 <label>
                   <span>진출</span>
-                  <input id="qualifiers" type="number" min="1" max="17" value="2" />
+                  <input id="qualifiers" type="number" min="1" max="19" value="2" />
                 </label>
                 <label>
                   <span>우승</span>
-                  <input id="winner-count" type="number" min="1" max="18" value="1" />
+                  <input id="winner-count" type="number" min="1" max="20" value="1" />
                 </label>
               </div>
             </div>

@@ -284,18 +284,11 @@ textarea {
 
 .seed-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
-  gap: 8px;
-  align-items: end;
-}
-
-.seed-control label {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .seed-control button {
+  width: 100%;
   min-height: 36px;
   border-radius: 8px;
   color: #102019;
@@ -436,7 +429,7 @@ textarea {
 
 .hud-bottom {
   right: 20px;
-  bottom: 18px;
+  bottom: 12px;
   left: 20px;
   justify-content: center;
 }
@@ -446,12 +439,12 @@ textarea {
   grid-auto-flow: column;
   grid-auto-columns: minmax(132px, 1fr);
   grid-template-columns: none;
-  grid-template-rows: repeat(2, minmax(38px, auto));
-  gap: 6px;
+  grid-template-rows: repeat(2, minmax(34px, auto));
+  gap: 5px;
   width: min(980px, 100%);
-  max-height: 104px;
+  max-height: 92px;
   margin: 0;
-  padding: 8px;
+  padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 8px;
   background: rgba(12, 26, 24, 0.5);
@@ -486,10 +479,10 @@ textarea {
 
 .leaderboard li {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
+  gap: 7px;
+  padding: 5px 8px;
   color: #ffffff;
   cursor: pointer;
   outline: none;
@@ -498,6 +491,16 @@ textarea {
     background 140ms ease,
     box-shadow 140ms ease,
     transform 140ms ease;
+}
+
+.leaderboard span {
+  width: 24px;
+  height: 24px;
+  font-size: 0.8rem;
+}
+
+.leaderboard strong {
+  font-size: 0.82rem;
 }
 
 .leaderboard li:hover,
@@ -522,6 +525,35 @@ textarea {
 .leaderboard.camera-locked li:focus-visible {
   background: rgba(255, 255, 255, 0.1);
   box-shadow: none;
+}
+
+@media (min-width: 761px) {
+  .race-stage.race-started .hud-bottom {
+    bottom: 10px;
+  }
+
+  .race-stage.race-started .leaderboard {
+    grid-template-rows: minmax(32px, auto);
+    grid-auto-columns: minmax(126px, 1fr);
+    width: min(1040px, 100%);
+    max-height: 52px;
+    padding: 5px;
+  }
+
+  .race-stage.race-started .leaderboard li {
+    min-height: 32px;
+    padding: 4px 8px;
+  }
+
+  .race-stage.race-started .leaderboard span {
+    width: 22px;
+    height: 22px;
+    font-size: 0.76rem;
+  }
+
+  .race-stage.race-started .leaderboard strong {
+    font-size: 0.78rem;
+  }
 }
 
 .winner-banner {
@@ -564,6 +596,22 @@ textarea {
   backdrop-filter: blur(12px);
 }
 
+.race-stage.victory-active .winner-banner {
+  top: 96px;
+}
+
+.race-stage.victory-active .winner-banner-content {
+  min-width: min(600px, 100%);
+  padding: 16px 30px 18px;
+  border-color: rgba(242, 201, 76, 0.74);
+  background:
+    linear-gradient(135deg, rgba(242, 201, 76, 0.24), rgba(86, 204, 242, 0.1)),
+    rgba(9, 22, 20, 0.78);
+  box-shadow:
+    0 22px 64px rgba(9, 18, 22, 0.34),
+    inset 0 0 38px rgba(242, 201, 76, 0.2);
+}
+
 .winner-kicker {
   color: #f2c94c;
   font-size: 0.72rem;
@@ -578,6 +626,10 @@ textarea {
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.race-stage.victory-active .winner-banner strong {
+  font-size: 2.35rem;
 }
 
 .winner-banner small {
@@ -838,12 +890,20 @@ textarea {
   text-align: center;
   text-overflow: ellipsis;
   transform-origin: center;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
   white-space: nowrap;
 }
 
 .runner-tag.skill {
   color: #111d18;
   background: #56ccf2;
+}
+
+.runner-tag.selected {
+  color: #07191f;
+  background: #84d8ff;
 }
 
 .runner-tag.winner {
@@ -872,6 +932,63 @@ textarea {
 .runner-tag.eliminated {
   color: #ffffff;
   background: #d33f49;
+}
+
+.runner-identity {
+  position: absolute;
+  display: inline-grid;
+  grid-template-columns: 20px minmax(0, auto);
+  align-items: center;
+  max-width: 112px;
+  min-width: 58px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.54);
+  border-radius: 999px;
+  color: #f8fbff;
+  background: rgba(13, 28, 26, 0.58);
+  box-shadow: 0 3px 12px rgba(8, 18, 20, 0.18);
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0;
+  text-shadow: 0 1px 4px rgba(8, 18, 20, 0.44);
+  transform-origin: center;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  white-space: nowrap;
+}
+
+.runner-identity span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  color: #111827;
+  background: #f2c94c;
+  font-size: 0.68rem;
+  text-shadow: none;
+}
+
+.runner-identity strong {
+  overflow: hidden;
+  padding: 0 8px 0 6px;
+  text-overflow: ellipsis;
+}
+
+.runner-identity.selected {
+  border-color: rgba(86, 204, 242, 0.84);
+  background: rgba(12, 52, 58, 0.7);
+}
+
+.runner-identity.rank-first {
+  border-color: rgba(242, 201, 76, 0.78);
+  background: rgba(48, 40, 16, 0.68);
+}
+
+.runner-identity.eliminated {
+  filter: grayscale(0.55);
 }
 
 .runner-tag.hit {
@@ -991,10 +1108,6 @@ textarea {
     font-size: 0.64rem;
   }
 
-  .seed-control {
-    grid-template-columns: minmax(0, 1fr) 62px;
-  }
-
   .option-grid span,
   .seed-control span {
     font-size: 0.64rem;
@@ -1067,8 +1180,20 @@ textarea {
     padding: 12px 16px 13px;
   }
 
+  .race-stage.victory-active .winner-banner {
+    top: 78px;
+  }
+
+  .race-stage.victory-active .winner-banner-content {
+    padding: 12px 17px 13px;
+  }
+
   .winner-banner strong {
     font-size: 1.22rem;
+  }
+
+  .race-stage.victory-active .winner-banner strong {
+    font-size: 1.3rem;
   }
 
   .winner-banner small {
