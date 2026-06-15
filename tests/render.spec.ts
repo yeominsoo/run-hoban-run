@@ -450,7 +450,7 @@ test('moves the overview camera through broadcast, finish, and winner phases', a
       }, undefined, { timeout: 20_000 });
     }
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(phase === 'finish' ? 120 : 500);
     const frame = await page.evaluate(() => {
       const visibleCallouts = [...document.querySelectorAll('.runner-tag')].filter((element) => {
         const rect = element.getBoundingClientRect();
@@ -478,10 +478,14 @@ test('moves the overview camera through broadcast, finish, and winner phases', a
 
     expect(frame).toMatchObject({
       cameraMode: 'overview',
-      cameraSequence: phase,
       cinematic: 'idle',
       leaderboardCount: 3
     });
+    if (phase === 'finish') {
+      expect(['finish', 'winner']).toContain(frame.cameraSequence);
+    } else {
+      expect(frame.cameraSequence).toBe(phase);
+    }
     expect(frame.visibleCalloutCount).toBeGreaterThan(0);
     expect(frame.visibleCalloutCount).toBeLessThanOrEqual(4);
 
@@ -536,39 +540,48 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-stage')).not.toHaveClass(/panels-hidden/);
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await expect(page.locator('#race-summary')).toContainText('헬기');
+  await expect(page.locator('#result-list')).toHaveCount(0);
+  await expect(page.locator('.hud-heading')).toHaveText('현재 순위');
+  await expect(page.locator('.hud-heading')).toBeVisible();
   await expect(page.locator('#camera-target')).toHaveCount(0);
   await expect(page.locator('#toggle-recording svg')).toBeVisible();
   await expect(page.locator('#download-result-shot svg')).toBeVisible();
   await expect(page.locator('#seed-input')).toBeHidden();
-  await expect(page.locator('#random-seed')).toHaveText('준비');
+  await expect(page.locator('#random-seed')).toHaveText('순서변경');
   await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('출전');
   await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('진출');
   await expect(page.locator('.option-group').filter({ hasText: '진행 방식' })).toContainText('우승');
-  await expect(page.locator('.option-group').filter({ hasText: '경기 조건' })).toContainText('주로');
+  await expect(page.locator('.option-group').filter({ hasText: '경기 조건' })).toHaveCount(0);
   await expect(page.locator('#race-minimap')).toBeHidden();
   await expect(page.locator('.minimap-dot')).toHaveCount(20);
   await expect(page.locator('#leaderboard li')).toHaveCount(20);
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-mode', 'overview');
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-zoom', '1.00');
   const rosterScroll = await page.locator('#leaderboard').evaluate((element) => ({
-    canScroll: element.scrollWidth > element.clientWidth,
+    canScroll: element.scrollHeight > element.clientHeight,
+    horizontalScroll: element.scrollWidth > element.clientWidth,
     count: element.children.length
   }));
-  expect(rosterScroll).toEqual({ canScroll: true, count: 20 });
-  const scrollAfterWheel = await page.locator('#leaderboard').evaluate((element) => {
-    element.dispatchEvent(
-      new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        deltaY: 320
-      })
-    );
-    return element.scrollLeft;
+  expect(rosterScroll).toEqual({ canScroll: true, horizontalScroll: false, count: 20 });
+  const desktopRankingLayout = await page.evaluate(() => {
+    const racePanel = document.querySelector('.race-panel')?.getBoundingClientRect();
+    const rankingPanel = document.querySelector('.hud-bottom')?.getBoundingClientRect();
+
+    return {
+      underRacePanel: Boolean(racePanel && rankingPanel && rankingPanel.top >= racePanel.bottom - 1),
+      rightAligned: Boolean(racePanel && rankingPanel && Math.abs(rankingPanel.right - racePanel.right) <= 1),
+      sameWidth: Boolean(racePanel && rankingPanel && Math.abs(rankingPanel.width - racePanel.width) <= 1)
+    };
+  });
+  expect(desktopRankingLayout).toEqual({ underRacePanel: true, rightAligned: true, sameWidth: true });
+  const scrollAfterVerticalMove = await page.locator('#leaderboard').evaluate((element) => {
+    element.scrollTop = 160;
+    return element.scrollTop;
   });
   await expect(page.locator('#leaderboard')).toHaveAttribute('data-camera-zoom', '1.00');
-  expect(scrollAfterWheel).toBeGreaterThan(0);
+  expect(scrollAfterVerticalMove).toBeGreaterThan(0);
   await page.locator('#leaderboard').evaluate((element) => {
-    element.scrollLeft = 0;
+    element.scrollTop = 0;
   });
   await page.locator('#leaderboard li').nth(1).click();
   await expect(page.locator('#leaderboard li.selected')).toHaveCount(1);

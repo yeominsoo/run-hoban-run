@@ -14,7 +14,7 @@
 
 | Phase | 범위 | 파일 | 완료 기준 |
 | --- | --- | --- | --- |
-| PL1 | 하단 UI 안전영역 | `src/style.css`, `src/main.ts`, `tests/render.spec.ts` | 주요 말이 leaderboard에 심하게 묻히지 않고 render suite 통과 |
+| PL1 | 순위 UI 안전영역 | `src/style.css`, `src/main.ts`, `tests/render.spec.ts` | 주요 말이 leaderboard에 심하게 묻히지 않고 render suite 통과 |
 | PL2 | 주자 즉시 식별 | `src/main.ts`, `src/style.css`, `tests/render.spec.ts` | 참가자 목록을 누르지 않아도 화면 위 주자를 바로 구분 가능 |
 | PL3 | Runner tag edge clamp | `src/main.ts`, `tests/render.spec.ts` | 이벤트/탈락 라벨이 화면 끝에서 잘리지 않음 |
 | PL4 | 모바일 결과 캡처 밀도 | `src/main.ts`, `tests/render.spec.ts` | 모바일 결과 캡처에서 우승자/우승마/순위가 한눈에 들어옴 |
@@ -25,9 +25,14 @@
 
 완료:
 
-- PL1: desktop race 중 leaderboard를 단일 줄 compact rail로 전환하고, overview broadcast camera의 desktop vertical target을 소폭 조정해 하단 UI 안전영역을 개선.
-- PL2: 말 옆구리에 큰 번호+이름 nameplate를 붙이고 보조 주자 식별 라벨을 추가해 참가자 목록을 열지 않아도 주자를 바로 확인할 수 있게 개선.
-- PL2 후속: 한 레이스 출전 최대치를 20명으로 상향하고, 시드 입력은 숨긴 뒤 기존 랜덤 버튼을 `준비` 버튼으로 변경.
+- PL1: desktop race 중 leaderboard를 우측 결과 영역의 세로 스크롤 패널로 전환하고, mobile은 기존 하단 가로 leaderboard를 유지해 화면 안전영역을 개선.
+- PL2: 말 옆구리에 큰 이름 nameplate를 붙이고 보조 주자 식별 라벨을 추가해 참가자 목록을 열지 않아도 주자를 바로 확인할 수 있게 개선.
+- PL2 후속: 말 옆구리 nameplate와 보조 주자 식별 라벨에는 숫자 없이 이름만 표시.
+- PL2 후속: 한 레이스 출전 최대치를 20명으로 상향하고, 시드 입력은 숨긴 뒤 기존 랜덤 버튼을 `순서변경` 버튼으로 변경.
+- PL2 후속: 경기 조건 선택 UI를 제거하고 단일 모래 주로로 고정.
+- PL2 후속: 진출 인원수만큼 주자가 도달하면 레이스 재생 속도를 x3으로 올려 남은 레이스를 빠르게 마무리.
+- PL2 후속: 별도 결과 목록을 제거하고, `출발 대기`/경기 정보 아래의 `현재 순위` 목록이 실시간 순위와 종료 후 결과를 함께 표시하게 통합.
+- PL2 후속: 가장자리 레인이 트랙 밖처럼 보이지 않도록 모래 주로 폭을 넓히고, 선택/스킬 근접 카메라는 바깥쪽에서 안쪽을 보게 조정.
 
 검증:
 
@@ -48,19 +53,25 @@
 
 작업:
 
-- desktop leaderboard 높이와 padding을 소폭 줄인다.
-- mobile leaderboard 검증이 깨지지 않도록 mobile CSS는 보수적으로 유지한다.
+- desktop leaderboard는 우측 결과 영역에 세로 스크롤 목록으로 배치한다.
+- mobile leaderboard 검증이 깨지지 않도록 기존 하단 가로 UI를 유지한다.
 - camera final-stretch/mid framing에서 말이 하단 UI에 덜 묻히도록 안전영역을 소폭 반영한다.
 - P2C/P3A/P3B 캡처를 다시 생성해 비교한다.
-- 주행 중 말 옆에 작은 번호+이름 라벨을 표시한다.
+- 주행 중 말 옆에 작은 이름 라벨을 표시한다.
 - 중요 이벤트/순위 callout이 있는 주자는 중복 라벨을 숨겨 화면을 과밀하게 만들지 않는다.
-- 말 옆구리 nameplate 텍스처에도 번호와 이름을 크게 넣어 확대/근접 컷에서 식별성을 보강한다.
+- 말 옆구리 nameplate 텍스처에는 이름만 크게 넣어 확대/근접 컷에서 식별성을 보강한다.
 - 20명 동시 출전 기준으로 기본 샘플, 입력 상한, 테스트 기대값을 갱신한다.
-- 시드 값은 사용자 UI와 경기 요약에서 숨기고 `준비` 버튼으로 새 시드를 생성하게 한다.
+- 시드 값은 사용자 UI와 경기 요약에서 숨기고 `순서변경` 버튼으로 새 시드를 생성하게 한다.
+- 경기 조건은 별도 선택 없이 모래 주로 하나만 사용한다.
+- 기존 트랙 구분선은 제거하고 모래사장 질감 하나로 주로를 표현한다.
+- 진출 인원수 도달 뒤에는 x3 재생 속도로 후미 주자의 완주 대기 시간을 줄인다.
+- 별도 `결과` 목록은 제거하고, 현재 순위 목록이 종료 후 시간/진출/탈락 상세까지 표시하게 한다.
+- 1번처럼 가장자리 레인에 배치된 주자가 추적 카메라에서 트랙 밖처럼 보이지 않도록 주로 여백과 카메라 방향을 보정한다.
 
 검증:
 
 - `npm run build`
+- `npx playwright test tests/rules.spec.ts`
 - `PLAYWRIGHT_BASE_URL=http://localhost:30000 npx playwright test tests/render.spec.ts -g "captures the gallop and grounding|moves the overview camera through broadcast"`
 - 가능하면 `PLAYWRIGHT_BASE_URL=http://localhost:30000 npm run test:render`
 

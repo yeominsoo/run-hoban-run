@@ -17,12 +17,12 @@
 - `test-results/qa-mobile-winner-presentation.png`
 - `test-results/qa-mobile-result-capture.png`
 
-## PI-1. 하단 UI 안전영역
+## PI-1. 순위 UI 안전영역
 
 문제:
 
 - desktop 주행/결승 직전 컷에서 말의 다리와 몸통 일부가 leaderboard 뒤로 들어간다.
-- 귀여운 말/기수 모델이 잘 만들어졌지만, 가장 중요한 하단 피사체가 UI에 가려져 매력이 줄어든다.
+- 귀여운 말/기수 모델이 잘 만들어졌지만, 가장 중요한 피사체가 UI에 가려져 매력이 줄어든다.
 
 증거:
 
@@ -33,13 +33,15 @@
 
 개선 방향:
 
-- race 중 leaderboard 높이와 padding을 조금 줄인다.
-- camera framing은 더 멀리 빼기보다 말이 하단 UI 위로 올라오도록 target/height를 소폭 조정한다.
+- desktop race 중 leaderboard는 우측 결과 영역의 세로 스크롤 목록으로 분리한다.
+- mobile은 기존 하단 가로 leaderboard를 유지하고 minimap과 겹치지 않게 한다.
+- camera framing은 더 멀리 빼기보다 말이 UI에 묻히지 않도록 target/height를 보수적으로 조정한다.
 - 테스트 전용 DOM이나 runtime 상태를 만들지 않는다.
 
 완료 기준:
 
 - desktop P2C/P3A/P3B 캡처에서 주요 말의 몸통이 leaderboard에 심하게 묻히지 않는다.
+- desktop leaderboard가 우측 세로 스크롤 목록으로 동작한다.
 - mobile leaderboard와 minimap 겹침 검증은 유지된다.
 - `npm run build`, `PLAYWRIGHT_BASE_URL=http://localhost:30000 npm run test:render`가 통과한다.
 
@@ -57,9 +59,9 @@
 
 개선 방향:
 
-- 말 주변에 작은 번호+이름 라벨을 표시해 화면 위 주자를 바로 식별하게 한다.
+- 말 주변에 작은 이름 라벨을 표시해 화면 위 주자를 바로 식별하게 한다.
 - 기존 이벤트/순위 callout은 유지하되, 같은 주자에게 중복 라벨이 겹치지 않게 한다.
-- 말 옆구리 nameplate 텍스처에도 번호와 이름을 크게 넣어 근접 컷에서 식별성을 보강한다.
+- 말 옆구리 nameplate 텍스처에는 이름만 크게 넣어 근접 컷에서 식별성을 보강한다.
 
 완료 기준:
 

@@ -49,7 +49,7 @@ export function renderAppShell(app: HTMLElement) {
           <div class="panel-section option-panel">
             <div class="seed-control option-group">
               <input id="seed-input" type="hidden" value="호반-2026" />
-              <button id="random-seed" type="button">준비</button>
+              <button id="random-seed" type="button">순서변경</button>
             </div>
             <div class="option-group">
               <div class="option-group-title">진행 방식</div>
@@ -68,35 +68,6 @@ export function renderAppShell(app: HTMLElement) {
                 </label>
               </div>
             </div>
-            <div class="option-group">
-              <div class="option-group-title">경기 조건</div>
-              <div class="option-grid">
-                <label>
-                  <span>주로</span>
-                  <select id="surface-select">
-                    <option value="turf">잔디</option>
-                    <option value="dirt">더트</option>
-                  </select>
-                </label>
-                <label>
-                  <span>거리</span>
-                  <select id="distance-select">
-                    <option value="sprint">단거리</option>
-                    <option value="mile" selected>마일</option>
-                    <option value="medium">중거리</option>
-                    <option value="long">장거리</option>
-                  </select>
-                </label>
-                <label>
-                  <span>상태</span>
-                  <select id="condition-select">
-                    <option value="firm">양호</option>
-                    <option value="damp">다습</option>
-                    <option value="muddy">불량</option>
-                  </select>
-                </label>
-              </div>
-            </div>
           </div>
         </aside>
 
@@ -105,13 +76,10 @@ export function renderAppShell(app: HTMLElement) {
             <div class="section-title" id="race-title">경기</div>
             <div id="race-summary" class="race-summary"></div>
           </div>
-          <div class="panel-section">
-            <div class="section-title">결과</div>
-            <ol id="result-list" class="result-list"></ol>
-          </div>
         </aside>
 
-        <div class="hud hud-bottom">
+        <div class="hud hud-bottom" aria-label="현재 순위">
+          <div class="hud-heading">현재 순위</div>
           <ol id="leaderboard" class="leaderboard"></ol>
         </div>
 

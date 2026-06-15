@@ -24,7 +24,7 @@ import {
   installHelicopterVisual,
   spinHelicopterRotors
 } from './render/helicopter';
-import { clearGroup, disposeObject } from './render/scene-utils';
+import { disposeObject } from './render/scene-utils';
 import { query, renderAppShell } from './ui/app-shell';
 import './style.css';
 
@@ -197,9 +197,6 @@ const seedInput = query<HTMLInputElement>('#seed-input');
 const fieldSizeInput = query<HTMLInputElement>('#field-size');
 const qualifiersInput = query<HTMLInputElement>('#qualifiers');
 const winnerCountInput = query<HTMLInputElement>('#winner-count');
-const surfaceSelect = query<HTMLSelectElement>('#surface-select');
-const distanceSelect = query<HTMLSelectElement>('#distance-select');
-const conditionSelect = query<HTMLSelectElement>('#condition-select');
 const sample20Button = query<HTMLButtonElement>('#sample-20');
 const sample64Button = query<HTMLButtonElement>('#sample-64');
 const startButton = query<HTMLButtonElement>('#start-tournament');
@@ -212,30 +209,15 @@ const nextButton = query<HTMLButtonElement>('#next-race');
 const raceMeta = query<HTMLParagraphElement>('#race-meta');
 const raceTitle = query<HTMLDivElement>('#race-title');
 const raceSummary = query<HTMLDivElement>('#race-summary');
-const resultList = query<HTMLOListElement>('#result-list');
 const winnerBanner = query<HTMLDivElement>('#winner-banner');
 const winnerName = query<HTMLElement>('#winner-name');
 const winnerDetail = query<HTMLElement>('#winner-detail');
-const SURFACE_LABELS: Record<RaceOptions['surface'], string> = {
-  turf: '잔디',
-  dirt: '더트'
-};
-const DISTANCE_LABELS: Record<RaceOptions['distance'], string> = {
-  sprint: '단거리',
-  mile: '마일',
-  medium: '중거리',
-  long: '장거리'
-};
-const CONDITION_LABELS: Record<RaceOptions['condition'], string> = {
-  firm: '양호',
-  damp: '다습',
-  muddy: '불량'
-};
 const recentParticipantsStorageKey = 'run-hoban-run:recent-participants';
 const racerModelStrategy = 'procedural-stylized';
 const horseAssetId = 'procedural-stylized-horse';
 const riderAssetId = 'procedural-stylized-jockey';
 const defaultRacePaceMultiplier = 1.25;
+const fastFinishRacePaceMultiplier = 3;
 
 participantInput.value = loadRecentParticipants() ?? createSampleParticipants(20).join('\n');
 let lastFieldSizeMax = getRaceOptionBounds(normalizeParticipants(participantInput.value.split(/\r?\n/)).length).fieldSize.max;
@@ -266,7 +248,7 @@ const clock = new THREE.Clock();
 const raceLength = 276;
 const raceWidth = 18.4;
 const trackVisualLength = raceLength + 60;
-const trackVisualWidth = raceWidth + 1.8;
+const trackVisualWidth = raceWidth + 5.2;
 const groundLength = trackVisualLength + 80;
 const groundWidth = trackVisualWidth + 30;
 const startX = -raceLength / 2 + 8;
@@ -406,22 +388,22 @@ function drawFallbackRaceScene(canvas: HTMLCanvasElement, context: CanvasRenderi
   const skyGradient = context.createLinearGradient(0, 0, 0, height);
   skyGradient.addColorStop(0, '#b8d9ff');
   skyGradient.addColorStop(0.54, '#e8f6ff');
-  skyGradient.addColorStop(0.55, '#65aa5d');
-  skyGradient.addColorStop(1, '#347b43');
+  skyGradient.addColorStop(0.55, '#d9bb86');
+  skyGradient.addColorStop(1, '#b98452');
   context.fillStyle = skyGradient;
   context.fillRect(0, 0, width, height);
 
-  context.fillStyle = '#6f8551';
+  const sandGradient = context.createLinearGradient(0, trackTop, 0, trackTop + trackHeight);
+  sandGradient.addColorStop(0, '#d9a166');
+  sandGradient.addColorStop(0.5, '#c88952');
+  sandGradient.addColorStop(1, '#b97443');
+  context.fillStyle = sandGradient;
   context.fillRect(trackLeft, trackTop, trackWidth, trackHeight);
-  context.strokeStyle = 'rgba(255, 255, 255, 0.64)';
-  context.lineWidth = 1;
-
-  for (let lane = 0; lane <= laneCount; lane += 1) {
-    const y = trackTop + (trackHeight / laneCount) * lane;
-    context.beginPath();
-    context.moveTo(trackLeft, y);
-    context.lineTo(trackLeft + trackWidth, y);
-    context.stroke();
+  context.fillStyle = 'rgba(116, 76, 43, 0.18)';
+  for (let index = 0; index < 70; index += 1) {
+    const x = trackLeft + ((index * 53) % Math.max(1, trackWidth));
+    const y = trackTop + ((index * 31) % Math.max(1, trackHeight));
+    context.fillRect(x, y, 2 + (index % 3), 1 + (index % 2));
   }
 
   context.fillStyle = 'rgba(255, 255, 255, 0.78)';
@@ -617,9 +599,6 @@ const runnerLabels = document.createElement('div');
 runnerLabels.className = 'runner-labels';
 app.appendChild(runnerLabels);
 
-const laneGuideGroup = new THREE.Group();
-scene.add(laneGuideGroup);
-
 const helicopterGroup = new THREE.Group();
 const helicopterAssetSlot = new THREE.Group();
 const helicopterSniperRig = createHelicopterSniperRig();
@@ -633,7 +612,7 @@ helicopterGroup.add(helicopterAssetSlot, helicopterSniperRig);
 scene.add(helicopterGroup);
 scene.add(bulletMesh, muzzleFlash, impactBurst, frenzySnortGroup, victoryEffect.root);
 
-const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x4d9d55, roughness: 0.9 });
+const groundMaterial = makeSandMaterial(0xd1a368, 0xb7844f, 9, 5, 0.16);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(groundLength, groundWidth), groundMaterial);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
@@ -641,7 +620,7 @@ scene.add(ground);
 
 const track = new THREE.Mesh(
   new THREE.BoxGeometry(trackVisualLength, 0.18, trackVisualWidth),
-  new THREE.MeshStandardMaterial({ color: 0xc77443, roughness: 0.82 })
+  makeSandMaterial(0xc98651, 0x9f6338, 18, 3, 0.22)
 );
 track.position.y = 0.03;
 track.receiveShadow = true;
@@ -657,6 +636,42 @@ scene.add(finishLine);
 makeRail(-(trackVisualWidth / 2 + 1.1));
 makeRail(trackVisualWidth / 2 + 1.1);
 addRacecourseProps();
+
+function makeSandMaterial(baseColor: number, speckleColor: number, repeatX: number, repeatY: number, bumpScale: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+
+  if (context) {
+    context.fillStyle = `#${baseColor.toString(16).padStart(6, '0')}`;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let index = 0; index < 1400; index += 1) {
+      const x = (index * 47 + index * index * 3) % canvas.width;
+      const y = (index * 89 + index * 17) % canvas.height;
+      const alpha = 0.08 + (index % 7) * 0.018;
+      context.fillStyle = `rgba(${(speckleColor >> 16) & 255}, ${(speckleColor >> 8) & 255}, ${speckleColor & 255}, ${alpha})`;
+      context.fillRect(x, y, 1 + (index % 3), 1 + (index % 2));
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeatX, repeatY);
+  texture.anisotropy = 4;
+
+  return new THREE.MeshStandardMaterial({
+    color: baseColor,
+    map: texture,
+    roughness: 0.94,
+    metalness: 0,
+    bumpMap: texture,
+    bumpScale
+  });
+}
 
 function makeRail(z: number) {
   const group = new THREE.Group();
@@ -965,9 +980,9 @@ function createCapsuleBetween(start: THREE.Vector3, end: THREE.Vector3, radius: 
   return mesh;
 }
 
-function createHorse(profile: HorseProfile, raceNumber: number, runnerName: string) {
+function createHorse(profile: HorseProfile, runnerName: string) {
   const group = new THREE.Group();
-  const fallbackHorse = createFallbackHorseBody(profile, raceNumber, runnerName);
+  const fallbackHorse = createFallbackHorseBody(profile, runnerName);
   const rider = createRider(profile.color, profile.secondaryColor);
   const effect = createRunnerSkillEffect(profile.secondaryColor);
 
@@ -983,7 +998,7 @@ function createHorse(profile: HorseProfile, raceNumber: number, runnerName: stri
   return group;
 }
 
-function createFallbackHorseBody(profile: HorseProfile, raceNumber: number, runnerName: string) {
+function createFallbackHorseBody(profile: HorseProfile, runnerName: string) {
   const root = new THREE.Group();
   const bodyMaterial = new THREE.MeshStandardMaterial({ color: profile.color, roughness: 0.58, metalness: 0.02 });
   const accentMaterial = new THREE.MeshStandardMaterial({ color: profile.secondaryColor, roughness: 0.55, metalness: 0.02 });
@@ -1069,7 +1084,7 @@ function createFallbackHorseBody(profile: HorseProfile, raceNumber: number, runn
   saddle.castShadow = true;
   root.add(saddle);
 
-  addFlankNameplate(root, raceNumber, profile.secondaryColor, runnerName);
+  addFlankNameplate(root, profile.secondaryColor, runnerName);
 
   const legParts: HorseLegParts[] = [];
   const motionStyles: HorseMotionStyle[] = ['rush', 'run', 'walk', 'stroll'];
@@ -1209,8 +1224,8 @@ function createHorseDustPuffs(accentColor: number) {
   return { dust, materials };
 }
 
-function addFlankNameplate(root: THREE.Group, raceNumber: number, accentColor: number, runnerName: string) {
-  const numberMaterial = makeFlankNameplateMaterial(raceNumber, accentColor, runnerName);
+function addFlankNameplate(root: THREE.Group, accentColor: number, runnerName: string) {
+  const numberMaterial = makeFlankNameplateMaterial(accentColor, runnerName);
 
   for (const side of [-1, 1]) {
     const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.82, 0.72), numberMaterial);
@@ -1222,7 +1237,7 @@ function addFlankNameplate(root: THREE.Group, raceNumber: number, accentColor: n
   }
 }
 
-function makeFlankNameplateMaterial(raceNumber: number, accentColor: number, runnerName: string) {
+function makeFlankNameplateMaterial(accentColor: number, runnerName: string) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 192;
@@ -1243,21 +1258,11 @@ function makeFlankNameplateMaterial(raceNumber: number, accentColor: number, run
     context.strokeStyle = '#1f2937';
     context.lineWidth = 8;
     strokeRoundedRect(context, 34, 30, canvas.width - 68, canvas.height - 60, 24);
-    context.fillStyle = '#f2c94c';
-    context.beginPath();
-    context.arc(92, canvas.height / 2, 46, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = '#1f2937';
-    context.lineWidth = 7;
-    context.stroke();
     context.fillStyle = '#111827';
-    context.font = raceNumber >= 100 ? '900 40px system-ui, sans-serif' : '900 54px system-ui, sans-serif';
+    context.font = '900 86px system-ui, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText(String(raceNumber), 92, canvas.height / 2 + 1);
-    context.textAlign = 'left';
-    context.font = '900 76px system-ui, sans-serif';
-    context.fillText(fitCanvasText(context, runnerName, 330), 154, 99);
+    context.fillText(fitCanvasText(context, runnerName, 408), canvas.width / 2, canvas.height / 2 + 2);
   }
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -1734,27 +1739,6 @@ function addPattern(group: THREE.Group, pattern: HorseProfile['pattern'], materi
   }
 }
 
-function updateLaneGuides(count: number) {
-  clearGroup(laneGuideGroup);
-  const lines = Math.min(6, Math.max(2, Math.ceil(count / 3)));
-  const guideMaterial = new THREE.MeshStandardMaterial({
-    color: 0xf9f1d1,
-    roughness: 0.78,
-    transparent: true,
-    opacity: 0.42
-  });
-
-  for (let index = 1; index < lines; index += 1) {
-    const z = -raceWidth / 2 + (raceWidth / lines) * index;
-    const divider = new THREE.Mesh(
-      new THREE.BoxGeometry(trackVisualLength * 0.96, 0.045, 0.022),
-      guideMaterial
-    );
-    divider.position.set(0, 0.19, z);
-    laneGuideGroup.add(divider);
-  }
-}
-
 function updateCameraTargetSelection(race: RaceResult) {
   const previousValue = selectedCameraEntryId;
   const hasPreviousEntry = race.placements.some((placement) => placement.entry.id === previousValue);
@@ -1779,7 +1763,6 @@ function setCurrentRace(index: number) {
   syncVictoryPresentation(race);
   updateVictoryEffect(null);
   clearVisualRunners();
-  updateLaneGuides(race.placements.length);
   updateCameraTargetSelection(race);
 
   createVisualRunnersForRace(race);
@@ -1801,7 +1784,7 @@ function createVisualRunnersForRace(race: RaceResult) {
   lanePlacements.forEach((placement, indexInLane) => {
     const count = lanePlacements.length;
     const laneIndex = placement.laneIndex;
-    const mesh = createHorse(placement.entry.profile, getEntryDisplayNumber(placement), placement.entry.name);
+    const mesh = createHorse(placement.entry.profile, placement.entry.name);
     const baseScale = count > 14 ? 0.58 : count > 10 ? 0.68 : count > 6 ? 0.82 : 1;
     mesh.position.set(startX, horseBaseY, laneZ(laneIndex, count));
     mesh.rotation.y = 0;
@@ -1812,7 +1795,7 @@ function createVisualRunnersForRace(race: RaceResult) {
       placement,
       mesh,
       label: makeLabel(placement.entry.name),
-      identityLabel: makeIdentityLabel(getEntryDisplayNumber(placement), placement.entry.name),
+      identityLabel: makeIdentityLabel(placement.entry.name),
       lane: laneIndex,
       phase: indexInLane * 0.7,
       baseScale,
@@ -1820,11 +1803,6 @@ function createVisualRunnersForRace(race: RaceResult) {
       eliminated: false
     });
   });
-}
-
-function getEntryDisplayNumber(placement: RacePlacement) {
-  const match = placement.entry.id.match(/^runner-(\d+)-/);
-  return match ? Number(match[1]) : placement.laneIndex + 1;
 }
 
 function getCurrentRace() {
@@ -1839,13 +1817,9 @@ function makeLabel(name: string) {
   return label;
 }
 
-function makeIdentityLabel(displayNumber: number, name: string) {
+function makeIdentityLabel(name: string) {
   const label = document.createElement('div');
   label.className = 'runner-identity';
-
-  const number = document.createElement('span');
-  number.textContent = String(displayNumber);
-  label.append(number);
 
   const text = document.createElement('strong');
   text.textContent = name;
@@ -1907,7 +1881,7 @@ function updateRace(delta: number) {
     return;
   }
 
-  raceElapsed += delta * getRaceTimeScale(race.hazardEvents) * defaultRacePaceMultiplier;
+  raceElapsed += delta * getRaceTimeScale(race.hazardEvents) * defaultRacePaceMultiplier * getPostQualifierRacePaceMultiplier(race);
   const maxFinish = Math.max(...race.placements.map((placement) => placement.finishSeconds));
 
   visualRunners.forEach((runner) => {
@@ -2000,6 +1974,22 @@ function updateRace(delta: number) {
 
   syncVictoryPresentation(race);
   updateVictoryEffect(race);
+}
+
+function getPostQualifierRacePaceMultiplier(race: RaceResult) {
+  if (raceFinished) {
+    return 1;
+  }
+
+  const qualifiedFinishTimes = race.placements
+    .filter((placement) => placement.qualified)
+    .map((placement) => placement.finishSeconds);
+
+  if (qualifiedFinishTimes.length === 0) {
+    return 1;
+  }
+
+  return raceElapsed >= Math.max(...qualifiedFinishTimes) ? fastFinishRacePaceMultiplier : 1;
 }
 
 function updateHelicopterState(hazardEvents: HazardEvent[]) {
@@ -3475,43 +3465,14 @@ function renderRaceStaticState() {
       summaryRow(race.isFinal ? '우승' : '진출', `${race.qualifiers.length}명`),
       summaryRow('전체', `${tournament.participantCount}명`)
     ]),
-    summaryGroup('경기 조건', [
-      summaryRow('주로', SURFACE_LABELS[race.options.surface]),
-      summaryRow('거리', DISTANCE_LABELS[race.options.distance]),
-      summaryRow('상태', CONDITION_LABELS[race.options.condition])
-    ]),
     summaryGroup('운영', [
       summaryRow('헬기', race.hazardEvents.length > 0 ? `출격 x${race.hazardEvents.length}` : '없음')
     ])
   );
 
-  resultList.replaceChildren(...buildResultItems(race, raceFinished));
   syncVictoryPresentation(race);
   replayButton.disabled = false;
   nextButton.disabled = currentRaceIndex >= totalRaces - 1;
-}
-
-function buildResultItems(race: RaceResult, reveal: boolean) {
-  const topPlacements = reveal ? race.placements : race.placements.slice(0, Math.min(6, race.placements.length));
-
-  return topPlacements.map((placement) => {
-    const item = document.createElement('li');
-    const rank = document.createElement('span');
-    const body = document.createElement('div');
-    const name = document.createElement('strong');
-    const detail = document.createElement('small');
-
-    rank.textContent = reveal ? String(placement.rank) : '-';
-    name.textContent = placement.entry.name;
-    detail.textContent = reveal ? resultDetail(placement) : '';
-    detail.hidden = !reveal;
-    body.append(name, detail);
-    item.append(rank, body);
-    item.classList.toggle('winner', reveal && race.isFinal && placement.qualified);
-    item.classList.toggle('qualified', reveal && placement.qualified);
-    item.classList.toggle('eliminated', reveal && placement.eliminatedByHelicopter);
-    return item;
-  });
 }
 
 function resultDetail(placement: RacePlacement, race = getCurrentRace()) {
@@ -3651,8 +3612,8 @@ function renderLeaderboard() {
     visibleIds.add(placement.entry.id);
     parts.rank.textContent = String(raceFinished ? placement.rank : index + 1);
     parts.name.textContent = placement.entry.name;
-    parts.detail.textContent = '';
-    parts.detail.hidden = true;
+    parts.detail.textContent = raceFinished ? resultDetail(placement, race) : '';
+    parts.detail.hidden = !raceFinished;
     parts.item.dataset.entryId = placement.entry.id;
     parts.item.setAttribute('role', 'button');
     parts.item.setAttribute('tabindex', cameraSelectionLocked ? '-1' : '0');
@@ -3841,7 +3802,7 @@ function syncRacePaceState() {
   raceStage.dataset.racePace = defaultRacePaceMultiplier.toFixed(2);
 }
 
-function rollSeed() {
+function reshuffleOrder() {
   const timestamp = String(Date.now());
   const entropy = String(Math.floor(Math.random() * 100_000)).padStart(5, '0');
   seedInput.value = `호반-${timestamp}-${entropy}`;
@@ -3928,10 +3889,7 @@ function readOptions(): Partial<RaceOptions> {
     seed: seedInput.value,
     fieldSize: Number(fieldSizeInput.value),
     qualifiersPerGroup: Number(qualifiersInput.value),
-    winnerCount: Number(winnerCountInput.value),
-    surface: surfaceSelect.value as RaceOptions['surface'],
-    distance: distanceSelect.value as RaceOptions['distance'],
-    condition: conditionSelect.value as RaceOptions['condition']
+    winnerCount: Number(winnerCountInput.value)
   };
 }
 
@@ -4097,8 +4055,9 @@ function getFrenzyCameraView(runner: VisualRunner, width: number): CameraView {
   const elapsed = raceElapsed - start;
   const facePoint = getStableHorseFacePoint(runner);
   const forward = new THREE.Vector3(1, 0, 0);
-  const side = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
-  const cameraSide = side.lengthSq() > 0 ? side : new THREE.Vector3(0, 0, 1);
+  const laneSideSign = getTracksideCameraSign(runner.mesh.position.z);
+  const side = new THREE.Vector3(-forward.z, 0, forward.x).normalize().multiplyScalar(laneSideSign);
+  const cameraSide = side.lengthSq() > 0 ? side : new THREE.Vector3(0, 0, laneSideSign);
   const closeOffset = forward
     .clone()
     .multiplyScalar(width < 760 ? 5.4 : 4.8)
@@ -4116,7 +4075,9 @@ function getFrenzyCameraView(runner: VisualRunner, width: number): CameraView {
 
   const runnerPoint = runner.mesh.position.clone();
   return {
-    position: runnerPoint.clone().add(new THREE.Vector3(width < 760 ? -6.4 : -5.1, width < 760 ? 3.6 : 2.8, width < 760 ? 7.2 : 5.4)),
+    position: runnerPoint
+      .clone()
+      .add(new THREE.Vector3(width < 760 ? -6.4 : -5.1, width < 760 ? 3.6 : 2.8, laneSideSign * (width < 760 ? 7.2 : 5.4))),
     target: runnerPoint.clone().add(new THREE.Vector3(1.5, 1.2, 0)),
     phase: 'cinematic',
     alpha: 0.24
@@ -4145,7 +4106,10 @@ function getFocusedCameraView(width: number): CameraView {
   const leadPoint = leadRunner.mesh.position.clone();
   const clampedX = clampNumber(leadPoint.x, startX + 4, finishX - 5);
   const focusPoint = new THREE.Vector3(clampedX, leadPoint.y, leadPoint.z);
-  const positionOffset = width < 760 ? new THREE.Vector3(-8.4, 5.9, 11.8) : new THREE.Vector3(-5.8, 3.7, 7.8);
+  const laneSideSign = getTracksideCameraSign(focusPoint.z);
+  const positionOffset = width < 760
+    ? new THREE.Vector3(-8.4, 5.9, laneSideSign * 11.8)
+    : new THREE.Vector3(-5.8, 3.7, laneSideSign * 7.8);
   const targetOffset = width < 760 ? new THREE.Vector3(4.2, 1.08, 0) : new THREE.Vector3(3.6, 1.02, 0);
 
   return {
@@ -4154,6 +4118,10 @@ function getFocusedCameraView(width: number): CameraView {
     phase: 'tracking',
     alpha: 0.15
   };
+}
+
+function getTracksideCameraSign(z: number) {
+  return z < 0 ? -1 : 1;
 }
 
 function getOverviewCameraView(width: number): CameraView {
@@ -4758,7 +4726,7 @@ function getResultScreenshotSubtitle(race: RaceResult | null) {
   }
 
   const raceNumber = tournament ? `${currentRaceIndex + 1}/${tournament.races.length}` : '1/1';
-  return `경기 ${raceNumber} / ${race.options.seed} / ${SURFACE_LABELS[race.options.surface]} / ${DISTANCE_LABELS[race.options.distance]}`;
+  return `경기 ${raceNumber} / ${race.options.seed}`;
 }
 
 function getResultScreenshotRows(race: RaceResult | null) {
@@ -4885,7 +4853,7 @@ participantInput.addEventListener('input', () => {
 });
 fieldSizeInput.addEventListener('input', () => syncOptionBounds());
 startButton.addEventListener('click', startTournament);
-randomSeedButton.addEventListener('click', rollSeed);
+randomSeedButton.addEventListener('click', reshuffleOrder);
 leaderboardList.addEventListener('click', (event) => {
   if (suppressLeaderboardClick) {
     event.preventDefault();

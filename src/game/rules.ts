@@ -1,6 +1,3 @@
-export type Surface = 'turf' | 'dirt';
-export type DistanceType = 'sprint' | 'mile' | 'medium' | 'long';
-export type TrackCondition = 'firm' | 'damp' | 'muddy';
 export type Pattern = 'solid' | 'spots' | 'stripes' | 'socks';
 export type SkillPose = 'handstand' | 'dance' | 'lie-flat' | 'cheer' | 'headspin';
 export type FrenzySpeedSegmentSpan = 1 | 2 | 3 | 4 | 5;
@@ -28,9 +25,6 @@ export type RaceOptions = {
   fieldSize: number;
   qualifiersPerGroup: number;
   winnerCount: number;
-  surface: Surface;
-  distance: DistanceType;
-  condition: TrackCondition;
 };
 
 export type RaceEntry = {
@@ -105,8 +99,6 @@ export type TournamentResult = {
   winners: RaceEntry[];
 };
 
-const SURFACES: Surface[] = ['turf', 'dirt'];
-const DISTANCES: DistanceType[] = ['sprint', 'mile', 'medium', 'long'];
 const PATTERNS: Pattern[] = ['solid', 'spots', 'stripes', 'socks'];
 const BASE_FINISH_SECONDS = 92;
 const HELICOPTER_ENTRANCE_SECONDS = 3;
@@ -159,19 +151,19 @@ export const SKILLS: SkillDefinition[] = [
   },
   {
     id: 'mud-splash',
-    name: '진흙 튀기기',
+    name: '모래바람 질주',
     phase: 'middle',
     pose: 'dance',
     effectColor: 0x8b5e34,
     callout: '뒤쪽으로 흙먼지를 크게 뿌린다'
   },
   {
-    id: 'turf-slide',
-    name: '잔디 미끄럼',
+    id: 'sand-sparkle',
+    name: '반짝 모래길',
     phase: 'corner',
     pose: 'lie-flat',
-    effectColor: 0x6fcf97,
-    callout: '잔디 위를 미끄러지듯 치고 나간다'
+    effectColor: 0xf2c94c,
+    callout: '모래길을 반짝이며 치고 나간다'
   }
 ];
 
@@ -266,14 +258,7 @@ export function sanitizeOptions(options: Partial<RaceOptions>, participantCount 
     seed: String(options.seed?.trim() || '호반-2026'),
     fieldSize,
     qualifiersPerGroup,
-    winnerCount,
-    surface: SURFACES.includes(options.surface as Surface) ? (options.surface as Surface) : 'turf',
-    distance: DISTANCES.includes(options.distance as DistanceType)
-      ? (options.distance as DistanceType)
-      : 'mile',
-    condition: ['firm', 'damp', 'muddy'].includes(options.condition as TrackCondition)
-      ? (options.condition as TrackCondition)
-      : 'firm'
+    winnerCount
   };
 }
 
@@ -620,7 +605,7 @@ function rollHorseSpeedSegments(entry: RaceEntry, options: RaceOptions, round: n
   ];
 
   return Array.from({ length: segmentCount }, (_, index) => {
-    const rollSeed = `${options.seed}:speed-arrival:${round}:${group}:${entry.id}:${options.distance}:${options.condition}:${index}`;
+    const rollSeed = `${options.seed}:speed-arrival:${round}:${group}:${entry.id}:${index}`;
     const rng = createRng(rollSeed);
     const bucketRoll = rng();
     const bucket = bucketRoll < 0.24 ? buckets[0] : bucketRoll < 0.58 ? buckets[1] : bucketRoll < 0.9 ? buckets[2] : buckets[3];
@@ -652,7 +637,7 @@ function rollSkillEvents(
   speedSegments.forEach((segment) => {
     const rng = createRng(`${options.seed}:motion-arrival:${round}:${group}:${entry.id}:${segment.index}`);
     const skill = pick(getEligibleSkillsForSegment(segment), rng);
-    const chance = getSegmentSkillChance(skill, options);
+    const chance = getSegmentSkillChance();
 
     if (rng() >= chance) {
       return;
@@ -685,14 +670,8 @@ function getEligibleSkillsForSegment(segment: SpeedSegment) {
   return eligible.length > 0 ? eligible : SKILLS;
 }
 
-function getSegmentSkillChance(skill: SkillDefinition, options: RaceOptions) {
-  const surfaceBonus =
-    (skill.id === 'mud-splash' && (options.surface === 'dirt' || options.condition === 'muddy')) ||
-    (skill.id === 'turf-slide' && options.surface === 'turf' && options.condition === 'firm')
-      ? 0.018
-      : 0;
-
-  return MOTION_EVENT_CHANCE_PER_SEGMENT + surfaceBonus;
+function getSegmentSkillChance() {
+  return MOTION_EVENT_CHANCE_PER_SEGMENT;
 }
 
 function createSegmentSkillEvent(
