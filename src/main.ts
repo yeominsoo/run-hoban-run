@@ -807,26 +807,336 @@ function makeDistanceBoardMaterial(label: string) {
 
 function addCrowdStrip(group: THREE.Group) {
   const standMaterial = new THREE.MeshStandardMaterial({ color: 0x27444c, roughness: 0.72 });
-  const crowdMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0xf2c94c, roughness: 0.65 }),
-    new THREE.MeshStandardMaterial({ color: 0x56ccf2, roughness: 0.65 }),
-    new THREE.MeshStandardMaterial({ color: 0xeb5757, roughness: 0.65 }),
-    new THREE.MeshStandardMaterial({ color: 0x6fcf97, roughness: 0.65 })
-  ];
-  const z = -(trackVisualWidth / 2 + 6.2);
+  const stepMaterial = new THREE.MeshStandardMaterial({ color: 0x365b64, roughness: 0.74 });
+  const canopyMaterial = new THREE.MeshStandardMaterial({ color: 0x1d333a, roughness: 0.7 });
+  const trackEdgeZ = -(trackVisualWidth / 2);
+  const z = trackEdgeZ - 5.15;
+  const frontZ = trackEdgeZ - 1.72;
+  const standLength = trackVisualLength * 0.8;
+  const standRows = 3;
+  const frontPanelCount = 5;
+  const spectatorCount = 720;
 
-  const stand = new THREE.Mesh(new THREE.BoxGeometry(trackVisualLength * 0.74, 1.2, 3.2), standMaterial);
-  stand.position.set(8, 0.72, z);
-  stand.castShadow = true;
-  group.add(stand);
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(standLength, 2.55, 0.22), standMaterial);
+  backWall.position.set(8, 1.54, z - 2.18);
+  backWall.castShadow = true;
+  group.add(backWall);
 
-  for (let index = 0; index < 64; index += 1) {
-    const x = -trackVisualLength * 0.32 + index * (trackVisualLength * 0.64 / 63);
-    const row = index % 3;
-    const chip = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.22, 0.34), crowdMaterials[index % crowdMaterials.length]);
-    chip.position.set(x, 1.48 + row * 0.28, z - 0.9 + row * 0.58);
-    group.add(chip);
+  for (let row = 0; row < standRows; row += 1) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(standLength, 0.18, 2.35), stepMaterial);
+    step.position.set(8, 0.34 + row * 0.36, z - 1.14 + row * 0.64);
+    step.castShadow = true;
+    group.add(step);
   }
+
+  const frontRail = new THREE.Mesh(new THREE.BoxGeometry(standLength, 0.12, 0.1), canopyMaterial);
+  frontRail.position.set(8, 1.22, z + 1.1);
+  frontRail.castShadow = true;
+  group.add(frontRail);
+
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(standLength * 0.86, 0.18, 3.7), canopyMaterial);
+  canopy.position.set(8, 3.05, z - 0.78);
+  canopy.castShadow = true;
+  group.add(canopy);
+
+  const crowdMesh = new THREE.Mesh(new THREE.PlaneGeometry(standLength * 0.76, 2.12), makeCrowdMassMaterial(spectatorCount));
+  crowdMesh.position.set(8, 1.95, z - 1.02);
+  crowdMesh.renderOrder = 1;
+  group.add(crowdMesh);
+
+  for (let index = 0; index < frontPanelCount; index += 1) {
+    const crowdSection = new THREE.Mesh(
+      new THREE.PlaneGeometry(standLength * 0.13, 1.18),
+      makeCrowdSectionMaterial(index)
+    );
+    crowdSection.position.set(8 - standLength * 0.32 + index * ((standLength * 0.64) / (frontPanelCount - 1)), 1.98, frontZ - 0.12);
+    crowdSection.renderOrder = 3;
+    group.add(crowdSection);
+  }
+
+  [
+    { text: '달려라!', color: '#f2c94c' },
+    { text: '호반!', color: '#56ccf2' },
+    { text: '우승!', color: '#6fcf97' },
+    { text: '가자!', color: '#eb5757' }
+  ].forEach((banner, index, banners) => {
+    const bannerMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(standLength * 0.18, 2.15),
+      makeCrowdBannerMaterial(banner.text, banner.color)
+    );
+    bannerMesh.position.set(8 - standLength * 0.32 + index * ((standLength * 0.64) / (banners.length - 1)), 1.42, frontZ + 0.12);
+    bannerMesh.renderOrder = 8;
+    group.add(bannerMesh);
+  });
+
+  const pennantStrip = new THREE.Mesh(new THREE.PlaneGeometry(standLength * 0.78, 0.52), makePennantStripMaterial());
+  pennantStrip.position.set(8, 3.02, frontZ + 0.02);
+  pennantStrip.renderOrder = 2;
+  group.add(pennantStrip);
+
+  raceStage.dataset.crowdQuality = 'procedural-crowd-wall';
+  raceStage.dataset.crowdSpectators = String(spectatorCount);
+  raceStage.dataset.crowdDrawGroups = '12';
+}
+
+function makeCrowdMassMaterial(spectatorCount: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 512;
+  const context = canvas.getContext('2d');
+  const shirtColors = ['#f2c94c', '#56ccf2', '#eb5757', '#6fcf97', '#bb6bd9', '#f2994a', '#f8fbff'];
+  const skinColors = ['#ffd6a3', '#f2b880', '#d9965f', '#ffe0ba'];
+
+  if (context) {
+    const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, 'rgba(17, 34, 40, 0.94)');
+    gradient.addColorStop(1, 'rgba(13, 27, 31, 0.72)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let row = 0; row < 8; row += 1) {
+      const rowY = 56 + row * 52;
+      const rowCount = Math.floor(spectatorCount / 8);
+
+      for (let index = 0; index < rowCount; index += 1) {
+        const x = 22 + index * (canvas.width - 44) / (rowCount - 1) + (((index * 13 + row * 7) % 13) - 6);
+        const y = rowY + (((index * 17 + row) % 9) - 4);
+        const shirt = shirtColors[(index + row * 2) % shirtColors.length];
+        const skin = skinColors[(index * 3 + row) % skinColors.length];
+        const cheering = (index + row) % 6 === 0;
+
+        context.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+        context.lineWidth = 2.4;
+        context.beginPath();
+        context.moveTo(x - 6, y + 16);
+        context.lineTo(x - 14, y + (cheering ? -2 : 13));
+        context.moveTo(x + 6, y + 16);
+        context.lineTo(x + 14, y + (cheering ? -2 : 13));
+        context.stroke();
+
+        context.fillStyle = shirt;
+        roundedCanvasRect(context, x - 10, y + 10, 20, 24, 6);
+        context.fill();
+
+        context.fillStyle = skin;
+        context.beginPath();
+        context.arc(x, y + 4, 7, 0, Math.PI * 2);
+        context.fill();
+
+        context.fillStyle = 'rgba(13, 24, 27, 0.44)';
+        context.beginPath();
+        context.arc(x - 2.4, y + 3, 0.95, 0, Math.PI * 2);
+        context.arc(x + 2.4, y + 3, 0.95, 0, Math.PI * 2);
+        context.fill();
+
+        if ((index + row) % 23 === 0) {
+          context.fillStyle = shirtColors[(index + 3) % shirtColors.length];
+          context.fillRect(x + 10, y - 18, 18, 12);
+          context.strokeStyle = 'rgba(248, 251, 255, 0.78)';
+          context.lineWidth = 1.6;
+          context.beginPath();
+          context.moveTo(x + 9, y - 19);
+          context.lineTo(x + 9, y + 16);
+          context.stroke();
+        }
+      }
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+
+  return new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+}
+
+function makeCrowdSectionMaterial(sectionIndex: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  const shirtColors = ['#e2b84a', '#4fb9db', '#d95d55', '#62b979', '#9d6bc4', '#d88643', '#e7edf2'];
+  const skinColors = ['#e7c192', '#d9a06d', '#b97748', '#f1d1a8'];
+
+  if (context) {
+    const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, 'rgba(45, 78, 86, 0.56)');
+    gradient.addColorStop(1, 'rgba(12, 25, 29, 0.76)');
+    context.fillStyle = gradient;
+    roundedCanvasRect(context, 0, 12, canvas.width, canvas.height - 16, 22);
+    context.fill();
+
+    for (let row = 0; row < 5; row += 1) {
+      const y = 42 + row * 40;
+      const count = row % 2 === 0 ? 30 : 34;
+
+      for (let index = 0; index < count; index += 1) {
+        const x = 24 + index * ((canvas.width - 48) / (count - 1)) + (((index * 19 + row * 11 + sectionIndex * 7) % 11) - 5);
+        const bob = (((index * 13 + row * 5 + sectionIndex) % 7) - 3);
+        const shirt = shirtColors[(index + row + sectionIndex) % shirtColors.length];
+        const skin = skinColors[(index * 2 + row + sectionIndex) % skinColors.length];
+
+        context.fillStyle = shirt;
+        roundedCanvasRect(context, x - 10, y + 14 + bob, 20, 18, 6);
+        context.fill();
+
+        context.fillStyle = skin;
+        context.beginPath();
+        context.arc(x, y + 8 + bob, 7, 0, Math.PI * 2);
+        context.fill();
+
+        if ((index + row + sectionIndex) % 4 === 0) {
+          context.strokeStyle = 'rgba(248, 251, 255, 0.48)';
+          context.lineWidth = 2.2;
+          context.lineCap = 'round';
+          context.beginPath();
+          context.moveTo(x - 8, y + 18 + bob);
+          context.lineTo(x - 16, y + 5 + bob);
+          context.moveTo(x + 8, y + 18 + bob);
+          context.lineTo(x + 16, y + 5 + bob);
+          context.stroke();
+        }
+
+        if ((index + row + sectionIndex) % 9 === 0) {
+          context.fillStyle = 'rgba(248, 251, 255, 0.36)';
+          context.fillRect(x - 9, y - 5 + bob, 18, 4);
+        }
+      }
+    }
+
+    for (let index = 0; index < 7; index += 1) {
+      const x = 72 + index * 140 + ((sectionIndex + index) % 2) * 20;
+      const y = 30 + (index % 2) * 56;
+      context.fillStyle = shirtColors[(index + sectionIndex + 3) % shirtColors.length];
+      context.fillRect(x, y, 32, 20);
+      context.strokeStyle = 'rgba(248, 251, 255, 0.58)';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(x - 3, y - 3);
+      context.lineTo(x - 3, y + 58);
+      context.stroke();
+    }
+
+    context.fillStyle = 'rgba(8, 18, 20, 0.24)';
+    for (let row = 0; row < 4; row += 1) {
+      context.fillRect(0, 62 + row * 40, canvas.width, 3);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+
+  return new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+}
+
+function makeCrowdBannerMaterial(message: string, color: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 896;
+  canvas.height = 320;
+  const context = canvas.getContext('2d');
+
+  if (context) {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = 'rgba(8, 18, 20, 0.72)';
+    roundedCanvasRect(context, 6, 18, canvas.width - 12, 248, 28);
+    context.fill();
+    context.fillStyle = color;
+    roundedCanvasRect(context, 22, 34, canvas.width - 44, 218, 26);
+    context.fill();
+    context.strokeStyle = 'rgba(17, 31, 34, 0.82)';
+    context.lineWidth = 14;
+    roundedCanvasRect(context, 22, 34, canvas.width - 44, 218, 26);
+    context.stroke();
+    context.shadowColor = 'rgba(255, 255, 255, 0.62)';
+    context.shadowBlur = 8;
+    context.shadowOffsetY = 2;
+    context.fillStyle = '#102019';
+    context.font = '900 128px system-ui, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(message, canvas.width / 2, 143);
+    context.shadowColor = 'transparent';
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
+    context.fillStyle = 'rgba(255, 255, 255, 0.62)';
+    context.fillRect(84, 236, canvas.width - 168, 9);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+
+  return new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+}
+
+function makePennantStripMaterial() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+  const colors = ['#f2c94c', '#56ccf2', '#eb5757', '#6fcf97', '#bb6bd9'];
+
+  if (context) {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.strokeStyle = 'rgba(248, 251, 255, 0.82)';
+    context.lineWidth = 5;
+    context.beginPath();
+    context.moveTo(0, 26);
+    context.lineTo(canvas.width, 26);
+    context.stroke();
+
+    for (let index = 0; index < 58; index += 1) {
+      const x = index * (canvas.width / 57);
+      context.fillStyle = colors[index % colors.length];
+      context.beginPath();
+      context.moveTo(x, 29);
+      context.lineTo(x + 24, 96);
+      context.lineTo(x + 48, 29);
+      context.closePath();
+      context.fill();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+
+  return new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+}
+
+function roundedCanvasRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(x + width - radius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.lineTo(x + width, y + height - radius);
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  context.lineTo(x + radius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
 }
 
 function createFrenzySnortGroup() {

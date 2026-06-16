@@ -324,6 +324,13 @@ test('uses detailed graphics as the only race graphics mode', async ({ page }) =
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveAttribute('data-graphics-quality', 'standard');
   await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-quality', 'procedural-crowd-wall');
+  const crowdDiagnostics = await page.locator('#race-stage').evaluate((element) => ({
+    spectators: Number(element.getAttribute('data-crowd-spectators')),
+    drawGroups: Number(element.getAttribute('data-crowd-draw-groups'))
+  }));
+  expect(crowdDiagnostics.spectators).toBeGreaterThanOrEqual(700);
+  expect(crowdDiagnostics.drawGroups).toBeLessThanOrEqual(12);
   await page.waitForTimeout(3000);
 
   expect(modelRequests).toEqual([]);

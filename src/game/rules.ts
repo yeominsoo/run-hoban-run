@@ -108,6 +108,16 @@ export const FRENZY_SKILL_ID = 'frenzy-surge';
 const FRENZY_SPEED_MULTIPLIER = 3;
 const MOTION_EVENT_CHANCE_PER_SEGMENT = 0.04;
 const FRENZY_EVENT_CHANCE_PER_SEGMENT = 0.006;
+export const FRENZY_RANK_CHANCE_FACTORS: ReadonlyArray<{
+  maxRankProgress: number;
+  multiplier: number;
+}> = [
+  { maxRankProgress: 0.26, multiplier: 0.06 },
+  { maxRankProgress: 0.45, multiplier: 0.35 },
+  { maxRankProgress: 0.65, multiplier: 0.9 },
+  { maxRankProgress: 0.82, multiplier: 1.45 },
+  { maxRankProgress: 1, multiplier: 2.5 }
+];
 
 export const FRENZY_SPEED_SEGMENT_SPAN_CHANCES: ReadonlyArray<{
   span: FrenzySpeedSegmentSpan;
@@ -471,11 +481,14 @@ function shouldApplyFrenzyModeToMotionSkill(skill: SkillDefinition) {
 }
 
 function applyRandomFrenzySkills(placements: RacePlacement[], options: RaceOptions, round: number, group: number) {
+  const segmentRankMaps = getFrenzySegmentRankMaps(placements);
+
   placements.forEach((placement) => {
     placement.speedSegments.forEach((segment) => {
       const rng = createRng(`${options.seed}:frenzy-arrival:${round}:${group}:${placement.entry.id}:${segment.index}`);
+      const chance = FRENZY_EVENT_CHANCE_PER_SEGMENT * getFrenzyRankChanceMultiplier(placement, segment, segmentRankMaps);
 
-      if (rng() >= FRENZY_EVENT_CHANCE_PER_SEGMENT) {
+      if (rng() >= chance) {
         return;
       }
 
@@ -485,6 +498,42 @@ function applyRandomFrenzySkills(placements: RacePlacement[], options: RaceOptio
       placement.skillEvents.push(event);
     });
   });
+}
+
+function getFrenzySegmentRankMaps(placements: RacePlacement[]) {
+  const segmentCount = Math.max(0, ...placements.map((placement) => placement.speedSegments.length));
+
+  return Array.from({ length: segmentCount }, (_, segmentIndex) => {
+    const rankedPlacements = [...placements].sort((left, right) => {
+      const leftSeconds = getPlacementBaseRaceClockAtSegmentEnd(left, segmentIndex);
+      const rightSeconds = getPlacementBaseRaceClockAtSegmentEnd(right, segmentIndex);
+      return leftSeconds - rightSeconds || left.entry.id.localeCompare(right.entry.id);
+    });
+
+    return new Map(rankedPlacements.map((placement, index) => [placement.entry.id, index + 1]));
+  });
+}
+
+function getPlacementBaseRaceClockAtSegmentEnd(placement: RacePlacement, segmentIndex: number) {
+  const fallbackProgress = (segmentIndex + 1) / Math.max(1, placement.speedSegments.length);
+  const segment = placement.speedSegments[clampInteger(segmentIndex, 0, Math.max(0, placement.speedSegments.length - 1))];
+  return getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, segment?.endProgress ?? fallbackProgress);
+}
+
+function getFrenzyRankChanceMultiplier(
+  placement: RacePlacement,
+  segment: SpeedSegment,
+  segmentRankMaps: Array<Map<string, number>>
+) {
+  const placementCount = Math.max(1, segmentRankMaps[segment.index]?.size ?? 1);
+  const rank = segmentRankMaps[segment.index]?.get(placement.entry.id) ?? placementCount;
+  const rankProgress = placementCount <= 1 ? 1 : (rank - 1) / (placementCount - 1);
+
+  return (
+    FRENZY_RANK_CHANCE_FACTORS.find((factor) => rankProgress <= factor.maxRankProgress)?.multiplier ??
+    FRENZY_RANK_CHANCE_FACTORS[FRENZY_RANK_CHANCE_FACTORS.length - 1]?.multiplier ??
+    1
+  );
 }
 
 function applyFrenzyModeToSkillEvent(

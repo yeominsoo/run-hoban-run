@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
 import {
   createSampleParticipants,
+  FRENZY_RANK_CHANCE_FACTORS,
   FRENZY_SKILL_ID,
   FRENZY_SPEED_SEGMENT_SPAN_CHANCES,
   getRaceOptionBounds,
   runTournament,
+  type RacePlacement,
+  type SpeedSegment,
   type SkillEvent
 } from '../src/game/rules';
 
@@ -216,6 +219,54 @@ test('keeps rotating frenzy mode active for three speed segments', () => {
   ]);
 });
 
+test('biases random frenzy surges away from leaders and toward trailing runners', () => {
+  expect(FRENZY_RANK_CHANCE_FACTORS).toEqual([
+    { maxRankProgress: 0.26, multiplier: 0.06 },
+    { maxRankProgress: 0.45, multiplier: 0.35 },
+    { maxRankProgress: 0.65, multiplier: 0.9 },
+    { maxRankProgress: 0.82, multiplier: 1.45 },
+    { maxRankProgress: 1, multiplier: 2.5 }
+  ]);
+
+  const names = createSampleParticipants(20);
+  let leaderGroupFrenzies = 0;
+  let middleGroupFrenzies = 0;
+  let trailingGroupFrenzies = 0;
+
+  for (let index = 1; index <= 800; index += 1) {
+    const tournament = runTournament(names, {
+      seed: `후미광폭-${String(index).padStart(4, '0')}`,
+      fieldSize: 20,
+      qualifiersPerGroup: 2,
+      winnerCount: 1
+    });
+    const race = tournament.races[0];
+
+    race?.placements.forEach((placement) => {
+      placement.skillEvents
+        .filter((skillEvent) => skillEvent.skill.id === FRENZY_SKILL_ID)
+        .forEach((skillEvent) => {
+          const rankProgress = getSegmentRankProgress(race.placements, skillEvent.speedSegmentStartIndex ?? 0, placement);
+
+          if (rankProgress <= 0.26) {
+            leaderGroupFrenzies += 1;
+          } else if (rankProgress <= 0.65) {
+            middleGroupFrenzies += 1;
+          } else {
+            trailingGroupFrenzies += 1;
+          }
+        });
+    });
+  }
+
+  const total = leaderGroupFrenzies + middleGroupFrenzies + trailingGroupFrenzies;
+
+  expect(total).toBeGreaterThan(900);
+  expect(leaderGroupFrenzies).toBeLessThan(total * 0.08);
+  expect(middleGroupFrenzies).toBeGreaterThan(leaderGroupFrenzies * 5);
+  expect(trailingGroupFrenzies).toBeGreaterThan(middleGroupFrenzies * 2);
+});
+
 test('keeps every rotating frenzy event at three speed segments', () => {
   const names = createSampleParticipants(18);
   const spanCounts = new Map<number, number>();
@@ -246,3 +297,42 @@ test('keeps every rotating frenzy event at three speed segments', () => {
   expect(spanCounts.size).toBe(1);
   expect(spanCounts.get(3)).toBe(total);
 });
+
+function getSegmentRankProgress(placements: RacePlacement[], segmentIndex: number, target: RacePlacement) {
+  const rankedPlacements = [...placements].sort((left, right) => {
+    const leftSeconds = getPlacementBaseRaceClockAtSegmentEnd(left, segmentIndex);
+    const rightSeconds = getPlacementBaseRaceClockAtSegmentEnd(right, segmentIndex);
+    return leftSeconds - rightSeconds || left.entry.id.localeCompare(right.entry.id);
+  });
+  const rank = rankedPlacements.findIndex((placement) => placement.entry.id === target.entry.id) + 1;
+
+  return rankedPlacements.length <= 1 ? 1 : (rank - 1) / (rankedPlacements.length - 1);
+}
+
+function getPlacementBaseRaceClockAtSegmentEnd(placement: RacePlacement, segmentIndex: number) {
+  const fallbackProgress = (segmentIndex + 1) / Math.max(1, placement.speedSegments.length);
+  const segment = placement.speedSegments[Math.max(0, Math.min(placement.speedSegments.length - 1, segmentIndex))];
+  return getSegmentedTimeAtProgress(placement.baseFinishSeconds, placement.speedSegments, segment?.endProgress ?? fallbackProgress);
+}
+
+function getSegmentedTimeAtProgress(finishSeconds: number, speedSegments: SpeedSegment[], progress: number) {
+  if (speedSegments.length === 0) {
+    return finishSeconds * progress;
+  }
+
+  const clampedProgress = Math.max(0, Math.min(1, progress));
+  const segmentWeights = speedSegments.map((segment) => 1 / Math.max(0.1, segment.multiplier));
+  const totalWeight = segmentWeights.reduce((sum, value) => sum + value, 0);
+  const targetSegmentFloat = clampedProgress * speedSegments.length;
+  const targetSegmentIndex = Math.min(speedSegments.length - 1, Math.floor(targetSegmentFloat));
+  const localProgress = targetSegmentFloat - targetSegmentIndex;
+  let elapsedSeconds = 0;
+
+  for (let index = 0; index < targetSegmentIndex; index += 1) {
+    elapsedSeconds += finishSeconds * ((segmentWeights[index] ?? 1) / totalWeight);
+  }
+
+  elapsedSeconds += finishSeconds * ((segmentWeights[targetSegmentIndex] ?? 1) / totalWeight) * localProgress;
+
+  return elapsedSeconds;
+}
