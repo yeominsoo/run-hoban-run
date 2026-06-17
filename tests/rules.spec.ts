@@ -59,10 +59,14 @@ test('spreads helicopter shots across randomized lanes and full pre-elimination 
   const names = createSampleParticipants(20);
   const shotLanes = new Map<number, number>();
   const shotBaseRanks = new Map<number, number>();
+  const shotLiveRanks = new Map<number, number>();
   const winnerLanes = new Map<number, number>();
   let topThirdShots = 0;
   let middleThirdShots = 0;
   let bottomThirdShots = 0;
+  let liveTopThirdShots = 0;
+  let liveMiddleThirdShots = 0;
+  let liveBottomThirdShots = 0;
 
   for (let index = 1; index <= 200; index += 1) {
     const tournament = runTournament(names, {
@@ -96,6 +100,7 @@ test('spreads helicopter shots across randomized lanes and full pre-elimination 
     race.hazardEvents.forEach((hazard) => {
       const target = race.placements.find((placement) => placement.entry.id === hazard.targetEntryId);
       const baseRank = baseRankById.get(hazard.targetEntryId);
+      const liveRank = getLiveRankById(race.placements, hazard.triggerSeconds).get(hazard.targetEntryId);
 
       if (target) {
         shotLanes.set(target.laneIndex, (shotLanes.get(target.laneIndex) ?? 0) + 1);
@@ -112,25 +117,47 @@ test('spreads helicopter shots across randomized lanes and full pre-elimination 
           bottomThirdShots += 1;
         }
       }
+
+      if (liveRank) {
+        shotLiveRanks.set(liveRank, (shotLiveRanks.get(liveRank) ?? 0) + 1);
+
+        if (liveRank <= 6) {
+          liveTopThirdShots += 1;
+        } else if (liveRank <= 12) {
+          liveMiddleThirdShots += 1;
+        } else {
+          liveBottomThirdShots += 1;
+        }
+      }
     });
   }
 
   const shotCounts = [...shotLanes.values()];
   const shotBaseRankCounts = [...shotBaseRanks.values()];
+  const shotLiveRankCounts = [...shotLiveRanks.values()];
   const winnerCounts = [...winnerLanes.values()];
 
   expect(shotLanes.size).toBe(20);
   expect(shotBaseRanks.size).toBe(20);
+  expect(shotLiveRanks.size).toBe(20);
   expect(winnerLanes.size).toBeGreaterThanOrEqual(15);
   expect(Math.max(...shotCounts)).toBeLessThanOrEqual(90);
   expect(Math.max(...shotBaseRankCounts)).toBeLessThanOrEqual(95);
   expect(Math.min(...shotBaseRankCounts)).toBeGreaterThanOrEqual(45);
+  expect(Math.max(...shotLiveRankCounts)).toBeLessThanOrEqual(95);
+  expect(Math.min(...shotLiveRankCounts)).toBeGreaterThanOrEqual(45);
   expect(topThirdShots).toBeGreaterThanOrEqual(300);
   expect(topThirdShots).toBeLessThanOrEqual(500);
   expect(middleThirdShots).toBeGreaterThanOrEqual(300);
   expect(middleThirdShots).toBeLessThanOrEqual(500);
   expect(bottomThirdShots).toBeGreaterThanOrEqual(300);
   expect(bottomThirdShots).toBeLessThanOrEqual(520);
+  expect(liveTopThirdShots).toBeGreaterThanOrEqual(300);
+  expect(liveTopThirdShots).toBeLessThanOrEqual(500);
+  expect(liveMiddleThirdShots).toBeGreaterThanOrEqual(300);
+  expect(liveMiddleThirdShots).toBeLessThanOrEqual(500);
+  expect(liveBottomThirdShots).toBeGreaterThanOrEqual(390);
+  expect(liveBottomThirdShots).toBeLessThanOrEqual(560);
   expect(Math.max(...winnerCounts)).toBeLessThanOrEqual(24);
 });
 
@@ -143,9 +170,9 @@ test('applies frenzy mode to dance skill events without replacing the dance skil
     winnerCount: 1
   });
   const dance = tournament.races[0]?.placements.find((placement) =>
-    placement.skillEvents.some((skillEvent) => skillEvent.skill.pose === 'dance' && !placement.eliminatedByHelicopter)
+    placement.skillEvents.some((skillEvent) => skillEvent.skill.id === 'corner-dance' && !placement.eliminatedByHelicopter)
   );
-  const danceSkillEvent = dance?.skillEvents.find((skillEvent) => skillEvent.skill.pose === 'dance');
+  const danceSkillEvent = dance?.skillEvents.find((skillEvent) => skillEvent.skill.id === 'corner-dance');
 
   expect(dance).toBeTruthy();
   expect(danceSkillEvent?.skill.id).toBe('corner-dance');
@@ -307,6 +334,97 @@ function getSegmentRankProgress(placements: RacePlacement[], segmentIndex: numbe
   const rank = rankedPlacements.findIndex((placement) => placement.entry.id === target.entry.id) + 1;
 
   return rankedPlacements.length <= 1 ? 1 : (rank - 1) / (rankedPlacements.length - 1);
+}
+
+function getLiveRankById(placements: RacePlacement[], elapsedSeconds: number) {
+  return new Map(
+    [...placements]
+      .sort((left, right) => {
+        const rightProgress = getRaceProgressAtElapsed(right, elapsedSeconds);
+        const leftProgress = getRaceProgressAtElapsed(left, elapsedSeconds);
+        return rightProgress - leftProgress || left.entry.id.localeCompare(right.entry.id);
+      })
+      .map((placement, index) => [placement.entry.id, index + 1])
+  );
+}
+
+function getRaceProgressAtElapsed(placement: RacePlacement, elapsedSeconds: number) {
+  const baseElapsedSeconds = getProgressElapsedSeconds(placement, elapsedSeconds);
+
+  if (placement.speedSegments.length === 0) {
+    return Math.max(0, Math.min(1, baseElapsedSeconds / Math.max(0.001, placement.baseFinishSeconds)));
+  }
+
+  const segmentWeights = placement.speedSegments.map((segment) => 1 / Math.max(0.1, segment.multiplier));
+  const totalWeight = segmentWeights.reduce((sum, value) => sum + value, 0);
+  let elapsedCursor = 0;
+
+  for (let index = 0; index < placement.speedSegments.length; index += 1) {
+    const segmentSeconds = placement.baseFinishSeconds * ((segmentWeights[index] ?? 1) / totalWeight);
+
+    if (baseElapsedSeconds <= elapsedCursor + segmentSeconds || index === placement.speedSegments.length - 1) {
+      const localProgress = Math.max(0, Math.min(1, (baseElapsedSeconds - elapsedCursor) / Math.max(0.001, segmentSeconds)));
+      return Math.max(0, Math.min(1, (index + localProgress) / placement.speedSegments.length));
+    }
+
+    elapsedCursor += segmentSeconds;
+  }
+
+  return 1;
+}
+
+function getProgressElapsedSeconds(placement: RacePlacement, elapsedSeconds: number) {
+  const speedEvents = getSpeedEvents(placement);
+
+  if (speedEvents.length === 0) {
+    return Math.min(elapsedSeconds, placement.baseFinishSeconds);
+  }
+
+  const boundaries = new Set<number>([0, placement.baseFinishSeconds]);
+
+  speedEvents.forEach((skillEvent) => {
+    const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds;
+    const baseEnd = baseStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+    boundaries.add(Math.max(0, Math.min(placement.baseFinishSeconds, baseStart)));
+    boundaries.add(Math.max(0, Math.min(placement.baseFinishSeconds, baseEnd)));
+  });
+
+  const points = [...boundaries].sort((left, right) => left - right);
+  let raceClockCursor = 0;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index] ?? 0;
+    const end = points[index + 1] ?? start;
+    const midpoint = (start + end) / 2;
+    const multiplier = getSpeedMultiplierAtBaseElapsed(midpoint, speedEvents);
+    const duration = (end - start) / multiplier;
+
+    if (elapsedSeconds <= raceClockCursor + duration) {
+      return start + (elapsedSeconds - raceClockCursor) * multiplier;
+    }
+
+    raceClockCursor += duration;
+  }
+
+  return placement.baseFinishSeconds + Math.max(0, elapsedSeconds - raceClockCursor);
+}
+
+function getSpeedEvents(placement: RacePlacement) {
+  return placement.skillEvents
+    .filter(hasSpeedSkill)
+    .sort((left, right) => (left.baseTriggerSeconds ?? left.triggerSeconds) - (right.baseTriggerSeconds ?? right.triggerSeconds));
+}
+
+function hasSpeedSkill(skillEvent: SkillEvent | null | undefined): skillEvent is SkillEvent & { speedMultiplier: number } {
+  return Boolean(skillEvent?.triggerSeconds !== undefined && skillEvent.speedMultiplier !== undefined && skillEvent.speedMultiplier > 1);
+}
+
+function getSpeedMultiplierAtBaseElapsed(baseElapsedSeconds: number, speedEvents: Array<SkillEvent & { speedMultiplier: number }>) {
+  return speedEvents.reduce((multiplier, skillEvent) => {
+    const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds;
+    const baseEnd = baseStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+    return baseElapsedSeconds >= baseStart && baseElapsedSeconds < baseEnd ? Math.max(multiplier, skillEvent.speedMultiplier) : multiplier;
+  }, 1);
 }
 
 function getPlacementBaseRaceClockAtSegmentEnd(placement: RacePlacement, segmentIndex: number) {

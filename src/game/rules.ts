@@ -394,37 +394,19 @@ function simulateRace(
   applyRandomFrenzySkills(placements, options, round, group);
   placements.forEach(finalizePlacementSkillEvents);
 
-  const hazardDrafts = rollHelicopterHazards(placements, options, round, group);
-  const hazardTargetIds = new Set(hazardDrafts.map((hazard) => hazard.targetEntryId));
-  placements.forEach((placement) => {
-    placement.eliminatedByHelicopter = hazardTargetIds.has(placement.entry.id);
-  });
-
   const leadPlacement = placements.reduce((lead, placement) => (placement.finishSeconds < lead.finishSeconds ? placement : lead), placements[0]);
   const firstShotSeconds = Number((leadPlacement ? getRaceClockAtProgress(leadPlacement, 0.5) : 0).toFixed(3));
   const helicopterApproachSeconds = Number(Math.max(0, firstShotSeconds - HELICOPTER_ENTRANCE_SECONDS - BULLET_FLIGHT_SECONDS).toFixed(3));
   const shotSpacingSeconds = 2.4;
-
-  const hazardEvents = hazardDrafts
-    .map((hazardDraft) => {
-      const draftIndex = hazardDrafts.indexOf(hazardDraft);
-      const targetPlacement = placements.find((placement) => placement.entry.id === hazardDraft.targetEntryId);
-
-      if (!targetPlacement) {
-        return null;
-      }
-
-      const triggerSeconds = Number((firstShotSeconds + draftIndex * shotSpacingSeconds).toFixed(3));
-
-      return {
-        ...hazardDraft,
-        triggerProgress: Number(clampNumber(triggerSeconds / targetPlacement.finishSeconds, 0.2, 0.92).toFixed(3)),
-        triggerSeconds,
-        approachSeconds: helicopterApproachSeconds
-      };
-    })
-    .filter((hazard): hazard is HazardEvent => Boolean(hazard))
-    .sort((left, right) => left.triggerSeconds - right.triggerSeconds);
+  const hazardEvents = rollHelicopterHazards(placements, options, round, group, {
+    firstShotSeconds,
+    approachSeconds: helicopterApproachSeconds,
+    shotSpacingSeconds
+  });
+  const hazardTargetIds = new Set(hazardEvents.map((hazard) => hazard.targetEntryId));
+  placements.forEach((placement) => {
+    placement.eliminatedByHelicopter = hazardTargetIds.has(placement.entry.id);
+  });
 
   placements.sort((left, right) => {
     if (left.eliminatedByHelicopter !== right.eliminatedByHelicopter) {
@@ -600,24 +582,55 @@ function getFrenzyTimingFromSegment(placement: RacePlacement, segmentIndex: numb
   };
 }
 
-function rollHelicopterHazards(placements: RacePlacement[], options: RaceOptions, round: number, group: number): HazardEvent[] {
+function rollHelicopterHazards(
+  placements: RacePlacement[],
+  options: RaceOptions,
+  round: number,
+  group: number,
+  timing: { firstShotSeconds: number; approachSeconds: number; shotSpacingSeconds: number }
+): HazardEvent[] {
   if (placements.length < 4) {
     return [];
   }
 
   const entrySignature = placements.map((placement) => placement.entry.id).join('|');
-  const rng = createRng(`${options.seed}:helicopter:${round}:${group}:${placements.length}:${entrySignature}`);
-
   const targetCount = Math.min(placements.length - 1, Math.max(1, Math.floor(placements.length / 3)));
-  const targets = pickUnique(placements, targetCount, rng);
+  const selectedTargetIds = new Set<string>();
+  const hazards: HazardEvent[] = [];
 
-  return targets.map((target, index) => ({
-    type: 'helicopter-snipe',
-    targetEntryId: target.entry.id,
-    triggerProgress: 0.5 + index * 0.02,
-    triggerSeconds: 0,
-    approachSeconds: 0
-  }));
+  for (let index = 0; index < targetCount; index += 1) {
+    const triggerSeconds = Number((timing.firstShotSeconds + index * timing.shotSpacingSeconds).toFixed(3));
+    const candidates = getLiveHelicopterCandidates(placements, selectedTargetIds, triggerSeconds);
+    const rng = createRng(`${options.seed}:helicopter-live:${round}:${group}:${placements.length}:${entrySignature}:${index}:${triggerSeconds}`);
+    const target = pick(candidates, rng);
+
+    if (!target) {
+      break;
+    }
+
+    selectedTargetIds.add(target.entry.id);
+    hazards.push({
+      type: 'helicopter-snipe',
+      targetEntryId: target.entry.id,
+      triggerProgress: Number(clampNumber(triggerSeconds / target.finishSeconds, 0.2, 0.92).toFixed(3)),
+      triggerSeconds,
+      approachSeconds: timing.approachSeconds
+    });
+  }
+
+  return hazards.sort((left, right) => left.triggerSeconds - right.triggerSeconds);
+}
+
+function getLiveHelicopterCandidates(placements: RacePlacement[], selectedTargetIds: Set<string>, elapsedSeconds: number) {
+  const available = placements.filter((placement) => !selectedTargetIds.has(placement.entry.id));
+  const active = available.filter((placement) => getRaceProgressAtElapsed(elapsedSeconds, placement) < 1);
+  const candidates = active.length > 0 ? active : available;
+
+  return [...candidates].sort((left, right) => {
+    const rightProgress = getRaceProgressAtElapsed(elapsedSeconds, right);
+    const leftProgress = getRaceProgressAtElapsed(elapsedSeconds, left);
+    return rightProgress - leftProgress || left.entry.id.localeCompare(right.entry.id);
+  });
 }
 
 function assignRaceLaneIndexes(entries: RaceEntry[], options: RaceOptions, round: number, group: number) {
@@ -798,15 +811,90 @@ function getSegmentedTimeAtProgress(finishSeconds: number, speedSegments: SpeedS
 function getRaceClockAtProgress(placement: RacePlacement, progress: number) {
   const baseFinishSeconds = getProgressBaseFinishSeconds(placement);
   const baseElapsedSeconds = getSegmentedTimeAtProgress(baseFinishSeconds, placement.speedSegments, progress);
-  return getRaceClockFromBaseElapsed(baseElapsedSeconds, placement.skillEvents.filter(hasSpeedSkill));
+  return getRaceClockFromBaseElapsed(baseElapsedSeconds, getSpeedSkillEvents(placement));
+}
+
+function getRaceProgressAtElapsed(elapsedSeconds: number, placement: RacePlacement) {
+  const baseElapsedSeconds = getProgressElapsedSeconds(elapsedSeconds, placement);
+
+  if (placement.speedSegments.length === 0) {
+    return clampNumber(baseElapsedSeconds / Math.max(0.001, placement.baseFinishSeconds), 0, 1);
+  }
+
+  const segmentWeights = placement.speedSegments.map((segment) => 1 / Math.max(0.1, segment.multiplier));
+  const totalWeight = segmentWeights.reduce((sum, value) => sum + value, 0);
+  let elapsedCursor = 0;
+
+  for (let index = 0; index < placement.speedSegments.length; index += 1) {
+    const segmentSeconds = placement.baseFinishSeconds * ((segmentWeights[index] ?? 1) / totalWeight);
+
+    if (baseElapsedSeconds <= elapsedCursor + segmentSeconds || index === placement.speedSegments.length - 1) {
+      const localProgress = clampNumber((baseElapsedSeconds - elapsedCursor) / Math.max(0.001, segmentSeconds), 0, 1);
+      return clampNumber((index + localProgress) / placement.speedSegments.length, 0, 1);
+    }
+
+    elapsedCursor += segmentSeconds;
+  }
+
+  return 1;
+}
+
+function getProgressElapsedSeconds(elapsedSeconds: number, placement: RacePlacement) {
+  const speedEvents = getSpeedSkillEvents(placement);
+
+  if (speedEvents.length === 0) {
+    return Math.min(elapsedSeconds, placement.baseFinishSeconds);
+  }
+
+  const boundaries = new Set<number>([0, placement.baseFinishSeconds]);
+
+  speedEvents.forEach((skillEvent) => {
+    const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds ?? 0;
+    const baseEnd = baseStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+    boundaries.add(clampNumber(baseStart, 0, placement.baseFinishSeconds));
+    boundaries.add(clampNumber(baseEnd, 0, placement.baseFinishSeconds));
+  });
+
+  const points = [...boundaries].sort((left, right) => left - right);
+  let raceClockCursor = 0;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index] ?? 0;
+    const end = points[index + 1] ?? start;
+    const midpoint = (start + end) / 2;
+    const multiplier = getSpeedMultiplierAtBaseElapsed(midpoint, speedEvents);
+    const duration = (end - start) / multiplier;
+
+    if (elapsedSeconds <= raceClockCursor + duration) {
+      return start + (elapsedSeconds - raceClockCursor) * multiplier;
+    }
+
+    raceClockCursor += duration;
+  }
+
+  return placement.baseFinishSeconds + Math.max(0, elapsedSeconds - raceClockCursor);
 }
 
 function getProgressBaseFinishSeconds(placement: RacePlacement) {
   return placement.skillEvents.some(hasSpeedSkill) ? placement.baseFinishSeconds : placement.finishSeconds;
 }
 
+function getSpeedSkillEvents(placement: RacePlacement) {
+  return placement.skillEvents
+    .filter(hasSpeedSkill)
+    .sort((left, right) => (left.baseTriggerSeconds ?? left.triggerSeconds ?? 0) - (right.baseTriggerSeconds ?? right.triggerSeconds ?? 0));
+}
+
 function hasSpeedSkill(skillEvent: SkillEvent | null | undefined): skillEvent is SkillEvent & { speedMultiplier: number } {
   return Boolean(skillEvent && skillEvent.speedMultiplier !== undefined && skillEvent.speedMultiplier > 1);
+}
+
+function getSpeedMultiplierAtBaseElapsed(baseElapsedSeconds: number, speedEvents: Array<SkillEvent & { speedMultiplier: number }>) {
+  return speedEvents.reduce((multiplier, skillEvent) => {
+    const baseStart = skillEvent.baseTriggerSeconds ?? skillEvent.triggerSeconds ?? 0;
+    const baseEnd = baseStart + skillEvent.durationSeconds * skillEvent.speedMultiplier;
+    return baseElapsedSeconds >= baseStart && baseElapsedSeconds < baseEnd ? Math.max(multiplier, skillEvent.speedMultiplier) : multiplier;
+  }, 1);
 }
 
 function getRaceClockFromBaseElapsed(baseElapsedSeconds: number, skillEvents: Array<SkillEvent & { speedMultiplier: number }>) {
@@ -850,22 +938,6 @@ function getRaceClockFromBaseElapsed(baseElapsedSeconds: number, skillEvents: Ar
   }
 
   return raceClock;
-}
-
-function pickUnique<T>(items: T[], count: number, rng: () => number) {
-  const pool = [...items];
-  const selected: T[] = [];
-
-  while (pool.length > 0 && selected.length < count) {
-    const index = Math.floor(rng() * pool.length);
-    const [item] = pool.splice(index, 1);
-
-    if (item) {
-      selected.push(item);
-    }
-  }
-
-  return selected;
 }
 
 function makeBalancedGroups<T>(items: T[], fieldSize: number) {
