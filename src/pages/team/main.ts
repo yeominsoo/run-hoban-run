@@ -17,11 +17,13 @@ let currentSeed = randomSeed();
 let mode: Mode = 'size';
 let phase: Phase = 'idle';
 let groups: Member[][] = [];
+let lastParticipants: string[] = [];
+let lastGroupCount = 0;
 let revealTimer: ReturnType<typeof setTimeout> | null = null;
 
 const GROUP_LETTERS = Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
 const REVEAL_DELAY_MS = 380;
-const SHUFFLE_DURATION_MS = 2000;
+const SHUFFLE_DURATION_MS = 1800;
 
 // ── Render shell ──────────────────────────────
 const app = document.getElementById('app')!;
@@ -46,8 +48,8 @@ app.innerHTML = `
       <div>
         <span class="field-label">분배 방식</span>
         <div class="mode-toggle">
-          <button type="button" class="mode-btn" id="mode-count-btn" data-mode="count">팀 수 입력</button>
-          <button type="button" class="mode-btn active" id="mode-size-btn" data-mode="size">팀당 인원</button>
+          <button type="button" class="mode-btn" id="mode-count-btn">팀 수 입력</button>
+          <button type="button" class="mode-btn active" id="mode-size-btn">팀당 인원</button>
         </div>
       </div>
 
@@ -69,7 +71,7 @@ app.innerHTML = `
 
       <div class="seed-row">
         <span class="seed-label">시드 <span class="seed-value" id="seed-display">${currentSeed}</span></span>
-        <button id="new-seed" type="button" class="seed-btn">순서변경</button>
+        <button id="shuffle-btn" type="button" class="seed-btn">셔플</button>
       </div>
 
       <div class="action-row">
@@ -79,6 +81,10 @@ app.innerHTML = `
     </aside>
 
     <main class="main-area">
+      <div class="progress-bar hidden" id="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+
       <div class="placeholder" id="placeholder">
         참가자를 입력하고<br>배분하기를 눌러주세요
       </div>
@@ -117,14 +123,16 @@ const teamCountInput = document.getElementById('team-count-input') as HTMLInputE
 const teamSizeInput = document.getElementById('team-size-input') as HTMLInputElement;
 const countField = document.getElementById('count-field')!;
 const sizeField = document.getElementById('size-field')!;
-const modeCountBtn = document.getElementById('mode-count-btn')!;
-const modeSizeBtn = document.getElementById('mode-size-btn')!;
+const modeCountBtn = document.getElementById('mode-count-btn') as HTMLButtonElement;
+const modeSizeBtn = document.getElementById('mode-size-btn') as HTMLButtonElement;
 const countHint = document.getElementById('count-hint')!;
 const seedDisplay = document.getElementById('seed-display')!;
-const newSeedBtn = document.getElementById('new-seed')!;
+const shuffleBtn = document.getElementById('shuffle-btn') as HTMLButtonElement;
 const distributeBtn = document.getElementById('distribute-btn') as HTMLButtonElement;
-const resetBtn = document.getElementById('reset-btn')!;
+const resetBtn = document.getElementById('reset-btn') as HTMLButtonElement;
 const placeholder = document.getElementById('placeholder')!;
+const progressBar = document.getElementById('progress-bar')!;
+const progressFill = document.getElementById('progress-fill') as HTMLElement;
 const shuffleWrap = document.getElementById('shuffle-wrap')!;
 const deck = document.getElementById('deck')!;
 const revealWrap = document.getElementById('reveal-wrap')!;
@@ -159,13 +167,11 @@ function groupLabel(gi: number): string {
 }
 
 function computeGroupCount(participants: string[]): number {
-  const n = participants.length;
   if (mode === 'count') {
     return Math.max(2, Math.min(26, parseInt(teamCountInput.value, 10) || 2));
-  } else {
-    const size = Math.max(1, Math.min(50, parseInt(teamSizeInput.value, 10) || 4));
-    return Math.ceil(n / size);
   }
+  const size = Math.max(1, Math.min(50, parseInt(teamSizeInput.value, 10) || 4));
+  return Math.ceil(participants.length / size);
 }
 
 function buildGroups(names: string[], groupCount: number, seed: number): Member[][] {
@@ -179,6 +185,32 @@ function buildGroups(names: string[], groupCount: number, seed: number): Member[
   const result: Member[][] = Array.from({ length: groupCount }, () => []);
   all.forEach((m, i) => result[i % groupCount].push(m));
   return result;
+}
+
+// ── Progress bar ──────────────────────────────
+function startProgress(durationMs: number) {
+  progressBar.classList.remove('hidden');
+  progressFill.style.transition = 'none';
+  progressFill.style.width = '0%';
+  // Trigger reflow so the transition starts from 0
+  progressFill.getBoundingClientRect();
+  progressFill.style.transition = `width ${durationMs}ms linear`;
+  progressFill.style.width = '100%';
+}
+
+function stopProgress() {
+  progressFill.style.transition = 'none';
+  progressFill.style.width = '0%';
+  progressBar.classList.add('hidden');
+}
+
+// ── Button locking ────────────────────────────
+function setLocked(locked: boolean) {
+  distributeBtn.disabled = locked;
+  shuffleBtn.disabled = locked;
+  modeCountBtn.disabled = locked;
+  modeSizeBtn.disabled = locked;
+  resetBtn.disabled = locked;
 }
 
 // ── Mode switching ────────────────────────────
@@ -206,11 +238,7 @@ participantInput.addEventListener('input', () => {
   saveParticipants(participantInput.value);
 });
 
-newSeedBtn.addEventListener('click', () => {
-  currentSeed = randomSeed();
-  seedDisplay.textContent = String(currentSeed);
-});
-
+// ── Distribute: skip animation, reveal immediately ──
 distributeBtn.addEventListener('click', () => {
   const participants = getParticipants();
   if (participants.length < 2) {
@@ -222,8 +250,52 @@ distributeBtn.addEventListener('click', () => {
     alert(`그룹 수(${groupCount})가 참가자 수(${participants.length})보다 많습니다.`);
     return;
   }
+  lastParticipants = participants;
+  lastGroupCount = groupCount;
   startDistribution(participants, groupCount);
 });
+
+// ── Shuffle button: animation + new seed + re-reveal ──
+shuffleBtn.addEventListener('click', doShuffle);
+
+function doShuffle() {
+  if (phase === 'shuffle') return;
+
+  // Stop any ongoing reveal
+  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+
+  setLocked(true);
+  startProgress(SHUFFLE_DURATION_MS);
+
+  placeholder.classList.add('hidden');
+  revealWrap.classList.add('hidden');
+  shuffleWrap.classList.remove('hidden');
+  deck.classList.add('shuffling');
+  phase = 'shuffle';
+
+  revealTimer = setTimeout(() => {
+    revealTimer = null;
+
+    // Update seed
+    currentSeed = randomSeed();
+    seedDisplay.textContent = String(currentSeed);
+
+    deck.classList.remove('shuffling');
+    shuffleWrap.classList.add('hidden');
+    stopProgress();
+    setLocked(false);
+
+    if (lastParticipants.length > 0) {
+      groups = buildGroups(lastParticipants, lastGroupCount, currentSeed);
+      buildGrid(groups);
+      setPhase('reveal');
+      statusMeta.textContent = `${lastParticipants.length}명 · ${groups.length}그룹`;
+      revealNext(0, 0);
+    } else {
+      setPhase('idle');
+    }
+  }, SHUFFLE_DURATION_MS);
+}
 
 resetBtn.addEventListener('click', resetToIdle);
 skipBtn.addEventListener('click', skipAll);
@@ -231,6 +303,7 @@ skipBtn.addEventListener('click', skipAll);
 // ── Phase management ──────────────────────────
 function setPhase(p: Phase) {
   phase = p;
+
   placeholder.classList.add('hidden');
   shuffleWrap.classList.add('hidden');
   revealWrap.classList.add('hidden');
@@ -239,20 +312,16 @@ function setPhase(p: Phase) {
 
   if (p === 'idle') {
     placeholder.classList.remove('hidden');
-    distributeBtn.disabled = false;
+    setLocked(false);
     resetBtn.classList.add('hidden');
     skipBtn.classList.add('hidden');
     copyBtn.classList.add('hidden');
     csvBtn.classList.add('hidden');
-  } else if (p === 'shuffle') {
-    shuffleWrap.classList.remove('hidden');
-    distributeBtn.disabled = true;
-    resetBtn.classList.remove('hidden');
-    skipBtn.classList.add('hidden');
-    copyBtn.classList.add('hidden');
-    csvBtn.classList.add('hidden');
+    stopProgress();
   } else if (p === 'reveal') {
     revealWrap.classList.remove('hidden');
+    setLocked(false);
+    resetBtn.classList.remove('hidden');
     skipBtn.classList.remove('hidden');
     copyBtn.classList.add('hidden');
     csvBtn.classList.add('hidden');
@@ -260,33 +329,33 @@ function setPhase(p: Phase) {
     // done
     revealWrap.classList.remove('hidden');
     statusBar.classList.add('status-done');
+    setLocked(false);
+    resetBtn.classList.remove('hidden');
     skipBtn.classList.add('hidden');
     copyBtn.classList.remove('hidden');
     csvBtn.classList.remove('hidden');
+    stopProgress();
   }
 }
 
 function resetToIdle() {
   if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
   groupsGrid.innerHTML = '';
+  lastParticipants = [];
+  lastGroupCount = 0;
   setPhase('idle');
 }
 
-// ── Distribution flow ─────────────────────────
+// ── Distribution (no shuffle phase, reveal immediately) ──
 function startDistribution(participants: string[], groupCount: number) {
-  groups = buildGroups(participants, groupCount, currentSeed);
-  setPhase('shuffle');
-  deck.classList.add('shuffling');
+  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
 
-  revealTimer = setTimeout(() => {
-    revealTimer = null;
-    deck.classList.remove('shuffling');
-    buildGrid(groups);
-    setPhase('reveal');
-    const totalParticipants = participants.length;
-    statusMeta.textContent = `${totalParticipants}명 · ${groups.length}그룹`;
-    revealNext(0, 0);
-  }, SHUFFLE_DURATION_MS);
+  groups = buildGroups(participants, groupCount, currentSeed);
+  groupsGrid.innerHTML = '';
+  buildGrid(groups);
+  setPhase('reveal');
+  statusMeta.textContent = `${participants.length}명 · ${groups.length}그룹`;
+  revealNext(0, 0);
 }
 
 function buildGrid(gs: Member[][]) {
@@ -318,10 +387,10 @@ function buildGrid(gs: Member[][]) {
   });
 }
 
+// ── Sequential reveal ─────────────────────────
 function revealNext(gi: number, mi: number) {
   if (phase !== 'reveal') return;
 
-  // All groups finished
   if (gi >= groups.length) {
     const lastCol = document.getElementById(`group-col-${gi - 1}`);
     lastCol?.classList.remove('active');
@@ -333,7 +402,6 @@ function revealNext(gi: number, mi: number) {
 
   const group = groups[gi];
 
-  // Transition to a new group
   if (mi === 0) {
     if (gi > 0) {
       const prevCol = document.getElementById(`group-col-${gi - 1}`);
@@ -344,13 +412,11 @@ function revealNext(gi: number, mi: number) {
     statusCurrent.textContent = `${groupLabel(gi)} 배정 중`;
   }
 
-  // Finished all cards in this group
   if (mi >= group.length) {
     revealTimer = setTimeout(() => revealNext(gi + 1, 0), REVEAL_DELAY_MS);
     return;
   }
 
-  // Flip the card
   const card = document.getElementById(`card-${gi}-${mi}`);
   if (card) {
     card.classList.add('revealed', 'lit');
@@ -368,9 +434,7 @@ function skipAll() {
     col?.classList.remove('active');
     col?.classList.add('done');
     group.forEach((_, mi) => {
-      const card = document.getElementById(`card-${gi}-${mi}`);
-      card?.classList.add('revealed');
-      card?.classList.remove('lit');
+      document.getElementById(`card-${gi}-${mi}`)?.classList.add('revealed');
     });
   });
 
