@@ -1027,17 +1027,27 @@ textarea {
     gap: 8px;
   }
 
+  .title-block {
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+
   .eyebrow {
     margin-bottom: 2px;
     font-size: 0.66rem;
   }
 
   h1 {
-    font-size: 1.55rem;
+    font-size: 1.15rem;
     line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .top-actions {
+    flex-shrink: 0;
     gap: 7px;
   }
 
@@ -1063,6 +1073,18 @@ textarea {
     width: auto;
     max-height: min(56vh, 430px);
     overflow: auto;
+  }
+
+  /* 바텀 시트 드래그 핸들 */
+  .control-panel::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.28);
+    margin: 8px auto 4px;
+    flex-shrink: 0;
   }
 
   .race-stage.panels-hidden .control-panel {
@@ -1245,5 +1267,198 @@ textarea {
     min-width: 42px;
     padding: 3px 6px;
     font-size: 0.62rem;
+  }
+}
+
+/* ─── 가로 모드 모바일 (landscape phone) ─── */
+@media (max-height: 500px) {
+  .hud-top {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    gap: 6px;
+  }
+
+  .title-block {
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+
+  .eyebrow {
+    font-size: 0.58rem;
+    margin-bottom: 1px;
+  }
+
+  h1 {
+    font-size: 0.9rem;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-actions {
+    flex-shrink: 0;
+    gap: 5px;
+  }
+
+  .icon-button {
+    width: 33px;
+    height: 33px;
+  }
+
+  .icon-button span {
+    font-size: 1.1rem;
+  }
+
+  .icon-button .icon-svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* 미니맵: 좌측에만 (우측 리더보드 공간 확보) */
+  .race-minimap {
+    top: 50px;
+    right: 178px;
+    bottom: auto;
+    left: 8px;
+  }
+
+  .minimap-track {
+    width: 100%;
+    height: 30px;
+  }
+
+  .minimap-dots {
+    inset: 5px 12px;
+  }
+
+  .minimap-dot {
+    width: 9px;
+    height: 9px;
+  }
+
+  /* 리더보드: 우측 세로 패널로 전환 */
+  .hud-bottom {
+    top: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: auto;
+    width: 162px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    border-radius: 8px;
+    background: rgba(15, 29, 34, 0.66);
+    box-shadow: 0 18px 44px rgba(8, 18, 20, 0.24);
+    backdrop-filter: blur(14px);
+    justify-content: unset;
+  }
+
+  .hud-heading {
+    display: block;
+    padding: 8px 10px 6px;
+    font-size: 0.66rem;
+  }
+
+  /* 리더보드를 세로 목록으로 리셋 */
+  .leaderboard {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    width: 100%;
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    backdrop-filter: none;
+    padding: 4px 8px 8px;
+    scrollbar-width: thin;
+    touch-action: pan-y;
+  }
+
+  .leaderboard::-webkit-scrollbar {
+    display: block;
+    width: 4px;
+  }
+
+  .leaderboard li {
+    grid-template-columns: 20px minmax(0, 1fr);
+    min-height: 26px;
+    padding: 3px 5px;
+  }
+
+  .leaderboard span {
+    width: 20px;
+    height: 20px;
+    font-size: 0.64rem;
+  }
+
+  .leaderboard strong {
+    font-size: 0.7rem;
+  }
+
+  /* 설정 패널: 우측 리더보드와 겹치지 않게 */
+  .control-panel {
+    top: auto;
+    right: 178px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: 8px;
+    width: auto;
+    max-height: calc(100dvh - 60px);
+  }
+
+  .race-stage.panels-hidden .control-panel {
+    opacity: 0;
+    transform: translateY(calc(100% + 20px));
+  }
+
+  /* 우승 배너 */
+  .winner-banner {
+    top: 50px;
+    right: 178px;
+    left: 8px;
+  }
+
+  .winner-banner strong {
+    font-size: 1.1rem;
+  }
+
+  .race-stage.victory-active .winner-banner strong {
+    font-size: 1.15rem;
+  }
+
+  /* race-started 오버라이드 (min-width: 761px 와 충돌 방지) */
+  .race-stage.race-started .hud-bottom {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .race-stage.race-started .leaderboard {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-flow: row;
+    width: 100%;
+    max-height: none;
+    padding: 4px 8px 8px;
+  }
+
+  .race-stage.race-started .leaderboard li {
+    min-height: 26px;
+    padding: 3px 5px;
+  }
+
+  .race-stage.race-started .leaderboard span {
+    width: 20px;
+    height: 20px;
+    font-size: 0.64rem;
+  }
+
+  .race-stage.race-started .leaderboard strong {
+    font-size: 0.7rem;
   }
 }
