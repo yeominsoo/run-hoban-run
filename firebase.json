@@ -18,7 +18,7 @@
         ]
       },
       {
-        "source": "/",
+        "source": "/index.html",
         "headers": [
           {
             "key": "Cache-Control",
@@ -27,7 +27,16 @@
         ]
       },
       {
-        "source": "/index.html",
+        "source": "/race/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/team/index.html",
         "headers": [
           {
             "key": "Cache-Control",
@@ -38,8 +47,20 @@
     ],
     "rewrites": [
       {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/race",
+        "destination": "/race/index.html"
+      },
+      {
+        "source": "/race/**",
+        "destination": "/race/index.html"
+      },
+      {
+        "source": "/team",
+        "destination": "/team/index.html"
+      },
+      {
+        "source": "/team/**",
+        "destination": "/team/index.html"
       }
     ]
   }

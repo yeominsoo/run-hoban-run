@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>경마 토너먼트 — 달려라 호반</title>
+    <style>
+      :root {
+        color: #16211a;
+        background: #dce8ef;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        background:
+          linear-gradient(180deg, rgba(184, 217, 255, 0.96), rgba(220, 232, 239, 0.42) 42%),
+          #dce8ef;
+      }
+
+      #boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        color: #f7fbff;
+        background:
+          linear-gradient(180deg, rgba(184, 217, 255, 0.96), rgba(142, 201, 226, 0.74) 48%, rgba(58, 142, 76, 0.9)),
+          #7dbadd;
+        opacity: 1;
+        transition:
+          opacity 180ms ease,
+          visibility 180ms ease;
+        visibility: visible;
+      }
+
+      .boot-card {
+        display: grid;
+        justify-items: center;
+        gap: 14px;
+        padding: 0 24px;
+        text-align: center;
+        text-shadow: 0 1px 14px rgba(10, 18, 24, 0.38);
+      }
+
+      .boot-mark {
+        width: 44px;
+        height: 44px;
+        border: 4px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #ffffff;
+        border-radius: 999px;
+        animation: boot-spin 900ms linear infinite;
+      }
+
+      .boot-title {
+        margin: 0;
+        font-size: clamp(2rem, 10vw, 4.6rem);
+        font-weight: 900;
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      .boot-status {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.86);
+        font-size: 0.95rem;
+        font-weight: 800;
+      }
+
+      html.app-ready #boot-loader {
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
+      }
+
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="boot-loader" role="status" aria-live="polite">
+      <div class="boot-card">
+        <div class="boot-mark" aria-hidden="true"></div>
+        <p class="boot-title">달려라 호반</p>
+        <p class="boot-status" id="boot-status">로딩 중</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

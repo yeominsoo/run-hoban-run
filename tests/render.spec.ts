@@ -17,7 +17,7 @@ async function setHiddenSeed(page: Page, seed: string) {
 for (const viewport of viewports) {
   test(`renders a nonblank 3d race scene on ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize(viewport.size);
-    await page.goto('/');
+    await page.goto('/race/');
     await expect(page.locator('h1')).toHaveText('달려라 호반');
 
     const canvas = page.locator('#race-canvas');
@@ -132,7 +132,7 @@ for (const viewport of viewports) {
 for (const viewport of viewports) {
   test(`keeps race callouts limited on ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize(viewport.size);
-    await page.goto('/');
+    await page.goto('/race/');
     await page.locator('#start-tournament').click();
     await page.waitForFunction(() =>
       [...document.querySelectorAll('.runner-tag')].some(
@@ -181,7 +181,7 @@ for (const viewport of viewports) {
 for (const viewport of viewports) {
   test(`captures the gallop and grounding visual regression frame on ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize(viewport.size);
-    await page.goto('/');
+    await page.goto('/race/');
     await page.locator('#participants').fill(['혜성', '민트', '번개', '노을', '바람', '호수'].join('\n'));
     await setHiddenSeed(page, `p2c-gallop-grounding-${viewport.name}`);
     await page.locator('#start-tournament').click();
@@ -252,7 +252,7 @@ test('uses a single generated helicopter model without loading the GLB asset', a
     }
   });
 
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveAttribute('data-helicopter-asset', 'generated');
@@ -301,7 +301,7 @@ test('keeps initial runtime asset requests local', async ({ page }) => {
     }
   });
 
-  await page.goto('/');
+  await page.goto('/race/');
   await page.waitForLoadState('networkidle');
 
   expect(externalRequests).toEqual([]);
@@ -319,7 +319,7 @@ test('uses detailed graphics as the only race graphics mode', async ({ page }) =
     }
   });
 
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#graphics-select')).toHaveCount(0);
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveAttribute('data-graphics-quality', 'standard');
@@ -337,7 +337,7 @@ test('uses detailed graphics as the only race graphics mode', async ({ page }) =
 });
 
 test('downloads a composited result screenshot', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#download-result-shot')).toBeVisible();
   await page.locator('#start-tournament').click();
   await page.waitForFunction(() =>
@@ -361,7 +361,7 @@ test('downloads a composited result screenshot', async ({ page }) => {
 });
 
 test('records the race canvas to a downloadable video', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/race/');
   const supported = await page.evaluate(() => {
     return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
   });
@@ -398,19 +398,19 @@ test('records the race canvas to a downloadable video', async ({ page }) => {
 });
 
 test('shows an immediate loading state before the app bundle is ready', async ({ page }) => {
-  const response = await page.request.get('/');
+  const response = await page.request.get('/race/');
   const html = (await response.text()).replace(/<script\s+type="module"[^>]*><\/script>/, '');
 
   await page.setContent(html);
   await expect(page.locator('#boot-loader')).toBeVisible();
   await expect(page.locator('#boot-status')).toContainText('로딩');
 
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#boot-loader')).toBeHidden({ timeout: 6_000 });
 });
 
 test('uses a faster default race pace and exposes upgraded racer visuals', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/race/');
   const raceStage = page.locator('#race-stage');
 
   await expect(page.locator('#race-speed-select')).toHaveCount(0);
@@ -431,7 +431,7 @@ test('uses a faster default race pace and exposes upgraded racer visuals', async
 
 test('moves the overview camera through broadcast, finish, and winner phases', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await page.goto('/race/');
   await page.locator('#participants').fill(['혜성', '민트', '번개'].join('\n'));
   await setHiddenSeed(page, 'camera-sequence-0001');
   await page.locator('#start-tournament').click();
@@ -543,7 +543,7 @@ test('moves the overview camera through broadcast, finish, and winner phases', a
 });
 
 test('starts a 64 runner tournament and advances to the final race', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#race-stage')).not.toHaveClass(/panels-hidden/);
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await expect(page.locator('#race-summary')).toContainText('헬기');
@@ -620,7 +620,7 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
 });
 
 test('updates field size max from the participant count', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#field-size')).toHaveAttribute('max', '20');
   await page.locator('#participants').fill(['1번주자', '2번주자', '3번주자', '4번주자', '5번주자', '6번주자'].join('\n'));
   await expect(page.locator('#field-size')).toHaveAttribute('max', '6');
@@ -632,7 +632,7 @@ test('updates field size max from the participant count', async ({ page }) => {
 test('restores the recently edited participant list', async ({ page }) => {
   const recentParticipants = ['민수', '지수', '태오', '서윤'].join('\n');
 
-  await page.goto('/');
+  await page.goto('/race/');
   await page.locator('#participants').fill(recentParticipants);
   await expect(page.locator('#field-size')).toHaveAttribute('max', '4');
 
@@ -643,7 +643,7 @@ test('restores the recently edited participant list', async ({ page }) => {
 
 test('keeps mobile minimap clear of the leaderboard and supports wheel zoom', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/race/');
   await page.locator('#start-tournament').click();
 
   const minimap = page.locator('#race-minimap');
@@ -676,7 +676,7 @@ test('keeps mobile minimap clear of the leaderboard and supports wheel zoom', as
 
 test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/race/');
   await page.locator('#start-tournament').click();
 
   await page.waitForFunction(() => document.querySelector('#race-stage')?.getAttribute('data-cinematic') === 'approach', undefined, {
@@ -797,7 +797,7 @@ test('keeps the mobile helicopter entrance and leaderboard in frame', async ({ p
 
 test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await page.goto('/race/');
   await setHiddenSeed(page, '광폭빠름-00001');
   await page.locator('#start-tournament').click();
 
@@ -845,7 +845,7 @@ test('plays the frenzy cutscene with active vortex state', async ({ page }) => {
 
 test('plays dance skills with the frenzy mode effect active', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await page.goto('/race/');
   await setHiddenSeed(page, '댄스광폭-0113');
   await page.locator('#start-tournament').click();
 
@@ -875,7 +875,7 @@ test('plays dance skills with the frenzy mode effect active', async ({ page }) =
 
 test('plays lie-flat skills with the frenzy mode speed effect active', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await page.goto('/race/');
   await page.locator('#participants').fill(['혜성', '민트', '번개', '남색', '장미', '재빛'].join('\n'));
   await setHiddenSeed(page, 'flat-six-00002');
   await page.locator('#start-tournament').click();
@@ -928,7 +928,7 @@ test('plays lie-flat skills with the frenzy mode speed effect active', async ({ 
 
 test('plays rocket start with rear gas burst effect', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await page.goto('/race/');
   await page.locator('#participants').fill(['혜성', '민트', '번개', '남색', '장미', '재빛'].join('\n'));
   await setHiddenSeed(page, 'rocket-six-0002');
   await page.locator('#start-tournament').click();
@@ -944,7 +944,7 @@ test('plays rocket start with rear gas burst effect', async ({ page }) => {
 
 test('plays delayed helicopter shots and leaves eliminated runners down on the track', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/');
+  await page.goto('/race/');
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-summary')).toContainText('출격 x6');
