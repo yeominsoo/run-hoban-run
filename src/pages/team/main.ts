@@ -4,28 +4,26 @@ import { seededShuffle, randomSeed } from '../../shared/seed';
 import { loadParticipants, saveParticipants } from '../../shared/participants';
 
 // ── Types ─────────────────────────────────────
-interface Member {
-  name: string;
-  ghost: boolean;
-}
+interface Member { name: string; ghost: boolean; }
+type Mode    = 'count' | 'size';
+type Phase   = 'idle' | 'shuffle' | 'dealing' | 'final' | 'done';
 
-type Mode = 'count' | 'size';
-type Phase = 'idle' | 'shuffle' | 'reveal' | 'done';
+// ── Constants ─────────────────────────────────
+const GROUP_LETTERS    = Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+const DEAL_INTERVAL_MS = 160;
+const DEAL_ANIM_MS     = 220;
+const SHUFFLE_MS       = 1800;
 
 // ── State ─────────────────────────────────────
 let currentSeed = randomSeed();
-let mode: Mode = 'size';
+let mode: Mode  = 'size';
 let phase: Phase = 'idle';
 let groups: Member[][] = [];
-let lastParticipants: string[] = [];
-let lastGroupCount = 0;
-let revealTimer: ReturnType<typeof setTimeout> | null = null;
+let animTimer: ReturnType<typeof setTimeout> | null = null;
+let dealCards: { gi: number; mi: number }[] = [];
+let dealIdx = 0;
 
-const GROUP_LETTERS = Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
-const REVEAL_DELAY_MS = 380;
-const SHUFFLE_DURATION_MS = 1800;
-
-// ── Render shell ──────────────────────────────
+// ── HTML ──────────────────────────────────────
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="team-shell">
@@ -68,16 +66,6 @@ app.innerHTML = `
           <span class="size-unit">명씩</span>
         </div>
       </div>
-
-      <div class="seed-row">
-        <span class="seed-label">시드 <span class="seed-value" id="seed-display">${currentSeed}</span></span>
-        <button id="shuffle-btn" type="button" class="seed-btn">셔플</button>
-      </div>
-
-      <div class="action-row">
-        <button id="distribute-btn" type="button" class="btn-primary">배분하기</button>
-        <button id="reset-btn" type="button" class="btn-secondary hidden">처음으로</button>
-      </div>
     </aside>
 
     <main class="main-area">
@@ -85,11 +73,9 @@ app.innerHTML = `
         <div class="progress-fill" id="progress-fill"></div>
       </div>
 
-      <div class="placeholder" id="placeholder">
-        참가자를 입력하고<br>배분하기를 눌러주세요
-      </div>
-
-      <div class="shuffle-wrap hidden" id="shuffle-wrap">
+      <!-- Idle / Shuffle: centered deck with distribute button above -->
+      <div class="idle-panel" id="idle-panel">
+        <button id="distribute-btn" type="button" class="idle-dist-btn">배분하기</button>
         <div class="deck" id="deck">
           <div class="deck-card"></div>
           <div class="deck-card"></div>
@@ -99,17 +85,21 @@ app.innerHTML = `
           <div class="deck-card"></div>
           <div class="deck-card"></div>
           <div class="deck-card"></div>
+          <span class="deck-label">셔플</span>
         </div>
-        <p class="shuffle-label">섞는 중…</p>
+        <p class="shuffle-status hidden" id="shuffle-status">섞는 중…</p>
+        <p class="seed-hint">시드 <span id="seed-display">${currentSeed}</span></p>
       </div>
 
+      <!-- Dealing / Final / Done: status bar + card grid -->
       <div class="reveal-wrap hidden" id="reveal-wrap">
         <div class="status-bar" id="status-bar">
-          <span class="status-meta" id="status-meta"></span>
+          <span class="status-meta"  id="status-meta"></span>
           <span class="status-current" id="status-current"></span>
           <button type="button" class="btn-bar hidden" id="skip-btn">건너뛰기</button>
           <button type="button" class="btn-bar hidden" id="copy-btn">복사</button>
           <button type="button" class="btn-bar hidden" id="csv-btn">CSV</button>
+          <button type="button" class="btn-bar hidden" id="reset-btn">처음으로</button>
         </div>
         <div class="groups-grid" id="groups-grid"></div>
       </div>
@@ -117,32 +107,31 @@ app.innerHTML = `
   </div>
 `;
 
-// ── Element refs ──────────────────────────────
-const participantInput = document.getElementById('participants') as HTMLTextAreaElement;
-const teamCountInput = document.getElementById('team-count-input') as HTMLInputElement;
-const teamSizeInput = document.getElementById('team-size-input') as HTMLInputElement;
-const countField = document.getElementById('count-field')!;
-const sizeField = document.getElementById('size-field')!;
-const modeCountBtn = document.getElementById('mode-count-btn') as HTMLButtonElement;
-const modeSizeBtn = document.getElementById('mode-size-btn') as HTMLButtonElement;
-const countHint = document.getElementById('count-hint')!;
-const seedDisplay = document.getElementById('seed-display')!;
-const shuffleBtn = document.getElementById('shuffle-btn') as HTMLButtonElement;
-const distributeBtn = document.getElementById('distribute-btn') as HTMLButtonElement;
-const resetBtn = document.getElementById('reset-btn') as HTMLButtonElement;
-const placeholder = document.getElementById('placeholder')!;
-const progressBar = document.getElementById('progress-bar')!;
-const progressFill = document.getElementById('progress-fill') as HTMLElement;
-const shuffleWrap = document.getElementById('shuffle-wrap')!;
-const deck = document.getElementById('deck')!;
-const revealWrap = document.getElementById('reveal-wrap')!;
-const statusBar = document.getElementById('status-bar')!;
-const statusMeta = document.getElementById('status-meta')!;
-const statusCurrent = document.getElementById('status-current')!;
-const skipBtn = document.getElementById('skip-btn')!;
-const copyBtn = document.getElementById('copy-btn')!;
-const csvBtn = document.getElementById('csv-btn')!;
-const groupsGrid = document.getElementById('groups-grid')!;
+// ── Refs ──────────────────────────────────────
+const participantInput  = document.getElementById('participants')     as HTMLTextAreaElement;
+const teamCountInput    = document.getElementById('team-count-input') as HTMLInputElement;
+const teamSizeInput     = document.getElementById('team-size-input')  as HTMLInputElement;
+const countField        = document.getElementById('count-field')!;
+const sizeField         = document.getElementById('size-field')!;
+const modeCountBtn      = document.getElementById('mode-count-btn')   as HTMLButtonElement;
+const modeSizeBtn       = document.getElementById('mode-size-btn')    as HTMLButtonElement;
+const countHint         = document.getElementById('count-hint')!;
+const seedDisplay       = document.getElementById('seed-display')!;
+const distributeBtn     = document.getElementById('distribute-btn')   as HTMLButtonElement;
+const idlePanel         = document.getElementById('idle-panel')!;
+const deck              = document.getElementById('deck')!;
+const shuffleStatus     = document.getElementById('shuffle-status')!;
+const progressBar       = document.getElementById('progress-bar')!;
+const progressFill      = document.getElementById('progress-fill')    as HTMLElement;
+const revealWrap        = document.getElementById('reveal-wrap')!;
+const statusBar         = document.getElementById('status-bar')!;
+const statusMeta        = document.getElementById('status-meta')!;
+const statusCurrent     = document.getElementById('status-current')!;
+const skipBtn           = document.getElementById('skip-btn')!;
+const copyBtn           = document.getElementById('copy-btn')!;
+const csvBtn            = document.getElementById('csv-btn')!;
+const resetBtn          = document.getElementById('reset-btn')!;
+const groupsGrid        = document.getElementById('groups-grid')!;
 
 // ── Init ──────────────────────────────────────
 participantInput.value = loadParticipants() ?? '';
@@ -152,20 +141,15 @@ updateCountHint();
 function getParticipants(): string[] {
   return normalizeParticipants(participantInput.value.split(/\r?\n/));
 }
-
 function updateCountHint() {
-  const count = getParticipants().length;
-  countHint.textContent = `${count}명`;
+  countHint.textContent = `${getParticipants().length}명`;
 }
-
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-
 function groupLabel(gi: number): string {
   return (GROUP_LETTERS[gi] ?? String(gi + 1)) + '그룹';
 }
-
 function computeGroupCount(participants: string[]): number {
   if (mode === 'count') {
     return Math.max(2, Math.min(26, parseInt(teamCountInput.value, 10) || 2));
@@ -173,73 +157,64 @@ function computeGroupCount(participants: string[]): number {
   const size = Math.max(1, Math.min(50, parseInt(teamSizeInput.value, 10) || 4));
   return Math.ceil(participants.length / size);
 }
-
 function buildGroups(names: string[], groupCount: number, seed: number): Member[][] {
   const shuffled = seededShuffle(names, seed);
   const teamSize = Math.ceil(shuffled.length / groupCount);
   const totalSlots = groupCount * teamSize;
   const all: Member[] = shuffled.map(n => ({ name: n, ghost: false }));
-  for (let i = shuffled.length; i < totalSlots; i++) {
-    all.push({ name: '빈자리', ghost: true });
-  }
+  for (let i = shuffled.length; i < totalSlots; i++) all.push({ name: '빈자리', ghost: true });
   const result: Member[][] = Array.from({ length: groupCount }, () => []);
   all.forEach((m, i) => result[i % groupCount].push(m));
   return result;
 }
 
 // ── Progress bar ──────────────────────────────
-function startProgress(durationMs: number) {
+function startProgress(ms: number) {
   progressBar.classList.remove('hidden');
   progressFill.style.transition = 'none';
   progressFill.style.width = '0%';
-  // Trigger reflow so the transition starts from 0
   progressFill.getBoundingClientRect();
-  progressFill.style.transition = `width ${durationMs}ms linear`;
+  progressFill.style.transition = `width ${ms}ms linear`;
   progressFill.style.width = '100%';
 }
-
 function stopProgress() {
   progressFill.style.transition = 'none';
   progressFill.style.width = '0%';
   progressBar.classList.add('hidden');
 }
 
-// ── Button locking ────────────────────────────
+// ── Input locking ─────────────────────────────
 function setLocked(locked: boolean) {
   distributeBtn.disabled = locked;
-  shuffleBtn.disabled = locked;
-  modeCountBtn.disabled = locked;
-  modeSizeBtn.disabled = locked;
-  resetBtn.disabled = locked;
+  modeCountBtn.disabled  = locked;
+  modeSizeBtn.disabled   = locked;
 }
 
-// ── Mode switching ────────────────────────────
+// ── Mode toggle ───────────────────────────────
 function setMode(m: Mode) {
   mode = m;
   if (m === 'count') {
-    modeCountBtn.classList.add('active');
-    modeSizeBtn.classList.remove('active');
-    countField.classList.remove('hidden');
-    sizeField.classList.add('hidden');
+    modeCountBtn.classList.add('active');   modeSizeBtn.classList.remove('active');
+    countField.classList.remove('hidden');  sizeField.classList.add('hidden');
   } else {
-    modeSizeBtn.classList.add('active');
-    modeCountBtn.classList.remove('active');
-    sizeField.classList.remove('hidden');
-    countField.classList.add('hidden');
+    modeSizeBtn.classList.add('active');    modeCountBtn.classList.remove('active');
+    sizeField.classList.remove('hidden');   countField.classList.add('hidden');
   }
 }
 
-modeCountBtn.addEventListener('click', () => setMode('count'));
-modeSizeBtn.addEventListener('click', () => setMode('size'));
-
-// ── Input events ──────────────────────────────
+// ── Events ────────────────────────────────────
 participantInput.addEventListener('input', () => {
   updateCountHint();
   saveParticipants(participantInput.value);
 });
+modeCountBtn.addEventListener('click', () => setMode('count'));
+modeSizeBtn.addEventListener('click',  () => setMode('size'));
 
-// ── Distribute: skip animation, reveal immediately ──
+// Clicking the deck triggers shuffle
+deck.addEventListener('click', doShuffle);
+
 distributeBtn.addEventListener('click', () => {
+  if (phase === 'shuffle') return;
   const participants = getParticipants();
   if (participants.length < 2) {
     alert('참가자를 2명 이상 입력해주세요.');
@@ -250,207 +225,246 @@ distributeBtn.addEventListener('click', () => {
     alert(`그룹 수(${groupCount})가 참가자 수(${participants.length})보다 많습니다.`);
     return;
   }
-  lastParticipants = participants;
-  lastGroupCount = groupCount;
   startDistribution(participants, groupCount);
 });
 
-// ── Shuffle button: animation + new seed + re-reveal ──
-shuffleBtn.addEventListener('click', doShuffle);
+resetBtn.addEventListener('click', resetToIdle);
 
+skipBtn.addEventListener('click', () => {
+  if (phase === 'dealing') skipDealing();
+  else if (phase === 'final') revealAllFinal();
+});
+
+// ── Shuffle ───────────────────────────────────
 function doShuffle() {
-  if (phase === 'shuffle') return;
+  if (phase !== 'idle') return;
 
-  // Stop any ongoing reveal
-  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
-
-  setLocked(true);
-  startProgress(SHUFFLE_DURATION_MS);
-
-  placeholder.classList.add('hidden');
-  revealWrap.classList.add('hidden');
-  shuffleWrap.classList.remove('hidden');
-  deck.classList.add('shuffling');
   phase = 'shuffle';
+  setLocked(true);
+  deck.classList.add('shuffling');
+  shuffleStatus.classList.remove('hidden');
+  startProgress(SHUFFLE_MS);
 
-  revealTimer = setTimeout(() => {
-    revealTimer = null;
-
-    // Update seed
+  animTimer = setTimeout(() => {
+    animTimer = null;
     currentSeed = randomSeed();
     seedDisplay.textContent = String(currentSeed);
 
     deck.classList.remove('shuffling');
-    shuffleWrap.classList.add('hidden');
+    shuffleStatus.classList.add('hidden');
     stopProgress();
     setLocked(false);
-
-    if (lastParticipants.length > 0) {
-      groups = buildGroups(lastParticipants, lastGroupCount, currentSeed);
-      buildGrid(groups);
-      setPhase('reveal');
-      statusMeta.textContent = `${lastParticipants.length}명 · ${groups.length}그룹`;
-      revealNext(0, 0);
-    } else {
-      setPhase('idle');
-    }
-  }, SHUFFLE_DURATION_MS);
+    phase = 'idle';
+  }, SHUFFLE_MS);
 }
 
-resetBtn.addEventListener('click', resetToIdle);
-skipBtn.addEventListener('click', skipAll);
-
-// ── Phase management ──────────────────────────
-function setPhase(p: Phase) {
-  phase = p;
-
-  placeholder.classList.add('hidden');
-  shuffleWrap.classList.add('hidden');
-  revealWrap.classList.add('hidden');
-  deck.classList.remove('shuffling');
-  statusBar.classList.remove('status-done');
-
-  if (p === 'idle') {
-    placeholder.classList.remove('hidden');
-    setLocked(false);
-    resetBtn.classList.add('hidden');
-    skipBtn.classList.add('hidden');
-    copyBtn.classList.add('hidden');
-    csvBtn.classList.add('hidden');
-    stopProgress();
-  } else if (p === 'reveal') {
-    revealWrap.classList.remove('hidden');
-    setLocked(false);
-    resetBtn.classList.remove('hidden');
-    skipBtn.classList.remove('hidden');
-    copyBtn.classList.add('hidden');
-    csvBtn.classList.add('hidden');
-  } else {
-    // done
-    revealWrap.classList.remove('hidden');
-    statusBar.classList.add('status-done');
-    setLocked(false);
-    resetBtn.classList.remove('hidden');
-    skipBtn.classList.add('hidden');
-    copyBtn.classList.remove('hidden');
-    csvBtn.classList.remove('hidden');
-    stopProgress();
-  }
-}
-
+// ── Reset ─────────────────────────────────────
 function resetToIdle() {
-  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+  if (animTimer) { clearTimeout(animTimer); animTimer = null; }
+  groups = [];
   groupsGrid.innerHTML = '';
-  lastParticipants = [];
-  lastGroupCount = 0;
-  setPhase('idle');
+  deck.classList.remove('shuffling');
+  shuffleStatus.classList.add('hidden');
+  stopProgress();
+  setLocked(false);
+  phase = 'idle';
+
+  idlePanel.classList.remove('hidden');
+  revealWrap.classList.add('hidden');
+  statusBar.classList.remove('status-done');
 }
 
-// ── Distribution (no shuffle phase, reveal immediately) ──
+// ── Distribution ──────────────────────────────
 function startDistribution(participants: string[], groupCount: number) {
-  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+  if (animTimer) { clearTimeout(animTimer); animTimer = null; }
+  phase = 'dealing';
 
   groups = buildGroups(participants, groupCount, currentSeed);
   groupsGrid.innerHTML = '';
   buildGrid(groups);
-  setPhase('reveal');
+
+  idlePanel.classList.add('hidden');
+  revealWrap.classList.remove('hidden');
+  statusBar.classList.remove('status-done');
+
+  setLocked(true);
   statusMeta.textContent = `${participants.length}명 · ${groups.length}그룹`;
-  revealNext(0, 0);
+  statusCurrent.textContent = '배치 중…';
+  skipBtn.textContent = '건너뛰기';
+  skipBtn.classList.remove('hidden');
+  copyBtn.classList.add('hidden');
+  csvBtn.classList.add('hidden');
+  resetBtn.classList.remove('hidden');
+
+  // Build sequential deal order: all of A, then all of B, then C...
+  dealCards = [];
+  groups.forEach((members, gi) => members.forEach((_, mi) => dealCards.push({ gi, mi })));
+  dealIdx = 0;
+  runDeal();
 }
 
 function buildGrid(gs: Member[][]) {
-  groupsGrid.innerHTML = '';
   gs.forEach((members, gi) => {
     const col = document.createElement('div');
     col.className = 'group-col';
     col.id = `group-col-${gi}`;
-
-    const slots = members.map((m, mi) => `
-      <div class="slot-card" id="card-${gi}-${mi}">
-        <div class="card-inner">
-          <div class="card-face card-back"></div>
-          <div class="card-face card-front${m.ghost ? ' ghost-card' : ''}">
-            <span class="card-name${m.ghost ? ' ghost-name' : ''}">${escapeHtml(m.name)}</span>
-          </div>
-        </div>
-      </div>
-    `).join('');
-
     col.innerHTML = `
       <div class="group-col-header">
         <span>${groupLabel(gi)}</span>
         <span class="check-icon">✓</span>
       </div>
-      <div class="group-slots">${slots}</div>
+      <div class="group-slots">
+        ${members.map((m, mi) => `
+          <div class="slot-card" id="card-${gi}-${mi}">
+            <div class="card-inner">
+              <div class="card-face card-back"></div>
+              <div class="card-face card-front${m.ghost ? ' ghost-card' : ''}">
+                <span class="card-name${m.ghost ? ' ghost-name' : ''}">${escapeHtml(m.name)}</span>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
     `;
     groupsGrid.appendChild(col);
   });
 }
 
-// ── Sequential reveal ─────────────────────────
-function revealNext(gi: number, mi: number) {
-  if (phase !== 'reveal') return;
+// ── Dealing sequence ──────────────────────────
+function runDeal() {
+  if (phase !== 'dealing') return;
 
-  if (gi >= groups.length) {
-    const lastCol = document.getElementById(`group-col-${gi - 1}`);
-    lastCol?.classList.remove('active');
-    lastCol?.classList.add('done');
-    statusCurrent.textContent = '배분 완료!';
-    setPhase('done');
+  if (dealIdx >= dealCards.length) {
+    animTimer = setTimeout(enterFinalPhase, 300);
     return;
   }
 
-  const group = groups[gi];
+  const { gi, mi } = dealCards[dealIdx];
+  const isLastGroup = gi === groups.length - 1;
 
+  // Update group header and status at the start of each new group
   if (mi === 0) {
     if (gi > 0) {
       const prevCol = document.getElementById(`group-col-${gi - 1}`);
       prevCol?.classList.remove('active');
-      prevCol?.classList.add('done');
+      if (gi - 1 < groups.length - 1) prevCol?.classList.add('done');
     }
     document.getElementById(`group-col-${gi}`)?.classList.add('active');
-    statusCurrent.textContent = `${groupLabel(gi)} 배정 중`;
+    statusCurrent.textContent = `${groupLabel(gi)} 배치 중`;
   }
 
-  if (mi >= group.length) {
-    revealTimer = setTimeout(() => revealNext(gi + 1, 0), REVEAL_DELAY_MS);
-    return;
-  }
+  // Deal card: slide in, then settle and auto-flip for non-last groups
+  const card = document.getElementById(`card-${gi}-${mi}`)!;
+  card.classList.add('dealing');
 
-  const card = document.getElementById(`card-${gi}-${mi}`);
-  if (card) {
-    card.classList.add('revealed', 'lit');
-    card.addEventListener('animationend', () => card.classList.remove('lit'), { once: true });
-  }
+  setTimeout(() => {
+    card.classList.remove('dealing');
+    card.classList.add('dealt');
+    if (!isLastGroup) {
+      card.getBoundingClientRect(); // ensure transition is active before revealing
+      card.classList.add('revealed');
+    }
+  }, DEAL_ANIM_MS);
 
-  revealTimer = setTimeout(() => revealNext(gi, mi + 1), REVEAL_DELAY_MS);
+  dealIdx++;
+
+  // Pause between groups; extra-long pause before the final group
+  const isLastInGroup = mi === groups[gi].length - 1;
+  let delay = DEAL_INTERVAL_MS;
+  if (isLastInGroup && !isLastGroup) delay += (gi === groups.length - 2 ? 450 : 200);
+
+  animTimer = setTimeout(runDeal, delay);
 }
 
-function skipAll() {
-  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+function skipDealing() {
+  if (animTimer) { clearTimeout(animTimer); animTimer = null; }
+  dealCards.forEach(({ gi, mi }) => {
+    const card = document.getElementById(`card-${gi}-${mi}`)!;
+    card.classList.remove('dealing');
+    card.classList.add('dealt');
+    if (gi < groups.length - 1) card.classList.add('revealed');
+  });
+  enterFinalPhase();
+}
 
-  groups.forEach((group, gi) => {
+// ── Final-group interactive reveal ────────────
+function enterFinalPhase() {
+  if (phase !== 'dealing') return;
+  phase = 'final';
+
+  for (let gi = 0; gi < groups.length - 1; gi++) {
     const col = document.getElementById(`group-col-${gi}`);
     col?.classList.remove('active');
     col?.classList.add('done');
-    group.forEach((_, mi) => {
-      document.getElementById(`card-${gi}-${mi}`)?.classList.add('revealed');
-    });
+  }
+
+  const lastGi = groups.length - 1;
+  const lastCol = document.getElementById(`group-col-${lastGi}`);
+  lastCol?.classList.remove('active');
+  lastCol?.classList.add('final');
+
+  setLocked(false);
+  skipBtn.textContent = '한번에 열기';
+  statusCurrent.textContent = '마지막 그룹 — 카드를 눌러 공개하세요';
+
+  groups[lastGi].forEach((_, mi) => {
+    const card = document.getElementById(`card-${lastGi}-${mi}`)!;
+    if (!card.classList.contains('revealed')) {
+      card.classList.add('clickable');
+      card.addEventListener('click', onFinalCardClick, { once: true });
+    }
   });
 
+  checkFinalComplete(); // edge case: all already revealed
+}
+
+function onFinalCardClick(e: Event) {
+  const card = e.currentTarget as HTMLElement;
+  if (card.classList.contains('revealed')) return;
+  card.classList.remove('clickable');
+  card.classList.add('revealed', 'lit');
+  card.addEventListener('animationend', () => card.classList.remove('lit'), { once: true });
+  checkFinalComplete();
+}
+
+function checkFinalComplete() {
+  if (phase !== 'final') return;
+  const lastGi = groups.length - 1;
+  const anyUnrevealed = groups[lastGi].some(
+    (_, mi) => !document.getElementById(`card-${lastGi}-${mi}`)!.classList.contains('revealed')
+  );
+  if (!anyUnrevealed) setTimeout(enterDonePhase, 400);
+}
+
+function revealAllFinal() {
+  if (phase !== 'final') return;
+  const lastGi = groups.length - 1;
+  groups[lastGi].forEach((_, mi) => {
+    const card = document.getElementById(`card-${lastGi}-${mi}`)!;
+    card.classList.remove('clickable');
+    card.classList.add('dealt', 'revealed');
+  });
+  setTimeout(enterDonePhase, 400);
+}
+
+function enterDonePhase() {
+  phase = 'done';
+  const lastGi = groups.length - 1;
+  document.getElementById(`group-col-${lastGi}`)?.classList.remove('final');
+  document.getElementById(`group-col-${lastGi}`)?.classList.add('done');
+
   statusCurrent.textContent = '배분 완료!';
-  setPhase('done');
+  statusBar.classList.add('status-done');
+  skipBtn.classList.add('hidden');
+  copyBtn.classList.remove('hidden');
+  csvBtn.classList.remove('hidden');
 }
 
 // ── Copy / CSV ────────────────────────────────
 copyBtn.addEventListener('click', () => {
   const text = groups
-    .map((members, gi) => {
-      const names = members.filter(m => !m.ghost).map(m => m.name);
-      return `${groupLabel(gi)}\n${names.join('\n')}`;
-    })
+    .map((members, gi) => `${groupLabel(gi)}\n${members.filter(m => !m.ghost).map(m => m.name).join('\n')}`)
     .join('\n\n');
-
   navigator.clipboard.writeText(text).then(() => {
     const orig = copyBtn.textContent;
     copyBtn.textContent = '복사됨!';
@@ -468,8 +482,6 @@ csvBtn.addEventListener('click', () => {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = '팀배분결과.csv';
-  a.click();
+  a.href = url; a.download = '팀배분결과.csv'; a.click();
   URL.revokeObjectURL(url);
 });
