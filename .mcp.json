@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "runHobanImageGen": {
+      "command": "node",
+      "args": ["tools/image_gen_mcp_server.mjs"],
+      "env": {
+        "RUN_HOBAN_IMAGE_GEN_ENV_FILE": ".env"
+      }
+    }
+  }
+}

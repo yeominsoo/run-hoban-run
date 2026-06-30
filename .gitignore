@@ -3,3 +3,6 @@ dist/
 .firebase/
 test-results/
 playwright-report/
+.env
+.idea/
+output/
