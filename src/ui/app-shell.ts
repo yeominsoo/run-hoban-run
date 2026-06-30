@@ -6,13 +6,28 @@ export function renderAppShell(app: HTMLElement) {
         <div class="hud hud-top">
           <div class="title-block">
             <p class="eyebrow" id="race-meta">룰 기반 3D 경주</p>
-            <h1>달려라 호반</h1>
+            <h1>말발광 레이스</h1>
           </div>
           <div class="top-actions">
+            <a class="icon-button" href="/" aria-label="게임 선택" title="게임 선택">
+              <span aria-hidden="true">⌂</span>
+            </a>
             <button class="icon-button" id="toggle-panels" type="button" aria-label="패널 열고 닫기">
               <span aria-hidden="true">☰</span>
             </button>
-            <button class="icon-button" id="toggle-recording" type="button" aria-label="화면 영상 캡처" aria-pressed="false" title="화면 영상 캡처">
+            <button class="icon-button" id="toggle-fullscreen" type="button" aria-label="전체화면" aria-pressed="false" title="전체화면">
+              <svg aria-hidden="true" class="icon-svg" viewBox="0 0 24 24" focusable="false">
+                <path d="M8.2 4.8H4.8v3.4" />
+                <path d="M15.8 4.8h3.4v3.4" />
+                <path d="M19.2 15.8v3.4h-3.4" />
+                <path d="M4.8 15.8v3.4h3.4" />
+                <path d="M9.2 4.8 4.8 9.2" />
+                <path d="m14.8 4.8 4.4 4.4" />
+                <path d="m19.2 14.8-4.4 4.4" />
+                <path d="m4.8 14.8 4.4 4.4" />
+              </svg>
+            </button>
+            <button class="icon-button" id="toggle-recording" type="button" aria-label="MP4 영상 캡처" aria-pressed="false" title="MP4 영상 캡처">
               <svg aria-hidden="true" class="icon-svg" viewBox="0 0 24 24" focusable="false">
                 <path d="M4.5 7.5A2.5 2.5 0 0 1 7 5h6.2a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 13.2 19H7a2.5 2.5 0 0 1-2.5-2.5v-9Z" />
                 <path d="m15.7 10 3.8-2.2v8.4L15.7 14v-4Z" />
@@ -48,7 +63,7 @@ export function renderAppShell(app: HTMLElement) {
 
           <div class="panel-section option-panel">
             <div class="seed-control option-group">
-              <input id="seed-input" type="hidden" value="호반-2026" />
+              <input id="seed-input" type="hidden" value="toris-2026" />
               <button id="random-seed" type="button">순서변경</button>
             </div>
             <div class="option-group">

@@ -37,7 +37,7 @@ body {
   font-size: clamp(2.4rem, 8vw, 5rem);
   font-weight: 900;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   background: linear-gradient(135deg, #fff 20%, #7ec8f8 80%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -89,8 +89,66 @@ body {
 }
 
 .game-card-icon {
-  font-size: 2.6rem;
-  line-height: 1;
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(126, 200, 248, 0.12);
+  border: 1px solid rgba(126, 200, 248, 0.24);
+}
+
+.race-mark::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 13px;
+  height: 18px;
+  border: 3px solid #7ec8f8;
+  border-left: 0;
+  border-radius: 0 20px 20px 0;
+}
+
+.race-mark::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 22px;
+  border-top: 2px dashed rgba(240, 249, 255, 0.7);
+}
+
+.team-mark::before,
+.team-mark::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 24px;
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(126, 200, 248, 0.16) 0,
+      rgba(126, 200, 248, 0.16) 2px,
+      transparent 2px,
+      transparent 7px
+    ),
+    linear-gradient(145deg, #1f5e9d, #0d2c53);
+  border: 1px solid rgba(126, 200, 248, 0.42);
+  box-shadow: 0 7px 14px rgba(0, 0, 0, 0.24);
+}
+
+.team-mark::before {
+  left: 12px;
+  top: 9px;
+  transform: rotate(-10deg);
+}
+
+.team-mark::after {
+  left: 18px;
+  top: 11px;
+  transform: rotate(9deg);
 }
 
 .game-card-name {

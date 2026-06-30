@@ -18,7 +18,8 @@ for (const viewport of viewports) {
   test(`renders a nonblank 3d race scene on ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize(viewport.size);
     await page.goto('/race/');
-    await expect(page.locator('h1')).toHaveText('달려라 호반');
+    await expect(page.locator('h1')).toHaveText('말발광 레이스');
+    await expect(page.getByRole('link', { name: '게임 선택' })).toBeVisible();
 
     const canvas = page.locator('#race-canvas');
     await expect(canvas).toBeVisible();
@@ -363,11 +364,17 @@ test('downloads a composited result screenshot', async ({ page }) => {
 test('records the race canvas to a downloadable video', async ({ page }) => {
   await page.goto('/race/');
   const supported = await page.evaluate(() => {
-    return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
+    const mp4Types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
+    return (
+      typeof MediaRecorder !== 'undefined' &&
+      typeof HTMLCanvasElement.prototype.captureStream === 'function' &&
+      mp4Types.some((mimeType) => MediaRecorder.isTypeSupported(mimeType))
+    );
   });
 
-  test.skip(!supported, 'MediaRecorder canvas capture is not available in this browser');
+  test.skip(!supported, 'MP4 MediaRecorder canvas capture is not available in this browser');
   await expect(page.locator('#toggle-recording')).toBeEnabled();
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-recording-format', 'mp4');
   await page.locator('#start-tournament').click();
   await page.waitForFunction(() =>
     [...document.querySelectorAll('.runner-tag')].some(
@@ -386,7 +393,7 @@ test('records the race canvas to a downloadable video', async ({ page }) => {
   await page.waitForTimeout(1200);
   await page.locator('#toggle-recording').click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^run-hoban-run-.*-race-capture-.*\.(webm|mp4)$/);
+  expect(download.suggestedFilename()).toMatch(/^run-hoban-run-.*-race-capture-.*\.mp4$/);
   await expect(page.locator('#race-stage')).toHaveAttribute('data-recording', 'idle');
 
   const downloadPath = await download.path();
@@ -551,6 +558,8 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('.hud-heading')).toHaveText('현재 순위');
   await expect(page.locator('.hud-heading')).toBeVisible();
   await expect(page.locator('#camera-target')).toHaveCount(0);
+  await expect(page.locator('#toggle-fullscreen svg')).toBeVisible();
+  await expect(page.locator('#toggle-fullscreen')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#toggle-recording svg')).toBeVisible();
   await expect(page.locator('#download-result-shot svg')).toBeVisible();
   await expect(page.locator('#seed-input')).toBeHidden();
@@ -605,6 +614,10 @@ test('starts a 64 runner tournament and advances to the final race', async ({ pa
   await expect(page.locator('#race-title')).toHaveText('출발 대기');
   await page.locator('#start-tournament').click();
   await expect(page.locator('#race-stage')).toHaveClass(/panels-hidden/);
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-count', '64');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-rows', '1');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-columns', '64');
+  await expect.poll(async () => Number(await page.locator('#race-stage').getAttribute('data-crowd-banner-height'))).toBeLessThanOrEqual(1.05);
   await expect(page.locator('#race-minimap')).toBeVisible();
   await expect(page.locator('#race-summary')).toContainText('64명');
   await expect(page.locator('#race-summary')).not.toContainText('시드');
@@ -639,6 +652,198 @@ test('restores the recently edited participant list', async ({ page }) => {
   await page.reload();
   await expect(page.locator('#participants')).toHaveValue(recentParticipants);
   await expect(page.locator('#field-size')).toHaveAttribute('max', '4');
+});
+
+test('renders participant names on the race crowd banners', async ({ page }) => {
+  await page.goto('/race/');
+  await page.locator('#participants').fill(['혜성', '민트', '번개', '노을', '바람', '호수'].join('\n'));
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-count', '6');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-rows', '1');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-columns', '6');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-messages', '혜성!|민트 가자!|번개 우승!|노을 파이팅!|바람!|호수 가자!');
+  await expect(page.locator('#race-stage')).not.toHaveAttribute('data-crowd-banner-messages', /호반/);
+
+  await page.locator('#start-tournament').click();
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-count', '6');
+  await expect(page.locator('#race-stage')).toHaveAttribute('data-crowd-banner-messages', '혜성!|민트 가자!|번개 우승!|노을 파이팅!|바람!|호수 가자!');
+  await expect(page.locator('#race-stage')).not.toHaveAttribute('data-crowd-banner-messages', /호반/);
+});
+
+test('keeps the team card shuffle usable on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/team/');
+  await expect(page.getByRole('link', { name: '게임 선택' })).toBeVisible();
+  await expect(page.locator('text=시드')).toHaveCount(0);
+  await expect(page.locator('#count-hint')).toHaveText('현재 참가자 0명');
+  await expect(page.locator('#shuffle-btn')).toHaveCount(0);
+  await expect(page.locator('#deck-start-btn')).toBeVisible();
+  await expect(page.locator('#deck-start-btn')).toHaveText('카드오픈');
+  await expect(page.locator('.sidebar #distribute-btn')).toHaveText('카드오픈');
+  await expect(page.locator('#actions-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#actions-body')).toBeVisible();
+  await expect(page.locator('#actions-body #participants')).toBeVisible();
+  await expect(page.locator('#setup-controls')).toBeVisible();
+  await expect(page.locator('#runtime-controls')).toBeHidden();
+  expect(await page.locator('#sidebar-actions').evaluate((panel) => panel.contains(document.querySelector('#participants')))).toBe(true);
+  const expandedActionBox = await page.locator('#sidebar-actions').boundingBox();
+  const expandedBodyBox = await page.locator('#actions-body').boundingBox();
+  expect(expandedBodyBox?.height ?? 0).toBeGreaterThan(0);
+
+  await page.locator('#participants').fill([
+    '민수',
+    '   ',
+    '지수',
+    '태오',
+    '서윤',
+    '',
+    '현우',
+    '아라',
+    '도윤',
+    '하린',
+    '준서',
+    '나래',
+    '우진',
+    '세아'
+  ].join('\n'));
+  await expect(page.locator('#count-hint')).toHaveText('현재 참가자 12명');
+  await page.locator('#team-size-input').fill('3');
+  await page.locator('#deck-start-btn').click();
+  await expect(page.locator('#deck-start-btn')).toBeHidden();
+  await expect(page.locator('#actions-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#actions-body')).toBeHidden();
+  const collapsedActionBox = await page.locator('#sidebar-actions').boundingBox();
+  expect(collapsedActionBox?.height ?? 0).toBeLessThan((expandedActionBox?.height ?? 80) - (expandedBodyBox?.height ?? 1));
+  await expect(page.locator('#setup-controls')).toBeHidden();
+  await expect(page.locator('#participants')).toBeHidden();
+  await expect(page.locator('.status-bar #skip-btn')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('.sidebar #skip-btn')).toHaveCount(0);
+  await page.locator('#skip-btn').click();
+  await expect(page.locator('#status-current')).toContainText('마지막 순번');
+  await expect(page.locator('.status-bar #skip-btn')).toHaveText('한번에 열기');
+  await expect(page.locator('.slot-card.revealed')).toHaveCount(8);
+  await expect(page.locator('.group-slots .slot-card:not(:last-child).revealed')).toHaveCount(8);
+  await expect(page.locator('.slot-card.clickable')).toHaveCount(4);
+  await expect(page.locator('.group-slots .slot-card:last-child.clickable')).toHaveCount(4);
+
+  const mobileLayout = await page.evaluate(() => {
+    const grid = document.querySelector('#groups-grid');
+    const columns = [...document.querySelectorAll('.group-col')].map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width
+      };
+    });
+    const firstRowTop = Math.min(...columns.map((column) => column.top));
+    const firstRowColumns = columns.filter((column) => Math.abs(column.top - firstRowTop) < 2).length;
+
+    return {
+      viewportWidth: window.innerWidth,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      gridClientWidth: grid?.clientWidth ?? 0,
+      gridScrollWidth: grid?.scrollWidth ?? 0,
+      groupCount: columns.length,
+      firstRowColumns,
+      minColumnWidth: Math.min(...columns.map((column) => column.width)),
+      maxColumnRight: Math.max(...columns.map((column) => column.right))
+    };
+  });
+
+  expect(mobileLayout.pageScrollWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+  expect(mobileLayout.gridScrollWidth).toBeLessThanOrEqual(mobileLayout.gridClientWidth + 1);
+  expect(mobileLayout.groupCount).toBe(4);
+  expect(mobileLayout.firstRowColumns).toBe(2);
+  expect(mobileLayout.minColumnWidth).toBeGreaterThan(140);
+  expect(mobileLayout.maxColumnRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+
+  await page.locator('#skip-btn').click();
+  await expect(page.locator('#status-current')).toHaveText('배분 완료!');
+  await page.locator('#actions-toggle').click();
+  await expect(page.locator('.sidebar #copy-btn')).toBeVisible();
+  await expect(page.locator('.sidebar #csv-btn')).toHaveCount(0);
+  await expect(page.locator('.sidebar #reset-btn')).toHaveCount(0);
+  await expect(page.locator('.status-bar #reset-btn')).toHaveText('다시하기');
+  await expect(page.locator('.status-bar #reset-btn')).toBeVisible();
+});
+
+test('records the team card-open flow automatically when enabled', async ({ page }) => {
+  await page.setViewportSize({ width: 960, height: 520 });
+  await page.goto('/team/');
+  const supported = await page.evaluate(() => {
+    const mp4Types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
+    return (
+      typeof MediaRecorder !== 'undefined' &&
+      typeof HTMLCanvasElement.prototype.captureStream === 'function' &&
+      mp4Types.some((mimeType) => MediaRecorder.isTypeSupported(mimeType))
+    );
+  });
+
+  test.skip(!supported, 'MP4 MediaRecorder canvas capture is not available in this browser');
+  await expect(page.locator('#auto-record-toggle')).toBeEnabled();
+  const participants = Array.from({ length: 52 }, (_, index) => `참가자${String(index + 1).padStart(2, '0')}`);
+  await page.locator('#participants').fill(participants.join('\n'));
+  await expect(page.locator('#count-hint')).toHaveText('현재 참가자 52명');
+  await page.locator('#team-size-input').fill('4');
+  await page.locator('.record-toggle').click();
+  await expect(page.locator('#auto-record-toggle')).toBeChecked();
+  await page.locator('#deck-start-btn').click();
+  await expect(page.locator('#actions-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('#actions-toggle').click();
+  await expect(page.locator('#setup-controls')).toBeHidden();
+  await expect(page.locator('#participants')).toBeHidden();
+  await expect(page.locator('.status-bar #skip-btn')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('.group-col')).toHaveCount(13);
+
+  const wrappedLayout = await page.evaluate(() => {
+    const grid = document.querySelector('#groups-grid');
+    const columns = [...document.querySelectorAll('.group-col')].map((element) => element.getBoundingClientRect());
+    const rowTops = new Set(columns.map((rect) => Math.round(rect.top)));
+
+    return {
+      viewportWidth: window.innerWidth,
+      pageScrollWidth: document.documentElement.scrollWidth,
+      gridClientWidth: grid?.clientWidth ?? 0,
+      gridScrollWidth: grid?.scrollWidth ?? 0,
+      gridClientHeight: grid?.clientHeight ?? 0,
+      gridScrollHeight: grid?.scrollHeight ?? 0,
+      rowCount: rowTops.size,
+      maxColumnRight: Math.max(...columns.map((rect) => rect.right))
+    };
+  });
+
+  expect(wrappedLayout.pageScrollWidth).toBeLessThanOrEqual(wrappedLayout.viewportWidth + 1);
+  expect(wrappedLayout.gridScrollWidth).toBeLessThanOrEqual(wrappedLayout.gridClientWidth + 1);
+  expect(wrappedLayout.gridScrollHeight).toBeGreaterThan(wrappedLayout.gridClientHeight);
+  expect(wrappedLayout.rowCount).toBeGreaterThan(1);
+  expect(wrappedLayout.maxColumnRight).toBeLessThanOrEqual(wrappedLayout.viewportWidth + 1);
+  await expect.poll(async () => page.locator('#groups-grid').getAttribute('data-recording-layout'), {
+    timeout: 5_000
+  }).toBe('wrapped-scroll');
+  expect(Number(await page.locator('#groups-grid').getAttribute('data-recording-rows'))).toBeGreaterThan(1);
+  expect(Number(await page.locator('#groups-grid').getAttribute('data-recording-scroll-max'))).toBeGreaterThan(0);
+  expect(Number(await page.locator('#groups-grid').getAttribute('data-recording-captured-groups'))).toBe(13);
+
+  await page.locator('#skip-btn').click();
+  await expect(page.locator('#status-current')).toContainText('마지막 순번');
+
+  const dialogPromise = page.waitForEvent('dialog');
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#skip-btn').click();
+  const dialog = await dialogPromise;
+  expect(dialog.message()).toBe('결과 영상을 다운받으시겠습니까?');
+  await dialog.accept();
+
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^toris-arcade-team-card-open-.*\.mp4$/);
+
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+
+  if (downloadPath) {
+    expect((await stat(downloadPath)).size).toBeGreaterThan(1_000);
+  }
 });
 
 test('keeps mobile minimap clear of the leaderboard and supports wheel zoom', async ({ page }) => {

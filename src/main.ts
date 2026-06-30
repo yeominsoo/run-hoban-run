@@ -202,6 +202,7 @@ const sample64Button = query<HTMLButtonElement>('#sample-64');
 const startButton = query<HTMLButtonElement>('#start-tournament');
 const randomSeedButton = query<HTMLButtonElement>('#random-seed');
 const togglePanelsButton = query<HTMLButtonElement>('#toggle-panels');
+const toggleFullscreenButton = query<HTMLButtonElement>('#toggle-fullscreen');
 const toggleRecordingButton = query<HTMLButtonElement>('#toggle-recording');
 const downloadResultShotButton = query<HTMLButtonElement>('#download-result-shot');
 const replayButton = query<HTMLButtonElement>('#replay-race');
@@ -292,6 +293,12 @@ let recordingMimeType = '';
 let recordingCanvas: HTMLCanvasElement | null = null;
 let recordingContext: CanvasRenderingContext2D | null = null;
 let recordingFrameRequest = 0;
+const crowdBannerGroup = new THREE.Group();
+const crowdBannerColors = ['#f2c94c', '#56ccf2', '#6fcf97', '#eb5757'];
+let crowdBannerStandLength = 0;
+let crowdBannerFrontZ = 0;
+const crowdBannerBandHeight = 1.05;
+const crowdBannerBandTopY = 2.55;
 const overviewCameraZoomMin = 0.72;
 const overviewCameraZoomMax = 1.65;
 const frenzyTextureLoader = new THREE.TextureLoader();
@@ -854,20 +861,10 @@ function addCrowdStrip(group: THREE.Group) {
     group.add(crowdSection);
   }
 
-  [
-    { text: '달려라!', color: '#f2c94c' },
-    { text: '호반!', color: '#56ccf2' },
-    { text: '우승!', color: '#6fcf97' },
-    { text: '가자!', color: '#eb5757' }
-  ].forEach((banner, index, banners) => {
-    const bannerMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(standLength * 0.18, 2.15),
-      makeCrowdBannerMaterial(banner.text, banner.color)
-    );
-    bannerMesh.position.set(8 - standLength * 0.32 + index * ((standLength * 0.64) / (banners.length - 1)), 1.42, frontZ + 0.12);
-    bannerMesh.renderOrder = 8;
-    group.add(bannerMesh);
-  });
+  crowdBannerStandLength = standLength;
+  crowdBannerFrontZ = frontZ;
+  group.add(crowdBannerGroup);
+  refreshCrowdBanners();
 
   const pennantStrip = new THREE.Mesh(new THREE.PlaneGeometry(standLength * 0.78, 0.52), makePennantStripMaterial());
   pennantStrip.position.set(8, 3.02, frontZ + 0.02);
@@ -877,6 +874,77 @@ function addCrowdStrip(group: THREE.Group) {
   raceStage.dataset.crowdQuality = 'procedural-crowd-wall';
   raceStage.dataset.crowdSpectators = String(spectatorCount);
   raceStage.dataset.crowdDrawGroups = '12';
+}
+
+function getCrowdBannerMessages() {
+  const suffixes = ['!', ' 가자!', ' 우승!', ' 파이팅!'];
+  return normalizeParticipants(participantInput.value.split(/\r?\n/)).map(
+    (name, index) => `${name}${suffixes[index % suffixes.length]}`
+  );
+}
+
+function getCrowdBannerLayout(count: number) {
+  const rows = 1;
+  const columns = Math.max(1, count);
+  const usableWidth = crowdBannerStandLength * 0.76;
+  const columnGap = Math.max(0.035, Math.min(0.55, usableWidth / (columns * 24)));
+  const rowGap = 0;
+  const width = (usableWidth - columnGap * (columns - 1)) / columns;
+  const height = crowdBannerBandHeight;
+  const left = 8 - usableWidth / 2;
+
+  return {
+    rows,
+    columns,
+    usableWidth,
+    columnGap,
+    rowGap,
+    width,
+    height,
+    left
+  };
+}
+
+function refreshCrowdBanners() {
+  const messages = getCrowdBannerMessages();
+  const layout = getCrowdBannerLayout(messages.length);
+
+  crowdBannerGroup.children.forEach((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      const material = Array.isArray(child.material) ? child.material : [child.material];
+      material.forEach((item) => {
+        if (item instanceof THREE.MeshBasicMaterial && item.map) {
+          item.map.dispose();
+        }
+        item.dispose();
+      });
+    }
+  });
+  crowdBannerGroup.clear();
+
+  messages.forEach((message, index) => {
+    const row = Math.floor(index / layout.columns);
+    const column = index % layout.columns;
+    const bannerMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(layout.width, layout.height),
+      makeCrowdBannerMaterial(message, crowdBannerColors[index % crowdBannerColors.length])
+    );
+    bannerMesh.position.set(
+      layout.left + layout.width / 2 + column * (layout.width + layout.columnGap),
+      crowdBannerBandTopY - layout.height / 2 - row * (layout.height + layout.rowGap),
+      crowdBannerFrontZ + 0.12
+    );
+    bannerMesh.renderOrder = 8;
+    crowdBannerGroup.add(bannerMesh);
+  });
+
+  raceStage.dataset.crowdBannerMessages = messages.join('|');
+  raceStage.dataset.crowdBannerCount = String(messages.length);
+  raceStage.dataset.crowdBannerRows = String(layout.rows);
+  raceStage.dataset.crowdBannerColumns = String(layout.columns);
+  raceStage.dataset.crowdBannerWidth = layout.width.toFixed(2);
+  raceStage.dataset.crowdBannerHeight = layout.height.toFixed(2);
 }
 
 function makeCrowdMassMaterial(spectatorCount: number) {
@@ -1065,7 +1133,7 @@ function makeCrowdBannerMaterial(message: string, color: string) {
     context.font = '900 128px system-ui, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText(message, canvas.width / 2, 143);
+    context.fillText(fitCanvasText(context, message, canvas.width - 112), canvas.width / 2, 143);
     context.shadowColor = 'transparent';
     context.shadowBlur = 0;
     context.shadowOffsetY = 0;
@@ -4072,6 +4140,7 @@ function startTournament() {
   tournament = runTournament(names, options);
   currentRaceIndex = 0;
   raceStarted = true;
+  refreshCrowdBanners();
   setCurrentRace(0);
   setPanelsHidden(true);
 }
@@ -4082,6 +4151,7 @@ function prepareTournament() {
   tournament = runTournament(names, options);
   currentRaceIndex = 0;
   raceStarted = false;
+  refreshCrowdBanners();
   setCurrentRace(0);
   setPanelsHidden(false);
 }
@@ -4089,6 +4159,41 @@ function prepareTournament() {
 function setPanelsHidden(hidden: boolean) {
   raceStage.classList.toggle('panels-hidden', hidden);
   togglePanelsButton.setAttribute('aria-pressed', String(hidden));
+}
+
+function isFullscreenSupported() {
+  return Boolean(document.fullscreenEnabled && raceStage.requestFullscreen);
+}
+
+function syncFullscreenButton() {
+  const supported = isFullscreenSupported();
+  const active = document.fullscreenElement === raceStage;
+  toggleFullscreenButton.disabled = !supported;
+  toggleFullscreenButton.setAttribute('aria-pressed', String(active));
+  toggleFullscreenButton.title = supported
+    ? active
+      ? '전체화면 종료'
+      : '전체화면'
+    : '전체화면 미지원';
+  raceStage.dataset.fullscreen = active ? 'active' : 'idle';
+  raceStage.dataset.fullscreenSupported = supported ? 'true' : 'false';
+}
+
+async function toggleRaceFullscreen() {
+  if (!isFullscreenSupported()) {
+    syncFullscreenButton();
+    return;
+  }
+
+  try {
+    if (document.fullscreenElement === raceStage) {
+      await document.exitFullscreen();
+    } else {
+      await raceStage.requestFullscreen();
+    }
+  } finally {
+    syncFullscreenButton();
+  }
 }
 
 function syncRaceStartedState() {
@@ -4115,7 +4220,7 @@ function syncRacePaceState() {
 function reshuffleOrder() {
   const timestamp = String(Date.now());
   const entropy = String(Math.floor(Math.random() * 100_000)).padStart(5, '0');
-  seedInput.value = `호반-${timestamp}-${entropy}`;
+  seedInput.value = `toris-${timestamp}-${entropy}`;
   prepareTournament();
 }
 
@@ -4681,12 +4786,17 @@ function moveCamera(position: THREE.Vector3, target: THREE.Vector3, alpha: numbe
 function initializeCaptureControls() {
   const supported = isVideoCaptureSupported();
   raceStage.dataset.recording = supported ? 'idle' : 'unsupported';
+  raceStage.dataset.recordingFormat = supported ? 'mp4' : 'unsupported';
   toggleRecordingButton.disabled = !supported;
-  toggleRecordingButton.title = supported ? '화면 영상 캡처' : '영상 캡처 미지원';
+  toggleRecordingButton.title = supported ? 'MP4 영상 캡처' : 'MP4 영상 캡처 미지원';
 }
 
 function isVideoCaptureSupported() {
-  return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
+  return (
+    typeof MediaRecorder !== 'undefined' &&
+    typeof HTMLCanvasElement.prototype.captureStream === 'function' &&
+    getSupportedRecordingMimeType() !== ''
+  );
 }
 
 function toggleRaceRecording() {
@@ -4704,11 +4814,17 @@ function startRaceRecording() {
     return;
   }
 
-  const stream = createRecordingStream();
   const mimeType = getSupportedRecordingMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  if (!mimeType) {
+    raceStage.dataset.recording = 'unsupported';
+    raceStage.dataset.recordingFormat = 'unsupported';
+    return;
+  }
 
-  recordingMimeType = mimeType || 'video/webm';
+  const stream = createRecordingStream();
+  const recorder = new MediaRecorder(stream, { mimeType });
+
+  recordingMimeType = mimeType;
   recordedVideoChunks = [];
   mediaRecorder = recorder;
 
@@ -4730,8 +4846,7 @@ function startRaceRecording() {
       return;
     }
 
-    const extension = recordingMimeType.includes('mp4') ? 'mp4' : 'webm';
-    downloadBlob(new Blob(chunks, { type: recordingMimeType }), makeDownloadFilename('race-capture', extension));
+    downloadBlob(new Blob(chunks, { type: recordingMimeType }), makeDownloadFilename('race-capture', 'mp4'));
   });
 
   recorder.start(500);
@@ -4764,7 +4879,7 @@ function setRecordingActive(active: boolean) {
   raceStage.dataset.recording = active ? 'active' : 'idle';
   toggleRecordingButton.classList.toggle('recording', active);
   toggleRecordingButton.setAttribute('aria-pressed', String(active));
-  toggleRecordingButton.title = active ? '영상 캡처 중지' : '화면 영상 캡처';
+  toggleRecordingButton.title = active ? 'MP4 영상 캡처 중지' : 'MP4 영상 캡처';
 }
 
 function syncRecordingCanvasSize() {
@@ -4812,7 +4927,7 @@ function stopRecordingCompositeLoop() {
 }
 
 function getSupportedRecordingMimeType() {
-  const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+  const mimeTypes = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
   return mimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? '';
 }
 
@@ -5032,7 +5147,7 @@ function getResultScreenshotTitle(race: RaceResult | null) {
 
 function getResultScreenshotSubtitle(race: RaceResult | null) {
   if (!race) {
-    return '달려라 호반';
+    return '말발광 레이스';
   }
 
   const raceNumber = tournament ? `${currentRaceIndex + 1}/${tournament.races.length}` : '1/1';
@@ -5160,6 +5275,7 @@ sample64Button.addEventListener('click', () => {
 participantInput.addEventListener('input', () => {
   saveRecentParticipants();
   syncOptionBounds();
+  refreshCrowdBanners();
 });
 fieldSizeInput.addEventListener('input', () => syncOptionBounds());
 startButton.addEventListener('click', startTournament);
@@ -5197,6 +5313,9 @@ leaderboardList.addEventListener('keydown', (event) => {
   selectCameraEntry(target.dataset.entryId ?? '');
 });
 togglePanelsButton.addEventListener('click', () => setPanelsHidden(!raceStage.classList.contains('panels-hidden')));
+toggleFullscreenButton.addEventListener('click', () => {
+  void toggleRaceFullscreen();
+});
 toggleRecordingButton.addEventListener('click', toggleRaceRecording);
 downloadResultShotButton.addEventListener('click', downloadResultScreenshot);
 replayButton.addEventListener('click', () => {
@@ -5261,7 +5380,9 @@ window.addEventListener('beforeunload', () => {
   }
 });
 window.addEventListener('resize', resize);
+document.addEventListener('fullscreenchange', syncFullscreenButton);
 
+syncFullscreenButton();
 initializeCaptureControls();
 raceStage.dataset.helicopterAsset = 'generated';
 raceStage.dataset.helicopterAssetUrl = 'generated';

@@ -265,7 +265,7 @@ export function sanitizeOptions(options: Partial<RaceOptions>, participantCount 
   const winnerCount = clampInteger(options.winnerCount ?? 1, bounds.winnerCount.min, bounds.winnerCount.max);
 
   return {
-    seed: String(options.seed?.trim() || '호반-2026'),
+    seed: String(options.seed?.trim() || 'toris-2026'),
     fieldSize,
     qualifiersPerGroup,
     winnerCount
