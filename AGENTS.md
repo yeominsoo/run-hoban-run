@@ -32,6 +32,16 @@ npm run test:render   # Playwright 렌더 검증
 npm run deploy:firebase  # Firebase Hosting 배포
 ```
 
+## GitHub SSH 규칙
+
+WSL2에서 `fetch`, `pull`, `push` 등 GitHub SSH 원격 작업을 수행할 때는 기본 SSH 키를 가정하지 않는다.
+다음 키를 명시해서 실행한다:
+
+```bash
+GIT_SSH_COMMAND='ssh -i /home/msyeo/.ssh/yeominsoo_ed25519 -o IdentitiesOnly=yes' git fetch origin --prune
+GIT_SSH_COMMAND='ssh -i /home/msyeo/.ssh/yeominsoo_ed25519 -o IdentitiesOnly=yes' git push origin master
+```
+
 ## 핵심 설계 원칙
 
 ### 레이스 엔진

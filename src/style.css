@@ -1419,6 +1419,61 @@ textarea {
     transform: translateY(calc(100% + 20px));
   }
 
+  /* 가로 폭이 760px를 넘는 기기(대형 폰)에서도 내부 콘텐츠를
+     축소해 max-height 안에 들어오도록 함 (넘치면 스크롤바가
+     보이지 않는 모바일 브라우저에서 버튼이 가려지는 문제 방지) */
+  .panel-section {
+    padding: 10px;
+  }
+
+  .section-title {
+    margin-bottom: 6px;
+    font-size: 0.68rem;
+  }
+
+  textarea {
+    height: 74px;
+  }
+
+  .option-panel {
+    gap: 10px;
+  }
+
+  .option-group {
+    gap: 6px;
+  }
+
+  .option-group-title {
+    font-size: 0.64rem;
+  }
+
+  .option-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .option-grid span,
+  .seed-control span {
+    font-size: 0.64rem;
+  }
+
+  .option-grid input,
+  .seed-control input,
+  .seed-control button {
+    min-height: 34px;
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+
+  .button-row {
+    grid-template-columns: 0.8fr 0.8fr 1fr;
+    gap: 7px;
+  }
+
+  .button-row button {
+    min-height: 34px;
+  }
+
   /* 우승 배너 */
   .winner-banner {
     top: 50px;
