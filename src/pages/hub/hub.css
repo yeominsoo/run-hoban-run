@@ -151,6 +151,45 @@ body {
   transform: rotate(9deg);
 }
 
+.dice-mark::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 2px solid #7ec8f8;
+  border-radius: 7px;
+}
+
+.dice-mark::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #7ec8f8;
+  box-shadow:
+    18px 0 0 #7ec8f8,
+    0 18px 0 #7ec8f8,
+    18px 18px 0 #7ec8f8,
+    9px 9px 0 #7ec8f8;
+}
+
+.rps-mark::before,
+.rps-mark::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  left: 9px;
+  width: 26px;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffcf7e, #e2a53f);
+}
+
+.rps-mark::before { transform: rotate(35deg); }
+.rps-mark::after { transform: rotate(-35deg); }
+
 .game-card-name {
   margin: 0;
   font-size: 1.3rem;

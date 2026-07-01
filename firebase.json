@@ -43,6 +43,24 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/dice/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/rps/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -61,6 +79,22 @@
       {
         "source": "/team/**",
         "destination": "/team/index.html"
+      },
+      {
+        "source": "/dice",
+        "destination": "/dice/index.html"
+      },
+      {
+        "source": "/dice/**",
+        "destination": "/dice/index.html"
+      },
+      {
+        "source": "/rps",
+        "destination": "/rps/index.html"
+      },
+      {
+        "source": "/rps/**",
+        "destination": "/rps/index.html"
       }
     ]
   }

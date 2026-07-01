@@ -8,6 +8,8 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         race: resolve(__dirname, 'race/index.html'),
         team: resolve(__dirname, 'team/index.html'),
+        dice: resolve(__dirname, 'dice/index.html'),
+        rps: resolve(__dirname, 'rps/index.html'),
       },
       output: {
         manualChunks(id) {

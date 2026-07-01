@@ -27,3 +27,8 @@ export function distributeTeams(participants: string[], teamCount: number, seed:
 export function randomSeed(): number {
   return Math.floor(Math.random() * 2 ** 31);
 }
+
+export function rollValues(count: number, max: number, seed: number): number[] {
+  const rng = mulberry32(seed);
+  return Array.from({ length: count }, () => 1 + Math.floor(rng() * max));
+}

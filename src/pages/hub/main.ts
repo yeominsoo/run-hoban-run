@@ -19,6 +19,16 @@ app.innerHTML = `
         <h2 class="game-card-name">팀 랜덤 배분</h2>
         <p class="game-card-desc">참가자 명단을 원하는 수의 팀으로 무작위 배분. 같은 시드로 결과 재현 가능.</p>
       </a>
+      <a class="game-card" href="/dice/">
+        <span class="game-card-icon dice-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">주사위 돌리기</h2>
+        <p class="game-card-desc">2~20명이 함께 굴리는 주사위. 눈금은 참가자 수 × 10까지, 가장 높은 사람이 1등.</p>
+      </a>
+      <a class="game-card" href="/rps/">
+        <span class="game-card-icon rps-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">가위바위보 대결</h2>
+        <p class="game-card-desc">WebSocket으로 실시간 매칭되는 1:1 가위바위보. 승패가 쌓이는 스코어보드 포함.</p>
+      </a>
     </nav>
   </div>
 `;
