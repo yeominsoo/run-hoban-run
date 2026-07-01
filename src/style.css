@@ -1272,7 +1272,7 @@ textarea {
 }
 
 /* ─── 가로 모드 모바일 (landscape phone) ─── */
-@media (max-height: 500px) {
+@media (orientation: landscape) and (max-height: 560px) {
   .hud-top {
     top: 8px;
     right: 8px;
@@ -1436,6 +1436,7 @@ textarea {
 
   /* race-started 오버라이드 (min-width: 761px 와 충돌 방지) */
   .race-stage.race-started .hud-bottom {
+    top: 8px;
     bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   }
 
