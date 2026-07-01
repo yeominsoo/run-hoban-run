@@ -18,10 +18,17 @@ src/
   ui/              # DOM 화면 골격 및 쿼리 헬퍼
     app-shell.ts
   assets/          # 코드에서 참조하는 정적 에셋 메타데이터
+  pages/           # 레이스 외 게임(hub/team/dice/rps)의 멀티페이지 진입점
+  shared/          # 페이지 간 공용 유틸 (시드 RNG, 참가자 파싱 등)
 public/assets/     # 브라우저에 직접 제공되는 GLB 등 정적 파일
+race/, team/, dice/, rps/  # 각 게임의 index.html (Vite 멀티페이지 입력)
+ws-server/         # 가위바위보(/rps) 1:1 매칭용 WebSocket 서버 (Node, 별도 배포 필요)
 tests/             # Playwright 룰/렌더 검증
 docs/              # 기획 및 설계 문서
 ```
+
+`race`, `team`, `dice`는 정적 파일만으로 동작하지만 `rps`는 항상 켜져 있는
+WebSocket 서버(`ws-server/`)가 필요하다. 자세한 배포 절차는 `ws-server/README.md` 참고.
 
 ## 개발 명령어
 
