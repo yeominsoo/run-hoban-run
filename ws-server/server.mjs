@@ -1,11 +1,12 @@
 import { createServer } from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
 const BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 const ROOM_CODE_LENGTH = 6;
+const RECONNECT_GRACE_MS = 45000;
 
 const httpServer = createServer((req, res) => {
   if (req.url === '/healthz') {
@@ -19,13 +20,20 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer, path: '/rps' });
 
-/** roomCode -> { players: [{ws,name}], choices: Map<ws, choice>, scores: Map<ws, number> } */
+/**
+ * roomCode -> {
+ *   players: [{ token, name, ws }],  // ws is null while disconnected
+ *   choices: Map<token, choice>,
+ *   scores: Map<token, number>,
+ *   disconnectTimers: Map<token, TimeoutHandle>,
+ * }
+ */
 const rooms = new Map();
-/** ws -> roomCode */
-const wsRoom = new Map();
+/** ws -> { roomCode, token } */
+const wsIdentity = new Map();
 
 function send(ws, payload) {
-  if (ws.readyState === ws.OPEN) {
+  if (ws && ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(payload));
   }
 }
@@ -63,8 +71,12 @@ function genRoomCode() {
   return code;
 }
 
-function opponentOf(room, ws) {
-  return room.players.find((p) => p.ws !== ws);
+function playerByToken(room, token) {
+  return room.players.find((p) => p.token === token);
+}
+
+function opponentOfToken(room, token) {
+  return room.players.find((p) => p.token !== token);
 }
 
 function resolveOutcome(mine, theirs) {
@@ -72,14 +84,32 @@ function resolveOutcome(mine, theirs) {
   return BEATS[mine] === theirs ? 'win' : 'lose';
 }
 
-function closeRoom(roomCode, leftWs) {
+function clearDisconnectTimer(room, token) {
+  const timer = room.disconnectTimers.get(token);
+  if (timer) {
+    clearTimeout(timer);
+    room.disconnectTimers.delete(token);
+  }
+}
+
+// 연결이 끊긴 플레이어를 즉시 방에서 빼지 않고, 유예 시간 동안 자리를 남겨둔다.
+// 카톡 공유 등으로 잠깐 탭이 백그라운드로 가면서 소켓이 끊기는 경우를 흡수하기 위함.
+function scheduleDisconnectCleanup(roomCode, token) {
   const room = rooms.get(roomCode);
   if (!room) return;
+  clearDisconnectTimer(room, token);
+  const timer = setTimeout(() => finalizeLeave(roomCode, token), RECONNECT_GRACE_MS);
+  room.disconnectTimers.set(token, timer);
+}
+
+function finalizeLeave(roomCode, leavingToken) {
+  const room = rooms.get(roomCode);
+  if (!room) return;
+  const opponent = opponentOfToken(room, leavingToken);
+  room.players.forEach((p) => clearDisconnectTimer(room, p.token));
   rooms.delete(roomCode);
-  room.players.forEach((p) => wsRoom.delete(p.ws));
-  const remaining = room.players.find((p) => p.ws !== leftWs);
-  if (remaining) {
-    send(remaining.ws, { type: 'opponent_left' });
+  if (opponent && opponent.ws) {
+    send(opponent.ws, { type: 'opponent_left' });
   }
 }
 
@@ -95,13 +125,15 @@ wss.on('connection', (ws) => {
     if (msg.type === 'create') {
       const name = sanitizeName(msg.name);
       const roomCode = genRoomCode();
+      const token = randomUUID();
       rooms.set(roomCode, {
-        players: [{ ws, name }],
+        players: [{ token, name, ws }],
         choices: new Map(),
-        scores: new Map([[ws, 0]]),
+        scores: new Map([[token, 0]]),
+        disconnectTimers: new Map(),
       });
-      wsRoom.set(ws, roomCode);
-      send(ws, { type: 'room_created', roomCode });
+      wsIdentity.set(ws, { roomCode, token });
+      send(ws, { type: 'room_created', roomCode, token });
       return;
     }
 
@@ -117,35 +149,69 @@ wss.on('connection', (ws) => {
         send(ws, { type: 'error', message: '이미 인원이 가득 찬 방입니다.' });
         return;
       }
-      room.players.push({ ws, name });
-      room.scores.set(ws, 0);
-      wsRoom.set(ws, roomCode);
+      const token = randomUUID();
+      room.players.push({ token, name, ws });
+      room.scores.set(token, 0);
+      wsIdentity.set(ws, { roomCode, token });
 
       const [host, guest] = room.players;
-      send(host.ws, { type: 'matched', opponentName: guest.name, roomCode });
-      send(guest.ws, { type: 'matched', opponentName: host.name, roomCode });
+      send(host.ws, { type: 'matched', opponentName: guest.name, roomCode, token: host.token });
+      send(guest.ws, { type: 'matched', opponentName: host.name, roomCode, token: guest.token });
+      return;
+    }
+
+    if (msg.type === 'rejoin') {
+      const roomCode = sanitizeRoomCode(msg.roomCode);
+      const token = typeof msg.token === 'string' ? msg.token : '';
+      const room = rooms.get(roomCode);
+      const player = room && playerByToken(room, token);
+      if (!room || !player) {
+        send(ws, { type: 'error', message: '재연결에 실패했습니다. 방이 이미 종료되었을 수 있어요.' });
+        return;
+      }
+
+      clearDisconnectTimer(room, token);
+      player.ws = ws;
+      wsIdentity.set(ws, { roomCode, token });
+
+      const opponent = opponentOfToken(room, token);
+      send(ws, {
+        type: 'rejoined',
+        roomCode,
+        token,
+        opponentName: opponent ? opponent.name : null,
+        opponentConnected: !!(opponent && opponent.ws),
+        score: {
+          you: room.scores.get(token) ?? 0,
+          opponent: opponent ? room.scores.get(opponent.token) ?? 0 : 0,
+        },
+      });
+      if (opponent && opponent.ws) {
+        send(opponent.ws, { type: 'opponent_reconnected' });
+      }
       return;
     }
 
     if (msg.type === 'choice') {
       if (!MOVES.has(msg.choice)) return;
-      const roomCode = wsRoom.get(ws);
-      const room = roomCode ? rooms.get(roomCode) : undefined;
+      const identity = wsIdentity.get(ws);
+      const room = identity && rooms.get(identity.roomCode);
       if (!room || room.players.length < 2) return;
+      const { token } = identity;
 
-      room.choices.set(ws, msg.choice);
-      const opponent = opponentOf(room, ws);
+      room.choices.set(token, msg.choice);
+      const opponent = opponentOfToken(room, token);
       if (room.choices.size < 2) {
-        send(opponent.ws, { type: 'opponent_choice_made' });
+        if (opponent?.ws) send(opponent.ws, { type: 'opponent_choice_made' });
         return;
       }
 
-      const myChoice = room.choices.get(ws);
-      const oppChoice = room.choices.get(opponent.ws);
+      const myChoice = room.choices.get(token);
+      const oppChoice = room.choices.get(opponent.token);
       const myOutcome = resolveOutcome(myChoice, oppChoice);
       const oppOutcome = resolveOutcome(oppChoice, myChoice);
-      if (myOutcome === 'win') room.scores.set(ws, room.scores.get(ws) + 1);
-      if (oppOutcome === 'win') room.scores.set(opponent.ws, room.scores.get(opponent.ws) + 1);
+      if (myOutcome === 'win') room.scores.set(token, room.scores.get(token) + 1);
+      if (oppOutcome === 'win') room.scores.set(opponent.token, room.scores.get(opponent.token) + 1);
       room.choices.clear();
 
       send(ws, {
@@ -153,28 +219,40 @@ wss.on('connection', (ws) => {
         you: myChoice,
         opponent: oppChoice,
         outcome: myOutcome,
-        score: { you: room.scores.get(ws), opponent: room.scores.get(opponent.ws) },
+        score: { you: room.scores.get(token), opponent: room.scores.get(opponent.token) },
       });
       send(opponent.ws, {
         type: 'result',
         you: oppChoice,
         opponent: myChoice,
         outcome: oppOutcome,
-        score: { you: room.scores.get(opponent.ws), opponent: room.scores.get(ws) },
+        score: { you: room.scores.get(opponent.token), opponent: room.scores.get(token) },
       });
       return;
     }
 
     if (msg.type === 'leave') {
-      const roomCode = wsRoom.get(ws);
-      if (roomCode) closeRoom(roomCode, ws);
+      const identity = wsIdentity.get(ws);
+      if (identity) finalizeLeave(identity.roomCode, identity.token);
       return;
     }
   });
 
   ws.on('close', () => {
-    const roomCode = wsRoom.get(ws);
-    if (roomCode) closeRoom(roomCode, ws);
+    const identity = wsIdentity.get(ws);
+    if (!identity) return;
+    wsIdentity.delete(ws);
+
+    const room = rooms.get(identity.roomCode);
+    if (!room) return;
+    const player = playerByToken(room, identity.token);
+    if (player) player.ws = null;
+
+    const opponent = opponentOfToken(room, identity.token);
+    if (opponent && opponent.ws) {
+      send(opponent.ws, { type: 'opponent_disconnected' });
+    }
+    scheduleDisconnectCleanup(identity.roomCode, identity.token);
   });
 });
 

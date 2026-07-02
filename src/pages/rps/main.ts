@@ -1,8 +1,8 @@
 import './rps.css';
 import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from './hand-icons';
 
-type Phase = 'entry' | 'connecting' | 'hosting' | 'choosing' | 'result' | 'opponent-left' | 'error';
-type PendingAction = { kind: 'create' } | { kind: 'join'; roomCode: string };
+type Phase = 'entry' | 'connecting' | 'hosting' | 'choosing' | 'result' | 'reconnecting' | 'opponent-left' | 'error';
+type PendingAction = { kind: 'create' } | { kind: 'join'; roomCode: string } | { kind: 'rejoin' };
 
 interface ResultMsg {
   type: 'result';
@@ -37,6 +37,8 @@ const WS_URL = resolveWsUrl();
 const HEALTHZ_URL = resolveHealthzUrl(WS_URL);
 const NAME_STORAGE_KEY = 'run-hoban-run:rps-nickname';
 const CERT_SEEN_KEY = 'run-hoban-run:rps-cert-seen';
+const RECONNECT_RETRY_MS = 2000;
+const RECONNECT_MAX_ATTEMPTS = 24; // ~48s, matches the server's 45s reconnect grace window
 
 let phase: Phase = 'entry';
 let socket: WebSocket | null = null;
@@ -44,7 +46,11 @@ let myName = '';
 let opponentName = '';
 let myChoice: Choice | null = null;
 let roomCode = '';
+let myToken: string | null = null;
 let pendingAction: PendingAction | null = null;
+let intentionalClose = false;
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -105,6 +111,8 @@ app.innerHTML = `
             <span class="player-name" id="opp-name"></span>
           </div>
         </div>
+
+        <p class="opponent-status hidden" id="opponent-status"></p>
 
         <p class="chant-text hidden" id="chant-text"></p>
 
@@ -169,6 +177,7 @@ const myNameEl = document.getElementById('my-name')!;
 const oppNameEl = document.getElementById('opp-name')!;
 const myScoreEl = document.getElementById('my-score')!;
 const oppScoreEl = document.getElementById('opp-score')!;
+const opponentStatus = document.getElementById('opponent-status')!;
 const chantText = document.getElementById('chant-text')!;
 const myHandEl = document.getElementById('my-hand')!;
 const oppHandEl = document.getElementById('opp-hand')!;
@@ -218,7 +227,7 @@ tabJoin.addEventListener('click', () => setTab('join'));
 function setPhase(next: Phase) {
   phase = next;
   panels.entry.classList.toggle('hidden', next !== 'entry');
-  panels.waiting.classList.toggle('hidden', next !== 'connecting' && next !== 'hosting');
+  panels.waiting.classList.toggle('hidden', next !== 'connecting' && next !== 'hosting' && next !== 'reconnecting');
   panels.match.classList.toggle('hidden', next !== 'choosing' && next !== 'result');
   panels.left.classList.toggle('hidden', next !== 'opponent-left');
   panels.error.classList.toggle('hidden', next !== 'error');
@@ -238,6 +247,7 @@ function resetArena() {
   myHandEl.innerHTML = hiddenHandIcon();
   oppHandEl.innerHTML = hiddenHandIcon();
   chantText.classList.add('hidden');
+  opponentStatus.classList.add('hidden');
   outcomeBanner.classList.add('hidden');
   outcomeBanner.className = 'outcome-banner hidden';
   matchActions.classList.add('hidden');
@@ -264,10 +274,18 @@ function requireName(): string | null {
 // ── Networking ────────────────────────────────
 function connect(action: PendingAction) {
   pendingAction = action;
-  hideEntryError();
-  roomShare.classList.add('hidden');
-  waitingStatus.textContent = '서버에 연결하는 중…';
-  setPhase('connecting');
+  intentionalClose = false;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  if (action.kind !== 'rejoin') {
+    hideEntryError();
+    roomShare.classList.add('hidden');
+    waitingStatus.textContent = '서버에 연결하는 중…';
+    setPhase('connecting');
+  }
 
   let ws: WebSocket;
   try {
@@ -279,12 +297,14 @@ function connect(action: PendingAction) {
   socket = ws;
 
   ws.addEventListener('open', () => {
-    if (pendingAction?.kind === 'create') {
+    if (action.kind === 'create') {
       waitingStatus.textContent = '방을 만드는 중…';
       send({ type: 'create', name: myName });
-    } else if (pendingAction?.kind === 'join') {
+    } else if (action.kind === 'join') {
       waitingStatus.textContent = '참가하는 중…';
-      send({ type: 'join', name: myName, roomCode: pendingAction.roomCode });
+      send({ type: 'join', name: myName, roomCode: action.roomCode });
+    } else if (action.kind === 'rejoin') {
+      send({ type: 'rejoin', roomCode, token: myToken });
     }
   });
 
@@ -299,14 +319,37 @@ function connect(action: PendingAction) {
   });
 
   ws.addEventListener('close', () => {
-    if (phase !== 'opponent-left' && phase !== 'entry') {
+    if (intentionalClose) return;
+    if (phase === 'hosting' || phase === 'choosing' || phase === 'result' || phase === 'reconnecting') {
+      beginReconnect();
+    } else if (phase !== 'opponent-left' && phase !== 'entry') {
       showError('서버와의 연결이 끊어졌습니다.');
     }
   });
 
   ws.addEventListener('error', () => {
+    if (action.kind === 'rejoin') return; // the close handler will schedule the next retry
     showError('게임 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
   });
+}
+
+// 카카오톡 공유 등으로 탭이 백그라운드로 가면서 소켓이 끊기는 경우를 흡수한다.
+// 서버가 방을 45초간 유예해주는 동안, 같은 토큰으로 재연결을 시도한다.
+function beginReconnect() {
+  if (!myToken || !roomCode) {
+    showError('서버와의 연결이 끊어졌습니다.');
+    return;
+  }
+  setPhase('reconnecting');
+  roomShare.classList.add('hidden');
+  reconnectAttempts++;
+  waitingStatus.textContent = `연결이 끊어졌습니다. 재연결 중… (${reconnectAttempts}/${RECONNECT_MAX_ATTEMPTS})`;
+
+  if (reconnectAttempts > RECONNECT_MAX_ATTEMPTS) {
+    showError('상대와의 연결을 복구하지 못했습니다. 처음부터 다시 시작해주세요.');
+    return;
+  }
+  reconnectTimer = setTimeout(() => connect({ kind: 'rejoin' }), RECONNECT_RETRY_MS);
 }
 
 function send(payload: unknown) {
@@ -325,15 +368,19 @@ function showError(message: string) {
 function handleServerMessage(msg: any) {
   switch (msg.type) {
     case 'room_created':
+      myToken = msg.token;
       roomCode = msg.roomCode;
+      reconnectAttempts = 0;
       roomCodeDisplay.textContent = roomCode;
       roomShare.classList.remove('hidden');
       waitingStatus.textContent = '상대를 기다리는 중…';
       setPhase('hosting');
       break;
     case 'matched':
+      myToken = msg.token ?? myToken;
       opponentName = msg.opponentName;
       roomCode = msg.roomCode;
+      reconnectAttempts = 0;
       myNameEl.textContent = myName;
       oppNameEl.textContent = opponentName;
       myScoreEl.textContent = '0';
@@ -342,22 +389,56 @@ function handleServerMessage(msg: any) {
       matchStatus.textContent = '낼 것을 골라주세요';
       setPhase('choosing');
       break;
+    case 'rejoined':
+      reconnectAttempts = 0;
+      myToken = msg.token ?? myToken;
+      roomCode = msg.roomCode ?? roomCode;
+      if (msg.opponentName) {
+        opponentName = msg.opponentName;
+        myNameEl.textContent = myName;
+        oppNameEl.textContent = opponentName;
+        myScoreEl.textContent = String(msg.score.you);
+        oppScoreEl.textContent = String(msg.score.opponent);
+        resetArena();
+        matchStatus.textContent = msg.opponentConnected
+          ? '낼 것을 골라주세요'
+          : '상대가 다시 연결되길 기다리는 중…';
+        setPhase('choosing');
+      } else {
+        roomCodeDisplay.textContent = roomCode;
+        roomShare.classList.remove('hidden');
+        waitingStatus.textContent = '상대를 기다리는 중…';
+        setPhase('hosting');
+      }
+      break;
     case 'opponent_choice_made':
       if (phase === 'choosing') {
         matchStatus.textContent = '상대가 선택을 마쳤습니다. 당신의 차례!';
       }
       break;
+    case 'opponent_disconnected':
+      opponentStatus.textContent = '⚠️ 상대방 연결이 불안정합니다. 잠시만 기다려주세요…';
+      opponentStatus.classList.remove('hidden');
+      break;
+    case 'opponent_reconnected':
+      opponentStatus.classList.add('hidden');
+      break;
     case 'result':
+      opponentStatus.classList.add('hidden');
       playChantThenReveal(msg as ResultMsg);
       break;
     case 'opponent_left':
       setPhase('opponent-left');
       break;
     case 'error':
-      showEntryError(msg.message ?? '방에 참가할 수 없습니다.');
-      socket?.close();
-      socket = null;
-      setPhase('entry');
+      if (phase === 'reconnecting') {
+        showError(msg.message ?? '재연결에 실패했습니다.');
+      } else {
+        showEntryError(msg.message ?? '방에 참가할 수 없습니다.');
+        socket?.close();
+        socket = null;
+        setPhase('entry');
+      }
       break;
     default:
       break;
@@ -433,12 +514,21 @@ joinBtn.addEventListener('click', () => {
   connect({ kind: 'join', roomCode: code });
 });
 
-cancelBtn.addEventListener('click', () => {
+function leaveRoom() {
+  intentionalClose = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   send({ type: 'leave' });
   socket?.close();
   socket = null;
+  myToken = null;
+  roomCode = '';
   setPhase('entry');
-});
+}
+
+cancelBtn.addEventListener('click', leaveRoom);
 
 copyLinkBtn.addEventListener('click', async () => {
   const link = `${location.origin}/rps/?room=${roomCode}`;
@@ -475,20 +565,20 @@ continueBtn.addEventListener('click', () => {
   setPhase('choosing');
 });
 
-leaveBtn.addEventListener('click', () => {
-  send({ type: 'leave' });
-  socket?.close();
-  socket = null;
-  setPhase('entry');
-});
+leaveBtn.addEventListener('click', leaveRoom);
 
 newRoomBtn.addEventListener('click', () => {
+  myToken = null;
+  roomCode = '';
   connect({ kind: 'create' });
 });
 
 quitBtn.addEventListener('click', () => {
+  intentionalClose = true;
   socket?.close();
   socket = null;
+  myToken = null;
+  roomCode = '';
   setPhase('entry');
 });
 
