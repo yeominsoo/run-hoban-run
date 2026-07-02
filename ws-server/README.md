@@ -1,23 +1,29 @@
 # RPS WebSocket Server
 
-가위바위보 1:1 대결(`/rps` 페이지)이 사용하는 실시간 매칭 서버. 이 저장소의 나머지 게임과 달리
-정적 파일만으로는 동작하지 않으며, 항상 켜져 있는 Node 프로세스가 필요하다.
+가위바위보 1:1 대결(`/rps` 페이지)이 사용하는 방(room) 기반 서버. 자동 매칭이 아니라
+한 명이 방을 만들고 코드를 공유하면 상대가 그 코드로 들어오는 방식이다. 이 저장소의
+나머지 게임과 달리 정적 파일만으로는 동작하지 않으며, 항상 켜져 있는 Node 프로세스가 필요하다.
 
 ## 프로토콜
 
 - `ws(s)://<host>:<port>/rps` 로 연결
 - 클라이언트 → 서버
-  - `{"type":"join","name":"닉네임"}` — 매칭 대기열 등록 (1:1로 즉시 매칭)
+  - `{"type":"create","name":"닉네임"}` — 새 방 생성, 상대 대기
+  - `{"type":"join","name":"닉네임","roomCode":"3F9A2C"}` — 방 코드로 참가
   - `{"type":"choice","choice":"rock"|"paper"|"scissors"}` — 이번 판 선택
-  - `{"type":"leave"}` — 대기열/방에서 나가기
+  - `{"type":"leave"}` — 방에서 나가기
 - 서버 → 클라이언트
-  - `{"type":"waiting"}`
-  - `{"type":"matched","opponentName":"...","roomId":"..."}`
+  - `{"type":"room_created","roomCode":"3F9A2C"}` — 방 생성 완료, 상대 대기 중
+  - `{"type":"matched","opponentName":"...","roomCode":"3F9A2C"}` — 두 번째 플레이어 입장 완료
   - `{"type":"opponent_choice_made"}`
   - `{"type":"result","you":"rock","opponent":"paper","outcome":"lose","score":{"you":0,"opponent":1}}`
   - `{"type":"opponent_left"}`
+  - `{"type":"error","message":"방을 찾을 수 없습니다. ..."}` — 잘못된/가득 찬 방 코드로 참가 시도
 
 방(room)은 두 플레이어 중 한쪽이 나가거나 연결이 끊길 때까지 유지되며, 점수는 방 안에서 누적된다.
+방 코드는 생성 시각(년/월/일/시/분/초/밀리초)을 SHA-256으로 해시한 값에서 앞 6자리를 사용한다
+(`genRoomCode()` in `server.mjs`). 프론트엔드는 `/rps/?room=<코드>` 형태의 초대 링크도 지원해
+링크를 열면 방 코드가 자동으로 채워진다.
 
 ## 로컬 실행 (테스트용)
 
@@ -64,8 +70,8 @@ PORT=8787 npm start
 
 ## 이번 세션에서 로컬로 검증한 범위
 
-- `ws-server/server.mjs` 매칭/판정 로직을 로컬에서 두 개의 WebSocket 클라이언트로 직접 연결해
-  매칭 → 선택 → 결과 → 재대결 → 상대 이탈 처리까지 확인.
+- `ws-server/server.mjs` 방 생성/참가/판정 로직을 로컬에서 두 개의 WebSocket 클라이언트로 직접
+  연결해 방 생성 → 코드로 참가 → 선택 → 결과 → 재대결 → 상대 이탈 처리까지 확인.
 - 프론트엔드(`/rps`)는 `VITE_RPS_WS_URL`을 로컬 서버(`ws://localhost:8787/rps`)로 두고
   두 브라우저 탭으로 실제 대결 플로우 확인.
 - WAS 설치, 포트포워딩, TLS 종료는 위에 정리된 대로 아직 미수행.

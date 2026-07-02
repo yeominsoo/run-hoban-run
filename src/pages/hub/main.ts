@@ -27,7 +27,7 @@ app.innerHTML = `
       <a class="game-card" href="/rps/">
         <span class="game-card-icon rps-mark" aria-hidden="true"></span>
         <h2 class="game-card-name">가위바위보 대결</h2>
-        <p class="game-card-desc">WebSocket으로 실시간 매칭되는 1:1 가위바위보. 승패가 쌓이는 스코어보드 포함.</p>
+        <p class="game-card-desc">방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.</p>
       </a>
     </nav>
   </div>

@@ -135,6 +135,83 @@ button { border: 0; cursor: pointer; }
 }
 @keyframes rps-spin { to { transform: rotate(360deg); } }
 
+/* ── Entry: tabs / room join ────────────────── */
+.entry-tabs {
+  width: 100%;
+  display: flex;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  padding: 3px;
+  gap: 3px;
+}
+
+.entry-tab {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(232,244,255,0.6);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.entry-tab.active {
+  background: rgba(126,200,248,0.18);
+  color: #eaf6ff;
+}
+
+.entry-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-code-input {
+  text-align: center;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.entry-error {
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(255,120,110,0.12);
+  border: 1px solid rgba(255,120,110,0.32);
+  color: #ff9a8f;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.room-share {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  background: rgba(126,200,248,0.08);
+  border: 1px solid rgba(126,200,248,0.24);
+  border-radius: 12px;
+}
+
+.room-share-label {
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(232,244,255,0.55);
+}
+
+.room-code-display {
+  font-size: 1.7rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #eaf6ff;
+}
+
 /* ── Match view ─────────────────────────────── */
 .match-view {
   width: 100%;

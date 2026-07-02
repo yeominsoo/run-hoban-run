@@ -1,7 +1,8 @@
 import './rps.css';
 import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from './hand-icons';
 
-type Phase = 'entry' | 'connecting' | 'waiting' | 'choosing' | 'result' | 'opponent-left' | 'error';
+type Phase = 'entry' | 'connecting' | 'hosting' | 'choosing' | 'result' | 'opponent-left' | 'error';
+type PendingAction = { kind: 'create' } | { kind: 'join'; roomCode: string };
 
 interface ResultMsg {
   type: 'result';
@@ -26,6 +27,8 @@ let socket: WebSocket | null = null;
 let myName = '';
 let opponentName = '';
 let myChoice: Choice | null = null;
+let roomCode = '';
+let pendingAction: PendingAction | null = null;
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -33,17 +36,39 @@ app.innerHTML = `
     <a class="back-link" href="/">← 게임 선택</a>
     <div class="rps-stage">
       <h1 class="rps-title">가위바위보 대결</h1>
-      <p class="rps-sub">실시간 1:1 매칭 · WebSocket</p>
+      <p class="rps-sub">방을 만들고 코드를 공유해 1:1로 대결하세요</p>
 
       <div class="rps-panel" id="entry-panel">
         <label class="field-label" for="nickname">닉네임</label>
         <input id="nickname" type="text" maxlength="20" placeholder="닉네임을 입력하세요" class="nickname-input" />
-        <button id="start-btn" type="button" class="rps-btn primary">매칭 시작</button>
+
+        <div class="entry-tabs" role="tablist">
+          <button id="tab-create" type="button" class="entry-tab active" role="tab">방 만들기</button>
+          <button id="tab-join" type="button" class="entry-tab" role="tab">방 참가하기</button>
+        </div>
+
+        <div class="entry-section" id="create-section">
+          <p class="status-text">방을 만들면 코드가 생성돼요. 친구에게 코드나 링크를 공유하세요.</p>
+          <button id="create-btn" type="button" class="rps-btn primary">방 만들기</button>
+        </div>
+
+        <div class="entry-section hidden" id="join-section">
+          <label class="field-label" for="room-code-input">방 코드</label>
+          <input id="room-code-input" type="text" maxlength="6" placeholder="예: 3F9A2C" class="nickname-input room-code-input" />
+          <button id="join-btn" type="button" class="rps-btn primary">참가하기</button>
+        </div>
+
+        <p class="entry-error hidden" id="entry-error"></p>
       </div>
 
       <div class="rps-panel hidden" id="waiting-panel">
         <div class="spinner" aria-hidden="true"></div>
-        <p class="status-text">상대를 찾는 중…</p>
+        <p class="status-text" id="waiting-status">서버에 연결하는 중…</p>
+        <div class="room-share hidden" id="room-share">
+          <span class="room-share-label">방 코드</span>
+          <span class="room-code-display" id="room-code-display"></span>
+          <button id="copy-link-btn" type="button" class="rps-btn secondary">초대 링크 복사</button>
+        </div>
         <button id="cancel-btn" type="button" class="rps-btn secondary">취소</button>
       </div>
 
@@ -82,7 +107,7 @@ app.innerHTML = `
 
       <div class="rps-panel hidden" id="left-panel">
         <p class="status-text">상대방이 나갔습니다.</p>
-        <button id="requeue-btn" type="button" class="rps-btn primary">새 상대 찾기</button>
+        <button id="new-room-btn" type="button" class="rps-btn primary">새 방 만들기</button>
         <button id="quit-btn" type="button" class="rps-btn secondary">나가기</button>
       </div>
 
@@ -103,7 +128,18 @@ const panels = {
   error: document.getElementById('error-panel')!,
 };
 const nicknameInput = document.getElementById('nickname') as HTMLInputElement;
-const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
+const tabCreate = document.getElementById('tab-create') as HTMLButtonElement;
+const tabJoin = document.getElementById('tab-join') as HTMLButtonElement;
+const createSection = document.getElementById('create-section')!;
+const joinSection = document.getElementById('join-section')!;
+const createBtn = document.getElementById('create-btn') as HTMLButtonElement;
+const joinBtn = document.getElementById('join-btn') as HTMLButtonElement;
+const roomCodeInput = document.getElementById('room-code-input') as HTMLInputElement;
+const entryError = document.getElementById('entry-error')!;
+const waitingStatus = document.getElementById('waiting-status')!;
+const roomShare = document.getElementById('room-share')!;
+const roomCodeDisplay = document.getElementById('room-code-display')!;
+const copyLinkBtn = document.getElementById('copy-link-btn') as HTMLButtonElement;
 const cancelBtn = document.getElementById('cancel-btn') as HTMLButtonElement;
 const myNameEl = document.getElementById('my-name')!;
 const oppNameEl = document.getElementById('opp-name')!;
@@ -118,7 +154,7 @@ const choiceButtons = Array.from(choiceRow.querySelectorAll<HTMLButtonElement>('
 const matchActions = document.getElementById('match-actions')!;
 const continueBtn = document.getElementById('continue-btn') as HTMLButtonElement;
 const leaveBtn = document.getElementById('leave-btn') as HTMLButtonElement;
-const requeueBtn = document.getElementById('requeue-btn') as HTMLButtonElement;
+const newRoomBtn = document.getElementById('new-room-btn') as HTMLButtonElement;
 const quitBtn = document.getElementById('quit-btn') as HTMLButtonElement;
 const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
 const errorText = document.getElementById('error-text')!;
@@ -126,14 +162,39 @@ const errorText = document.getElementById('error-text')!;
 // ── Init ──────────────────────────────────────
 nicknameInput.value = localStorage.getItem(NAME_STORAGE_KEY) ?? '';
 
+const roomFromUrl = new URLSearchParams(location.search).get('room');
+if (roomFromUrl) {
+  roomCodeInput.value = roomFromUrl.trim().toUpperCase().slice(0, 6);
+  setTab('join');
+}
+
+// ── Tabs ──────────────────────────────────────
+function setTab(tab: 'create' | 'join') {
+  tabCreate.classList.toggle('active', tab === 'create');
+  tabJoin.classList.toggle('active', tab === 'join');
+  createSection.classList.toggle('hidden', tab !== 'create');
+  joinSection.classList.toggle('hidden', tab !== 'join');
+  hideEntryError();
+}
+tabCreate.addEventListener('click', () => setTab('create'));
+tabJoin.addEventListener('click', () => setTab('join'));
+
 // ── Phase rendering ───────────────────────────
 function setPhase(next: Phase) {
   phase = next;
   panels.entry.classList.toggle('hidden', next !== 'entry');
-  panels.waiting.classList.toggle('hidden', next !== 'connecting' && next !== 'waiting');
+  panels.waiting.classList.toggle('hidden', next !== 'connecting' && next !== 'hosting');
   panels.match.classList.toggle('hidden', next !== 'choosing' && next !== 'result');
   panels.left.classList.toggle('hidden', next !== 'opponent-left');
   panels.error.classList.toggle('hidden', next !== 'error');
+}
+
+function showEntryError(message: string) {
+  entryError.textContent = message;
+  entryError.classList.remove('hidden');
+}
+function hideEntryError() {
+  entryError.classList.add('hidden');
 }
 
 function resetArena() {
@@ -152,9 +213,26 @@ function resetArena() {
   myChoice = null;
 }
 
+// ── Name / room code helpers ───────────────────
+function requireName(): string | null {
+  const name = nicknameInput.value.trim().slice(0, 20);
+  if (!name) {
+    showEntryError('닉네임을 입력해주세요.');
+    return null;
+  }
+  myName = name;
+  localStorage.setItem(NAME_STORAGE_KEY, name);
+  return name;
+}
+
 // ── Networking ────────────────────────────────
-function connect() {
+function connect(action: PendingAction) {
+  pendingAction = action;
+  hideEntryError();
+  roomShare.classList.add('hidden');
+  waitingStatus.textContent = '서버에 연결하는 중…';
   setPhase('connecting');
+
   let ws: WebSocket;
   try {
     ws = new WebSocket(WS_URL);
@@ -165,7 +243,13 @@ function connect() {
   socket = ws;
 
   ws.addEventListener('open', () => {
-    send({ type: 'join', name: myName });
+    if (pendingAction?.kind === 'create') {
+      waitingStatus.textContent = '방을 만드는 중…';
+      send({ type: 'create', name: myName });
+    } else if (pendingAction?.kind === 'join') {
+      waitingStatus.textContent = '참가하는 중…';
+      send({ type: 'join', name: myName, roomCode: pendingAction.roomCode });
+    }
   });
 
   ws.addEventListener('message', (event) => {
@@ -204,11 +288,16 @@ function showError(message: string) {
 
 function handleServerMessage(msg: any) {
   switch (msg.type) {
-    case 'waiting':
-      setPhase('waiting');
+    case 'room_created':
+      roomCode = msg.roomCode;
+      roomCodeDisplay.textContent = roomCode;
+      roomShare.classList.remove('hidden');
+      waitingStatus.textContent = '상대를 기다리는 중…';
+      setPhase('hosting');
       break;
     case 'matched':
       opponentName = msg.opponentName;
+      roomCode = msg.roomCode;
       myNameEl.textContent = myName;
       oppNameEl.textContent = opponentName;
       myScoreEl.textContent = '0';
@@ -227,6 +316,12 @@ function handleServerMessage(msg: any) {
       break;
     case 'opponent_left':
       setPhase('opponent-left');
+      break;
+    case 'error':
+      showEntryError(msg.message ?? '방에 참가할 수 없습니다.');
+      socket?.close();
+      socket = null;
+      setPhase('entry');
       break;
     default:
       break;
@@ -253,15 +348,19 @@ function renderResult(msg: ResultMsg) {
 }
 
 // ── Events ────────────────────────────────────
-startBtn.addEventListener('click', () => {
-  const name = nicknameInput.value.trim().slice(0, 20);
-  if (!name) {
-    alert('닉네임을 입력해주세요.');
+createBtn.addEventListener('click', () => {
+  if (!requireName()) return;
+  connect({ kind: 'create' });
+});
+
+joinBtn.addEventListener('click', () => {
+  if (!requireName()) return;
+  const code = roomCodeInput.value.trim().toUpperCase();
+  if (!code) {
+    showEntryError('방 코드를 입력해주세요.');
     return;
   }
-  myName = name;
-  localStorage.setItem(NAME_STORAGE_KEY, name);
-  connect();
+  connect({ kind: 'join', roomCode: code });
 });
 
 cancelBtn.addEventListener('click', () => {
@@ -269,6 +368,20 @@ cancelBtn.addEventListener('click', () => {
   socket?.close();
   socket = null;
   setPhase('entry');
+});
+
+copyLinkBtn.addEventListener('click', async () => {
+  const link = `${location.origin}/rps/?room=${roomCode}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    const original = copyLinkBtn.textContent;
+    copyLinkBtn.textContent = '복사됨!';
+    setTimeout(() => {
+      copyLinkBtn.textContent = original;
+    }, 1500);
+  } catch {
+    window.prompt('아래 링크를 복사해서 공유하세요', link);
+  }
 });
 
 choiceButtons.forEach((btn) => {
@@ -299,9 +412,8 @@ leaveBtn.addEventListener('click', () => {
   setPhase('entry');
 });
 
-requeueBtn.addEventListener('click', () => {
-  send({ type: 'join', name: myName });
-  setPhase('connecting');
+newRoomBtn.addEventListener('click', () => {
+  connect({ kind: 'create' });
 });
 
 quitBtn.addEventListener('click', () => {
@@ -311,7 +423,7 @@ quitBtn.addEventListener('click', () => {
 });
 
 retryBtn.addEventListener('click', () => {
-  connect();
+  if (pendingAction) connect(pendingAction);
 });
 
 setPhase('entry');
