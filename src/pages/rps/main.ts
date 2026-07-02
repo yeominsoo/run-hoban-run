@@ -547,7 +547,9 @@ function handleServerMessage(msg: any) {
       roomCode = msg.roomCode ?? roomCode;
       isHost = msg.isHost;
       lobbyCodeDisplay.textContent = roomCode;
-      lobbyPlayers.innerHTML = (msg.players as any[]).map(p =>
+      const players = msg.players as any[];
+      const connectedCount = players.filter((p: any) => p.connected).length;
+      lobbyPlayers.innerHTML = players.map(p =>
         `<div class="lobby-player${p.connected ? '' : ' disconnected'}">
           <span class="lobby-name">${p.name}</span>
           ${p.isHost ? '<span class="lobby-badge host">호스트</span>' : ''}
@@ -556,10 +558,12 @@ function handleServerMessage(msg: any) {
       ).join('');
       if (msg.canStart) {
         startBtn.classList.remove('hidden');
-        lobbyStatus.textContent = '시작할 준비가 됐어요!';
+        lobbyStatus.textContent = `${connectedCount}명 입장 — 시작할 준비가 됐어요!`;
       } else {
         startBtn.classList.add('hidden');
-        lobbyStatus.textContent = isHost ? '참가자를 기다리는 중…' : '호스트가 시작하기를 기다리는 중…';
+        lobbyStatus.textContent = isHost
+          ? `현재 ${connectedCount}명 입장 중 — 더 기다리는 중…`
+          : `현재 ${connectedCount}명 입장 중 — 호스트가 시작하기를 기다리는 중…`;
       }
       break;
     }
