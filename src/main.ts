@@ -290,6 +290,7 @@ let suppressLeaderboardClick = false;
 let mediaRecorder: MediaRecorder | null = null;
 let recordedVideoChunks: Blob[] = [];
 let recordingMimeType = '';
+let recordingStartTime = 0;
 let recordingCanvas: HTMLCanvasElement | null = null;
 let recordingContext: CanvasRenderingContext2D | null = null;
 let recordingFrameRequest = 0;
@@ -4826,6 +4827,7 @@ function startRaceRecording() {
 
   recordingMimeType = mimeType;
   recordedVideoChunks = [];
+  recordingStartTime = performance.now();
   mediaRecorder = recorder;
 
   recorder.addEventListener('dataavailable', (event) => {
@@ -4835,9 +4837,11 @@ function startRaceRecording() {
   });
 
   recorder.addEventListener('stop', () => {
+    const durationMs = performance.now() - recordingStartTime;
     stopRecordingCompositeLoop();
     stream.getTracks().forEach((track) => track.stop());
     const chunks = recordedVideoChunks;
+    const mime = recordingMimeType;
     recordedVideoChunks = [];
     mediaRecorder = null;
     setRecordingActive(false);
@@ -4846,7 +4850,10 @@ function startRaceRecording() {
       return;
     }
 
-    downloadBlob(new Blob(chunks, { type: recordingMimeType }), makeDownloadFilename('race-capture', 'mp4'));
+    const blob = new Blob(chunks, { type: mime });
+    fixMp4Duration(blob, durationMs).then((fixed) => {
+      downloadBlob(fixed, makeDownloadFilename('race-capture', 'mp4'));
+    });
   });
 
   recorder.start(500);
@@ -4929,6 +4936,58 @@ function stopRecordingCompositeLoop() {
 function getSupportedRecordingMimeType() {
   const mimeTypes = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
   return mimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? '';
+}
+
+// Chrome MediaRecorder가 MP4 moov/mvhd duration을 첫 청크 기준으로만 기록하는 버그 패치
+async function fixMp4Duration(blob: Blob, durationMs: number): Promise<Blob> {
+  try {
+    const buf = await blob.arrayBuffer();
+    const view = new DataView(buf);
+    let offset = 0;
+
+    while (offset + 8 <= buf.byteLength) {
+      const boxSize = view.getUint32(offset);
+      const boxType = String.fromCharCode(
+        view.getUint8(offset + 4), view.getUint8(offset + 5),
+        view.getUint8(offset + 6), view.getUint8(offset + 7),
+      );
+
+      if (boxType === 'moov') {
+        let inner = offset + 8;
+        while (inner + 8 <= offset + boxSize) {
+          const innerSize = view.getUint32(inner);
+          const innerType = String.fromCharCode(
+            view.getUint8(inner + 4), view.getUint8(inner + 5),
+            view.getUint8(inner + 6), view.getUint8(inner + 7),
+          );
+
+          if (innerType === 'mvhd') {
+            const version = view.getUint8(inner + 8);
+            if (version === 0) {
+              const timescale = view.getUint32(inner + 20);
+              view.setUint32(inner + 24, Math.round(durationMs / 1000 * timescale));
+            } else {
+              const timescale = view.getUint32(inner + 28);
+              const ticks = BigInt(Math.round(durationMs / 1000 * timescale));
+              view.setBigUint64(inner + 32, ticks);
+            }
+            break;
+          }
+
+          if (innerSize < 8) break;
+          inner += innerSize;
+        }
+        break;
+      }
+
+      if (boxSize < 8) break;
+      offset += boxSize;
+    }
+
+    return new Blob([buf], { type: blob.type });
+  } catch {
+    return blob;
+  }
 }
 
 function downloadResultScreenshot() {
