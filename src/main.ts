@@ -48,6 +48,7 @@ type VisualRunner = {
   baseScale: number;
   skillActive: boolean;
   eliminated: boolean;
+  finished: boolean;
 };
 
 type LeaderboardItemParts = {
@@ -2179,7 +2180,8 @@ function createVisualRunnersForRace(race: RaceResult) {
       phase: indexInLane * 0.7,
       baseScale,
       skillActive: false,
-      eliminated: false
+      eliminated: false,
+      finished: false
     });
   });
 }
@@ -2234,6 +2236,7 @@ function updateRace(delta: number) {
       runner.mesh.scale.setScalar(runner.baseScale);
       runner.skillActive = false;
       runner.eliminated = false;
+      runner.finished = false;
       animateHorseStride(runner, 0, false, 1);
       applySkillPose(runner, false);
       updateFrenzyVortex(runner, false);
@@ -2303,6 +2306,7 @@ function updateRace(delta: number) {
     runner.mesh.scale.setScalar(runner.baseScale * skillPulse);
     runner.skillActive = activeSkill;
     runner.eliminated = eliminatedNow;
+    runner.finished = progress >= 1 && !eliminatedNow;
 
     animateHorseStride(runner, progress, eliminatedNow, frenzyActive ? raceProgress.multiplier * 1.7 : raceProgress.multiplier);
     applySkillPose(runner, activeSkill);
@@ -3675,10 +3679,22 @@ function updateRunnerLabel(runner: VisualRunner, activeSkill: boolean) {
   runner.label.classList.toggle('rank-third', liveRank === 3 && !runner.eliminated);
 }
 
+// 완주한 주자는 mesh.position.x가 전부 finishX로 고정돼 position만으로는 순위를 못 가린다.
+// 완주자끼리는 실제 완주 시간(finishSeconds)으로, 아직 달리는 주자끼리는 현재 위치로 비교한다.
+function compareRunnerProgress(left: VisualRunner, right: VisualRunner) {
+  if (left.finished !== right.finished) {
+    return left.finished ? -1 : 1;
+  }
+  if (left.finished) {
+    return left.placement.finishSeconds - right.placement.finishSeconds;
+  }
+  return right.mesh.position.x - left.mesh.position.x;
+}
+
 function getLiveRunnerRank(runner: VisualRunner) {
   const ranked = visualRunners
     .filter((candidate) => !candidate.eliminated)
-    .sort((left, right) => right.mesh.position.x - left.mesh.position.x);
+    .sort(compareRunnerProgress);
 
   return ranked.findIndex((candidate) => candidate === runner) + 1;
 }
@@ -3975,9 +3991,7 @@ function renderLeaderboard() {
 
   const ranked = raceFinished
     ? race.placements
-    : [...visualRunners]
-        .sort((left, right) => right.mesh.position.x - left.mesh.position.x)
-        .map((runner) => runner.placement);
+    : [...visualRunners].sort(compareRunnerProgress).map((runner) => runner.placement);
 
   const visibleIds = new Set<string>();
 
