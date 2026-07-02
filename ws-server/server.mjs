@@ -1,5 +1,8 @@
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -10,8 +13,74 @@ const RECONNECT_GRACE_MS = 45000;
 const WINS_TO_SET = 2;    // best-of-3 within a set: 2 wins
 const WINS_TO_GROUP = 3;  // group mode: first to 3 set-points wins
 
+// ── Ranking DB (file-backed in-memory store) ─────────────────────
+const DATA_DIR = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), 'data');
+const RANKING_FILE = join(DATA_DIR, 'ranking.json');
+
+let rankingData = {};
+try {
+  mkdirSync(DATA_DIR, { recursive: true });
+  rankingData = JSON.parse(readFileSync(RANKING_FILE, 'utf8'));
+} catch { /* first run or corrupt — start fresh */ }
+
+let saveTimer = null;
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try { writeFileSync(RANKING_FILE, JSON.stringify(rankingData)); } catch (e) { console.error('[ranking] save failed', e.message); }
+  }, 2000);
+}
+
+function isoWeekKey(date = new Date()) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+/** Record a set win for a player in the current ISO week. */
+function recordSetWin(name, mode) {
+  if (!name || !mode) return;
+  const week = isoWeekKey();
+  if (!rankingData[week]) rankingData[week] = {};
+  if (!rankingData[week][name]) rankingData[week][name] = { '1v1': 0, group: 0, tournament: 0 };
+  rankingData[week][name][mode] = (rankingData[week][name][mode] || 0) + 1;
+  scheduleSave();
+}
+
+/** Returns sorted ranking entries for a given ISO week key. */
+function getRanking(week) {
+  const weekData = rankingData[week] || {};
+  return Object.entries(weekData)
+    .map(([name, modes]) => {
+      const byMode = { '1v1': modes['1v1'] || 0, group: modes.group || 0, tournament: modes.tournament || 0 };
+      return { name, byMode, total: byMode['1v1'] + byMode.group + byMode.tournament };
+    })
+    .filter(e => e.total > 0)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 50);
+}
+
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': 'content-type',
+};
+
 const httpServer = createServer((req, res) => {
+  if (req.method === 'OPTIONS') { res.writeHead(204, CORS_HEADERS); res.end(); return; }
   if (req.url === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
+  if (req.url === '/ranking' || req.url?.startsWith('/ranking?')) {
+    const week = new URL(req.url, 'http://localhost').searchParams.get('week') || isoWeekKey();
+    const entries = getRanking(week);
+    const prevWeek = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return isoWeekKey(d); })();
+    res.writeHead(200, { 'content-type': 'application/json', ...CORS_HEADERS });
+    res.end(JSON.stringify({ week, entries, prevWeek }));
+    return;
+  }
   res.writeHead(404); res.end();
 });
 
@@ -158,6 +227,9 @@ function resolvePair(roomCode, t1, t2) {
     const sw2 = room.setScores.get(t2) || 0;
     const winnerName = playerByToken(room, setWinner)?.name;
 
+    // Record set win in ranking DB
+    recordSetWin(winnerName, room.mode);
+
     if (p1?.ws) send(p1.ws, { type: 'set_over', youWon: setWinner === t1, setScore: { you: sw1, opponent: sw2 }, winnerName });
     if (p2?.ws) send(p2.ws, { type: 'set_over', youWon: setWinner === t2, setScore: { you: sw2, opponent: sw1 }, winnerName });
 
@@ -183,6 +255,7 @@ function startTournamentRound(roomCode) {
   const alive = room.players.filter(p => !room.eliminated.has(p.token) && p.ws);
   if (alive.length <= 1) {
     const winner = alive[0] || room.players.find(p => !room.eliminated.has(p.token));
+    if (winner) recordSetWin(winner.name, 'tournament'); // bonus: tournament win counts as extra set win
     for (const p of room.players) {
       if (p.ws) send(p.ws, { type: 'tournament_winner', winnerName: winner?.name || '?' });
     }

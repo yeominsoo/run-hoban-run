@@ -16,6 +16,11 @@ const WS_URL = (() => {
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:8787/rps`;
 })();
 
+const RANKING_URL = WS_URL
+  .replace(/^wss:/, 'https:')
+  .replace(/^ws:/, 'http:')
+  .replace(/\/rps$/, '/ranking');
+
 const NAME_KEY = 'run-hoban-run:rps-nickname';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX = 24;
@@ -40,8 +45,29 @@ const WINS_TO_SET = 2;
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
 app.innerHTML = `
+<!-- Ranking overlay -->
+<div class="ranking-overlay hidden" id="ranking-overlay" role="dialog" aria-modal="true" aria-label="이번 주 랭킹">
+  <div class="ranking-modal">
+    <div class="ranking-header">
+      <h2 class="ranking-title">🏆 이번 주 랭킹</h2>
+      <button class="ranking-close" id="ranking-close" type="button" aria-label="닫기">✕</button>
+    </div>
+    <p class="ranking-week" id="ranking-week"></p>
+    <div class="ranking-tabs">
+      <button class="ranking-tab active" data-week="current" type="button">이번 주</button>
+      <button class="ranking-tab" data-week="prev" type="button">지난 주</button>
+    </div>
+    <div class="ranking-body" id="ranking-body">
+      <div class="ranking-loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
 <div class="rps-shell">
-  <a class="back-link" href="/">← 게임 선택</a>
+  <div class="rps-top-bar">
+    <a class="back-link" href="/">← 게임 선택</a>
+    <button class="ranking-btn" id="ranking-btn" type="button">🏆 이번 주 랭킹</button>
+  </div>
   <div class="rps-stage">
     <h1 class="rps-title">가위바위보 대결</h1>
     <p class="rps-sub" id="rps-sub">방을 만들고 코드를 공유해 대결하세요</p>
@@ -195,6 +221,14 @@ app.innerHTML = `
   </div>
 </div>
 `;
+
+// ── Ranking refs ─────────────────────────────────────────────────
+const rankingOverlay = document.getElementById('ranking-overlay')!;
+const rankingClose = document.getElementById('ranking-close') as HTMLButtonElement;
+const rankingBody = document.getElementById('ranking-body')!;
+const rankingWeekEl = document.getElementById('ranking-week')!;
+const rankingBtnEl = document.getElementById('ranking-btn') as HTMLButtonElement;
+const rankingTabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.ranking-tab'));
 
 // ── Refs ──────────────────────────────────────────────────────────
 const panels = {
@@ -853,5 +887,74 @@ winnerQuitBtn.addEventListener('click', () => {
 });
 
 retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAction); });
+
+// ── Ranking popup ─────────────────────────────────────────────────
+const MODE_LABEL: Record<string, string> = { '1v1': '1:1', group: '그룹전', tournament: '토너먼트' };
+const RANK_MEDAL: Record<number, string> = { 0: '🥇', 1: '🥈', 2: '🥉' };
+let rankingPrevWeek = '';
+
+async function fetchAndShowRanking(weekParam: 'current' | 'prev') {
+  rankingOverlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  rankingBody.innerHTML = '<div class="ranking-loading"><div class="spinner"></div></div>';
+
+  const url = weekParam === 'prev' && rankingPrevWeek
+    ? `${RANKING_URL}?week=${encodeURIComponent(rankingPrevWeek)}`
+    : RANKING_URL;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { week: string; entries: any[]; prevWeek: string } = await res.json();
+
+    rankingPrevWeek = data.prevWeek;
+    rankingWeekEl.textContent = data.week;
+
+    if (data.entries.length === 0) {
+      rankingBody.innerHTML = '<p class="ranking-empty">아직 이번 주 기록이 없어요.</p>';
+      return;
+    }
+
+    const rows = data.entries.map((e, i) => {
+      const medal = RANK_MEDAL[i] ?? `${i + 1}`;
+      const breakdown = Object.entries(e.byMode as Record<string, number>)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `<span class="ranking-mode-chip">${MODE_LABEL[k] ?? k} ${v}</span>`)
+        .join('');
+      return `
+        <div class="ranking-row${i < 3 ? ' top' : ''}">
+          <span class="ranking-rank">${medal}</span>
+          <span class="ranking-name">${e.name}</span>
+          <span class="ranking-total">${e.total}점</span>
+          <div class="ranking-chips">${breakdown}</div>
+        </div>`;
+    }).join('');
+
+    rankingBody.innerHTML = rows;
+  } catch {
+    rankingBody.innerHTML = '<p class="ranking-empty">랭킹을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>';
+  }
+}
+
+function closeRanking() {
+  rankingOverlay.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+rankingBtnEl.addEventListener('click', () => {
+  rankingTabBtns.forEach(b => b.classList.toggle('active', b.dataset.week === 'current'));
+  fetchAndShowRanking('current');
+});
+
+rankingClose.addEventListener('click', closeRanking);
+rankingOverlay.addEventListener('click', (e) => { if (e.target === rankingOverlay) closeRanking(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRanking(); });
+
+rankingTabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    rankingTabBtns.forEach(b => b.classList.toggle('active', b === btn));
+    fetchAndShowRanking(btn.dataset.week as 'current' | 'prev');
+  });
+});
 
 setPhase('entry');
