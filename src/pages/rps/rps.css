@@ -68,6 +68,19 @@ button { border: 0; cursor: pointer; }
   letter-spacing: 0.03em;
 }
 
+.cert-hint {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(126,200,248,0.1);
+  border: 1px solid rgba(126,200,248,0.28);
+  color: rgba(207,234,255,0.92);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
 /* ── Panels (entry / waiting / left / error) ─── */
 .rps-panel {
   width: 100%;
@@ -302,6 +315,26 @@ button { border: 0; cursor: pointer; }
 @keyframes hand-pending-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
+}
+
+.chant-text {
+  margin: 0;
+  min-height: 1.3em;
+  font-size: clamp(1.8rem, 8vw, 2.6rem);
+  font-weight: 900;
+  text-align: center;
+  color: #ffe08a;
+  text-shadow: 0 2px 18px rgba(255, 224, 138, 0.35);
+}
+
+.chant-text.pop {
+  animation: chant-pop 380ms ease-out;
+}
+
+@keyframes chant-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  55% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .outcome-banner {

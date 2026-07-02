@@ -19,8 +19,24 @@ function resolveWsUrl(): string {
   return `${protocol}://${location.hostname}:8787/rps`;
 }
 
+// wss://host:port/rps -> https://host:port/healthz, so a self-signed cert
+// exception can be accepted by opening the plain HTTPS endpoint in a tab.
+function resolveHealthzUrl(wsUrl: string): string {
+  try {
+    const httpUrl = wsUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
+    const u = new URL(httpUrl);
+    u.pathname = '/healthz';
+    u.search = '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
 const WS_URL = resolveWsUrl();
+const HEALTHZ_URL = resolveHealthzUrl(WS_URL);
 const NAME_STORAGE_KEY = 'run-hoban-run:rps-nickname';
+const CERT_SEEN_KEY = 'run-hoban-run:rps-cert-seen';
 
 let phase: Phase = 'entry';
 let socket: WebSocket | null = null;
@@ -39,6 +55,11 @@ app.innerHTML = `
       <p class="rps-sub">방을 만들고 코드를 공유해 1:1로 대결하세요</p>
 
       <div class="rps-panel" id="entry-panel">
+        <p class="cert-hint" id="cert-hint">
+          🔒 처음 접속하신다면 방 만들기/참가하기를 누를 때 새 탭이 하나 열립니다.
+          거기서 나오는 보안 경고 화면에서 "고급" → "이동(안전하지 않음)"을 눌러주시면,
+          이후 대결이 정상적으로 연결됩니다.
+        </p>
         <label class="field-label" for="nickname">닉네임</label>
         <input id="nickname" type="text" maxlength="20" placeholder="닉네임을 입력하세요" class="nickname-input" />
 
@@ -85,6 +106,8 @@ app.innerHTML = `
           </div>
         </div>
 
+        <p class="chant-text hidden" id="chant-text"></p>
+
         <div class="arena" id="arena">
           <div class="hand-slot mine" id="my-hand">${hiddenHandIcon()}</div>
           <div class="hand-slot theirs" id="opp-hand">${hiddenHandIcon()}</div>
@@ -127,6 +150,7 @@ const panels = {
   left: document.getElementById('left-panel')!,
   error: document.getElementById('error-panel')!,
 };
+const certHint = document.getElementById('cert-hint')!;
 const nicknameInput = document.getElementById('nickname') as HTMLInputElement;
 const tabCreate = document.getElementById('tab-create') as HTMLButtonElement;
 const tabJoin = document.getElementById('tab-join') as HTMLButtonElement;
@@ -145,6 +169,7 @@ const myNameEl = document.getElementById('my-name')!;
 const oppNameEl = document.getElementById('opp-name')!;
 const myScoreEl = document.getElementById('my-score')!;
 const oppScoreEl = document.getElementById('opp-score')!;
+const chantText = document.getElementById('chant-text')!;
 const myHandEl = document.getElementById('my-hand')!;
 const oppHandEl = document.getElementById('opp-hand')!;
 const outcomeBanner = document.getElementById('outcome-banner')!;
@@ -161,6 +186,16 @@ const errorText = document.getElementById('error-text')!;
 
 // ── Init ──────────────────────────────────────
 nicknameInput.value = localStorage.getItem(NAME_STORAGE_KEY) ?? '';
+if (!HEALTHZ_URL || localStorage.getItem(CERT_SEEN_KEY) === '1') {
+  certHint.classList.add('hidden');
+}
+
+function openCertTabIfNeeded() {
+  if (!HEALTHZ_URL || localStorage.getItem(CERT_SEEN_KEY) === '1') return;
+  window.open(HEALTHZ_URL, '_blank', 'noopener');
+  localStorage.setItem(CERT_SEEN_KEY, '1');
+  certHint.classList.add('hidden');
+}
 
 const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
@@ -202,6 +237,7 @@ function resetArena() {
   oppHandEl.className = 'hand-slot theirs';
   myHandEl.innerHTML = hiddenHandIcon();
   oppHandEl.innerHTML = hiddenHandIcon();
+  chantText.classList.add('hidden');
   outcomeBanner.classList.add('hidden');
   outcomeBanner.className = 'outcome-banner hidden';
   matchActions.classList.add('hidden');
@@ -312,7 +348,7 @@ function handleServerMessage(msg: any) {
       }
       break;
     case 'result':
-      renderResult(msg as ResultMsg);
+      playChantThenReveal(msg as ResultMsg);
       break;
     case 'opponent_left':
       setPhase('opponent-left');
@@ -326,6 +362,38 @@ function handleServerMessage(msg: any) {
     default:
       break;
   }
+}
+
+const CHANT_WORDS = ['가위', '바위', '보!!'];
+const CHANT_STEP_MS = 420;
+
+function playChantThenReveal(msg: ResultMsg) {
+  choiceRow.classList.add('hidden');
+  matchStatus.textContent = '';
+  chantText.textContent = '';
+  chantText.classList.remove('hidden');
+  myHandEl.className = 'hand-slot mine pending';
+  oppHandEl.className = 'hand-slot theirs pending';
+  myHandEl.innerHTML = hiddenHandIcon();
+  oppHandEl.innerHTML = hiddenHandIcon();
+
+  let step = 0;
+  const tick = () => {
+    chantText.textContent = CHANT_WORDS[step];
+    chantText.classList.remove('pop');
+    void chantText.offsetWidth;
+    chantText.classList.add('pop');
+    step++;
+    if (step < CHANT_WORDS.length) {
+      setTimeout(tick, CHANT_STEP_MS);
+    } else {
+      setTimeout(() => {
+        chantText.classList.add('hidden');
+        renderResult(msg);
+      }, CHANT_STEP_MS);
+    }
+  };
+  tick();
 }
 
 function renderResult(msg: ResultMsg) {
@@ -350,6 +418,7 @@ function renderResult(msg: ResultMsg) {
 // ── Events ────────────────────────────────────
 createBtn.addEventListener('click', () => {
   if (!requireName()) return;
+  openCertTabIfNeeded();
   connect({ kind: 'create' });
 });
 
@@ -360,6 +429,7 @@ joinBtn.addEventListener('click', () => {
     showEntryError('방 코드를 입력해주세요.');
     return;
   }
+  openCertTabIfNeeded();
   connect({ kind: 'join', roomCode: code });
 });
 
