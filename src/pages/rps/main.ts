@@ -19,24 +19,8 @@ function resolveWsUrl(): string {
   return `${protocol}://${location.hostname}:8787/rps`;
 }
 
-// wss://host:port/rps -> https://host:port/healthz, so a self-signed cert
-// exception can be accepted by opening the plain HTTPS endpoint in a tab.
-function resolveHealthzUrl(wsUrl: string): string {
-  try {
-    const httpUrl = wsUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
-    const u = new URL(httpUrl);
-    u.pathname = '/healthz';
-    u.search = '';
-    return u.toString();
-  } catch {
-    return '';
-  }
-}
-
 const WS_URL = resolveWsUrl();
-const HEALTHZ_URL = resolveHealthzUrl(WS_URL);
 const NAME_STORAGE_KEY = 'run-hoban-run:rps-nickname';
-const CERT_SEEN_KEY = 'run-hoban-run:rps-cert-seen';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX_ATTEMPTS = 24; // ~48s, matches the server's 45s reconnect grace window
 
@@ -61,11 +45,6 @@ app.innerHTML = `
       <p class="rps-sub">방을 만들고 코드를 공유해 1:1로 대결하세요</p>
 
       <div class="rps-panel" id="entry-panel">
-        <p class="cert-hint" id="cert-hint">
-          🔒 처음 접속하신다면 방 만들기/참가하기를 누를 때 새 탭이 하나 열립니다.
-          거기서 나오는 보안 경고 화면에서 "고급" → "이동(안전하지 않음)"을 눌러주시면,
-          이후 대결이 정상적으로 연결됩니다.
-        </p>
         <label class="field-label" for="nickname">닉네임</label>
         <input id="nickname" type="text" maxlength="20" placeholder="닉네임을 입력하세요" class="nickname-input" />
 
@@ -158,7 +137,6 @@ const panels = {
   left: document.getElementById('left-panel')!,
   error: document.getElementById('error-panel')!,
 };
-const certHint = document.getElementById('cert-hint')!;
 const nicknameInput = document.getElementById('nickname') as HTMLInputElement;
 const tabCreate = document.getElementById('tab-create') as HTMLButtonElement;
 const tabJoin = document.getElementById('tab-join') as HTMLButtonElement;
@@ -195,16 +173,6 @@ const errorText = document.getElementById('error-text')!;
 
 // ── Init ──────────────────────────────────────
 nicknameInput.value = localStorage.getItem(NAME_STORAGE_KEY) ?? '';
-if (!HEALTHZ_URL || localStorage.getItem(CERT_SEEN_KEY) === '1') {
-  certHint.classList.add('hidden');
-}
-
-function openCertTabIfNeeded() {
-  if (!HEALTHZ_URL || localStorage.getItem(CERT_SEEN_KEY) === '1') return;
-  window.open(HEALTHZ_URL, '_blank', 'noopener');
-  localStorage.setItem(CERT_SEEN_KEY, '1');
-  certHint.classList.add('hidden');
-}
 
 const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
@@ -499,7 +467,6 @@ function renderResult(msg: ResultMsg) {
 // ── Events ────────────────────────────────────
 createBtn.addEventListener('click', () => {
   if (!requireName()) return;
-  openCertTabIfNeeded();
   connect({ kind: 'create' });
 });
 
@@ -510,7 +477,6 @@ joinBtn.addEventListener('click', () => {
     showEntryError('방 코드를 입력해주세요.');
     return;
   }
-  openCertTabIfNeeded();
   connect({ kind: 'join', roomCode: code });
 });
 
