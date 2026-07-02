@@ -42,6 +42,8 @@ spec:
                 secretKeyRef:
                   name: firebase-deploy-token
                   key: FIREBASE_TOKEN
+            - name: VITE_RPS_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/rps"
           command:
             - /bin/bash
             - -lc
