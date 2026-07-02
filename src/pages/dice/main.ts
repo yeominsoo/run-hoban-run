@@ -37,6 +37,7 @@ app.innerHTML = `
       <div class="dice-actions">
         <button id="roll-btn" type="button" class="sidebar-action primary">굴리기</button>
         <button id="reroll-btn" type="button" class="sidebar-action secondary hidden">다시 굴리기</button>
+        <button id="save-image-btn" type="button" class="sidebar-action secondary hidden">결과 이미지 저장</button>
         <button id="reset-btn" type="button" class="sidebar-action secondary hidden">새로 입력</button>
       </div>
     </aside>
@@ -55,9 +56,12 @@ const participantInput = document.getElementById('participants') as HTMLTextArea
 const countHint = document.getElementById('count-hint')!;
 const rollBtn = document.getElementById('roll-btn') as HTMLButtonElement;
 const rerollBtn = document.getElementById('reroll-btn') as HTMLButtonElement;
+const saveImageBtn = document.getElementById('save-image-btn') as HTMLButtonElement;
 const resetBtn = document.getElementById('reset-btn') as HTMLButtonElement;
 const resultBar = document.getElementById('result-bar')!;
 const diceGrid = document.getElementById('dice-grid')!;
+
+let lastResult: { participants: string[]; finals: number[]; max: number } | null = null;
 
 // ── Init ──────────────────────────────────────
 participantInput.value = loadParticipants() ?? '';
@@ -121,6 +125,7 @@ function startRoll(participants: string[]) {
   phase = 'rolling';
   participantInput.disabled = true;
   rerollBtn.classList.add('hidden');
+  saveImageBtn.classList.add('hidden');
   resetBtn.classList.add('hidden');
   resultBar.classList.add('hidden');
   updateHint();
@@ -162,8 +167,10 @@ function finishRoll(participants: string[], finals: number[]) {
   phase = 'done';
   participantInput.disabled = false;
   rerollBtn.classList.remove('hidden');
+  saveImageBtn.classList.remove('hidden');
   resetBtn.classList.remove('hidden');
   updateHint();
+  lastResult = { participants, finals, max: maxFor(participants.length) };
 
   const sortedUnique = [...new Set(finals)].sort((a, b) => b - a);
   const rankOf = (v: number) => sortedUnique.indexOf(v) + 1;
@@ -180,6 +187,115 @@ function finishRoll(participants: string[], finals: number[]) {
   const winnerScore = finals[participants.findIndex((_, i) => rankOf(finals[i]) === 1)];
   resultBar.textContent = `🎲 1위: ${winners.join(', ')} (${winnerScore})`;
   resultBar.classList.remove('hidden');
+}
+
+// ── Result image ──────────────────────────────
+function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function buildResultImage(result: { participants: string[]; finals: number[]; max: number }): HTMLCanvasElement {
+  const { participants, finals, max } = result;
+  const sortedUnique = [...new Set(finals)].sort((a, b) => b - a);
+  const rankOf = (v: number) => sortedUnique.indexOf(v) + 1;
+  const order = participants
+    .map((name, i) => ({ name, value: finals[i], rank: rankOf(finals[i]) }))
+    .sort((a, b) => a.rank - b.rank);
+
+  const width = 680;
+  const rowHeight = 60;
+  const headerHeight = 150;
+  const footerHeight = 56;
+  const height = headerHeight + order.length * rowHeight + footerHeight;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+
+  const bg = ctx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, '#132338');
+  bg.addColorStop(1, '#0b1622');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#f0f9ff';
+  ctx.font = '900 34px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('주사위 돌리기 결과', width / 2, 56);
+
+  ctx.font = '700 15px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(232,244,255,0.6)';
+  ctx.fillText(`${participants.length}명 · 주사위 1~${max}`, width / 2, 84);
+
+  const winner = order[0];
+  ctx.font = '800 18px Inter, sans-serif';
+  ctx.fillStyle = '#ffe08a';
+  ctx.fillText(`1위 · ${winner.name} (${winner.value})`, width / 2, 118);
+
+  const listTop = headerHeight;
+  const rowX = 32;
+  const rowW = width - 64;
+
+  order.forEach((entry, i) => {
+    const y = listTop + i * rowHeight;
+    const isFirst = entry.rank === 1;
+
+    ctx.fillStyle = isFirst ? 'rgba(255,214,102,0.14)' : i % 2 === 0 ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.015)';
+    drawRoundedRect(ctx, rowX, y + 6, rowW, rowHeight - 12, 12);
+    ctx.fill();
+    if (isFirst) {
+      ctx.strokeStyle = 'rgba(255,214,102,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    ctx.textAlign = 'left';
+    ctx.font = '800 20px Inter, sans-serif';
+    ctx.fillStyle = isFirst ? '#ffe08a' : 'rgba(126,200,248,0.9)';
+    ctx.fillText(`${entry.rank}위`, rowX + 18, y + rowHeight / 2 + 7);
+
+    ctx.font = '700 19px Inter, sans-serif';
+    ctx.fillStyle = isFirst ? '#fff4d6' : '#eaf6ff';
+    ctx.fillText(entry.name, rowX + 90, y + rowHeight / 2 + 7);
+
+    ctx.textAlign = 'right';
+    ctx.font = '900 22px Inter, sans-serif';
+    ctx.fillStyle = isFirst ? '#ffe08a' : '#eaf6ff';
+    ctx.fillText(String(entry.value), rowX + rowW - 20, y + rowHeight / 2 + 7);
+  });
+
+  ctx.textAlign = 'center';
+  ctx.font = '600 12px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(232,244,255,0.4)';
+  const timestamp = new Date().toLocaleString('ko-KR');
+  ctx.fillText(`Toris Arcade · 주사위 돌리기 · ${timestamp}`, width / 2, height - 22);
+
+  return canvas;
+}
+
+function downloadResultImage() {
+  if (!lastResult) return;
+  const canvas = buildResultImage(lastResult);
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.href = url;
+    a.download = `주사위결과-${stamp}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
 }
 
 // ── Events ────────────────────────────────────
@@ -209,11 +325,15 @@ rerollBtn.addEventListener('click', () => {
   startRoll(participants);
 });
 
+saveImageBtn.addEventListener('click', downloadResultImage);
+
 resetBtn.addEventListener('click', () => {
   clearTimers();
   phase = 'idle';
+  lastResult = null;
   participantInput.disabled = false;
   rerollBtn.classList.add('hidden');
+  saveImageBtn.classList.add('hidden');
   resetBtn.classList.add('hidden');
   resultBar.classList.add('hidden');
   diceGrid.innerHTML = '<p class="empty-hint" id="empty-hint">참가자를 입력하고 굴리기를 눌러보세요</p>';
