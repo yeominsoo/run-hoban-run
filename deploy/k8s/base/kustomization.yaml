@@ -1,5 +1,3 @@
 resources:
   - deployment.yaml
   - service.yaml
-  - ws-deployment.yaml
-  - ws-service.yaml
