@@ -18,25 +18,25 @@ src/
   ui/              # DOM 화면 골격 및 쿼리 헬퍼
     app-shell.ts
   assets/          # 코드에서 참조하는 정적 에셋 메타데이터
-  pages/           # 레이스 외 게임(hub/team/dice/rps/liar)의 멀티페이지 진입점
+  pages/           # 레이스 외 게임(hub/team/dice/rps/liar/mafia)의 멀티페이지 진입점
   shared/          # 페이지 간 공용 유틸 (시드 RNG, 참가자 파싱 등)
 public/assets/     # 브라우저에 직접 제공되는 GLB 등 정적 파일
-race/, team/, dice/, rps/, liar/  # 각 게임의 index.html (Vite 멀티페이지 입력)
-ws-server/         # 가위바위보(/rps, 1v1/배틀로얄/토너먼트) + 라이어게임(/liar) WebSocket 서버 (Node, 별도 배포 필요)
+race/, team/, dice/, rps/, liar/, mafia/  # 각 게임의 index.html (Vite 멀티페이지 입력)
+ws-server/         # 가위바위보(/rps, 1v1/배틀로얄/토너먼트) + 라이어게임(/liar) + 마피아게임(/mafia) WebSocket 서버 (Node, 별도 배포 필요)
 tests/             # Playwright 룰/렌더 검증
 docs/              # 기획 및 설계 문서
 ```
 
-`race`, `team`, `dice`는 정적 파일만으로 동작하지만 `rps`, `liar`는 항상 켜져 있는
-WebSocket 서버(`ws-server/`, 같은 Node 프로세스가 `/rps`·`/liar` 두 경로를 함께 서비스)가 필요하다.
-**`ws-server/README.md`가 실제 배포 상태(WAS 구조, 재배포 절차, 프로토콜)의 단일 진실 공급원이다 —
-`/rps`, `/liar`나 WAS를 건드리기 전에 반드시 먼저 읽을 것.** 이 저장소는 여러 세션이 `/rps`를
-동시에 작업한 적이 있으니, 작업 전 `git fetch && git log origin/master --oneline -10`으로 다른
-세션의 커밋이 없는지 확인하는 습관을 들일 것.
+`race`, `team`, `dice`는 정적 파일만으로 동작하지만 `rps`, `liar`, `mafia`는 항상 켜져 있는
+WebSocket 서버(`ws-server/`, 같은 Node 프로세스가 `/rps`·`/liar`·`/mafia` 세 경로를 함께
+서비스)가 필요하다. **`ws-server/README.md`가 실제 배포 상태(WAS 구조, 재배포 절차, 프로토콜)의
+단일 진실 공급원이다 — 이 세 경로나 WAS를 건드리기 전에 반드시 먼저 읽을 것.** 이 저장소는 여러
+세션이 `/rps`를 동시에 작업한 적이 있으니, 작업 전 `git fetch && git log origin/master --oneline
+-10`으로 다른 세션의 커밋이 없는지 확인하는 습관을 들일 것.
 
-**파티게임 확장 작업 중(라이어게임 → 마피아게임 → 할리갈리, 한 개씩 순서대로) — 현재 라이어게임까지
-완료.** 마피아게임부터 이어받으려면 `docs/party-games-handoff-2026-07-03.md`를 먼저 읽을 것
-(재사용 패턴, 새 WS 게임/정적 페이지 추가 체크리스트, 마피아/할리갈리 확정 요구사항 포함).
+**파티게임 확장 작업 중(라이어게임 → 마피아게임 → 할리갈리, 한 개씩 순서대로) — 현재 라이어게임·
+마피아게임까지 완료.** 할리갈리부터 이어받으려면 `docs/party-games-handoff-2026-07-03.md`를
+먼저 읽을 것(재사용 패턴, 새 WS 게임/정적 페이지 추가 체크리스트, 할리갈리 확정 요구사항 포함).
 
 ## 개발 명령어
 
