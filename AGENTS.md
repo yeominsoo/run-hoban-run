@@ -22,13 +22,16 @@ src/
   shared/          # 페이지 간 공용 유틸 (시드 RNG, 참가자 파싱 등)
 public/assets/     # 브라우저에 직접 제공되는 GLB 등 정적 파일
 race/, team/, dice/, rps/  # 각 게임의 index.html (Vite 멀티페이지 입력)
-ws-server/         # 가위바위보(/rps) 1:1 매칭용 WebSocket 서버 (Node, 별도 배포 필요)
+ws-server/         # 가위바위보(/rps, 1v1/그룹전/토너먼트) WebSocket 서버 (Node, 별도 배포 필요)
 tests/             # Playwright 룰/렌더 검증
 docs/              # 기획 및 설계 문서
 ```
 
 `race`, `team`, `dice`는 정적 파일만으로 동작하지만 `rps`는 항상 켜져 있는
-WebSocket 서버(`ws-server/`)가 필요하다. 자세한 배포 절차는 `ws-server/README.md` 참고.
+WebSocket 서버(`ws-server/`)가 필요하다. **`ws-server/README.md`가 실제 배포 상태(WAS 구조,
+재배포 절차, 프로토콜)의 단일 진실 공급원이다 — `/rps`나 WAS를 건드리기 전에 반드시 먼저 읽을 것.**
+이 저장소는 여러 세션이 `/rps`를 동시에 작업한 적이 있으니, 작업 전 `git fetch && git log
+origin/master --oneline -10`으로 다른 세션의 커밋이 없는지 확인하는 습관을 들일 것.
 
 ## 개발 명령어
 
