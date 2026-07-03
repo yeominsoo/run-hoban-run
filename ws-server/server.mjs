@@ -298,11 +298,16 @@ function startTournamentRound(roomCode) {
   broadcastTournamentState(room, roomCode);
 }
 
+// 다음 라운드로 넘어가기 전 대기 시간. 클라이언트의 가위-바위-보 콜 애니메이션(~1.3초)보다
+// 짧으면, 마지막에 세트를 끝낸 대진의 플레이어는 자기 결과 화면(set_over)이 채 뜨기도 전에
+// 다음 라운드로 넘어가버리는 것처럼 보인다 — 실제로 이 값이 짧아서 생긴 버그였다.
+const ROUND_ADVANCE_DELAY_MS = 2600;
+
 function checkTournamentRound(roomCode) {
   const room = rooms.get(roomCode);
   if (!room || room.activePairs.length > 0) return;
   // All pairs in this round resolved → start next round
-  setTimeout(() => startTournamentRound(roomCode), 1500);
+  setTimeout(() => startTournamentRound(roomCode), ROUND_ADVANCE_DELAY_MS);
 }
 
 function broadcastTournamentState(room, roomCode) {
@@ -400,7 +405,7 @@ function checkGroupRound(roomCode) {
 
   setTimeout(() => {
     if (rooms.has(roomCode)) broadcastGroupRoundOver(roomCode);
-  }, 1000);
+  }, ROUND_ADVANCE_DELAY_MS);
 }
 
 function broadcastGroupScores(room) {
