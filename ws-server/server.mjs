@@ -298,10 +298,10 @@ function startTournamentRound(roomCode) {
   broadcastTournamentState(room, roomCode);
 }
 
-// 다음 라운드로 넘어가기 전 대기 시간. 클라이언트의 가위-바위-보 콜 애니메이션(~1.3초)보다
-// 짧으면, 마지막에 세트를 끝낸 대진의 플레이어는 자기 결과 화면(set_over)이 채 뜨기도 전에
-// 다음 라운드로 넘어가버리는 것처럼 보인다 — 실제로 이 값이 짧아서 생긴 버그였다.
-const ROUND_ADVANCE_DELAY_MS = 2600;
+// 다음 라운드로 넘어가기 전 대기 시간. 클라이언트는 마지막 판의 콜 애니메이션(~1.3초) +
+// 리빌 유지시간(REVEAL_HOLD_MS, 1초) 이후에야 set_over 화면을 띄우므로, 그 전에 다음
+// 라운드가 시작되면 set_over 화면이 뜨기도 전에 다음 라운드로 넘어가버리는 것처럼 보인다.
+const ROUND_ADVANCE_DELAY_MS = 4200;
 
 function checkTournamentRound(roomCode) {
   const room = rooms.get(roomCode);
@@ -535,13 +535,28 @@ wss.on('connection', (ws) => {
       const roomCode = sanitizeRoomCode(msg.roomCode);
       const room = rooms.get(roomCode);
       if (!room) { send(ws, { type: 'error', message: '방을 찾을 수 없습니다.' }); return; }
-      if (room.players.length >= room.capacity) { send(ws, { type: 'error', message: '인원이 가득 찬 방입니다.' }); return; }
       if (room.started) { send(ws, { type: 'error', message: '이미 시작된 게임입니다.' }); return; }
+
+      // 토큰(localStorage 세션)을 잃어버려 rejoin 대신 새로 join하는 경우, 같은 이름의
+      // 끊긴 플레이어가 로비에 유령처럼 남아있지 않도록 정리한다 — 안 그러면 재입장할 때마다
+      // 로비 목록에 같은 이름이 중복으로 쌓인다.
+      const staleIndex = room.players.findIndex(p => !p.ws && p.name === name);
+      let inheritsHost = false;
+      if (staleIndex !== -1) {
+        const stale = room.players[staleIndex];
+        clearDisconnectTimer(room, stale.token);
+        room.players.splice(staleIndex, 1);
+        room.setScores.delete(stale.token);
+        inheritsHost = room.hostToken === stale.token;
+      }
+
+      if (room.players.length >= room.capacity) { send(ws, { type: 'error', message: '인원이 가득 찬 방입니다.' }); return; }
 
       const token = randomUUID();
       room.players.push({ token, name, ws });
       room.setScores.set(token, 0);
       wsIdentity.set(ws, { roomCode, token });
+      if (inheritsHost) room.hostToken = token;
 
       if (room.mode === '1v1') {
         const [host, guest] = room.players;
@@ -692,9 +707,15 @@ wss.on('connection', (ws) => {
     const player = playerByToken(room, identity.token);
     if (player) player.ws = null;
 
-    const others = room.players.filter(p => p.token !== identity.token);
-    for (const p of others) {
-      if (p.ws) send(p.ws, { type: 'opponent_disconnected' });
+    if (!room.started) {
+      // 로비 대기 중 끊김은 매치 중 끊김과 달리 다른 대기자들에게 실시간으로 보여줘야 한다
+      // (연결 끊김 배지). opponent_disconnected는 진행 중인 매치 전용 메시지라 로비에는 안 온다.
+      broadcastLobbyUpdate(room, identity.roomCode);
+    } else {
+      const others = room.players.filter(p => p.token !== identity.token);
+      for (const p of others) {
+        if (p.ws) send(p.ws, { type: 'opponent_disconnected' });
+      }
     }
     scheduleDisconnectCleanup(identity.roomCode, identity.token);
   });

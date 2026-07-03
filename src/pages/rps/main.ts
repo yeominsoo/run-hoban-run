@@ -67,6 +67,14 @@ let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
 // 다른 곳으로 넘어갔으면(세대 번호가 달라졌으면) 조용히 무시한다. tournament_state/
 // group_scores처럼 화면을 안 바꾸는 순수 정보성 브로드캐스트는 세대를 올리지 않는다.
 let messageGeneration = 0;
+// 세트를 끝내는 판이면 서버가 'result' 바로 뒤에 'set_over'를(그룹 우승 조건까지 달성했다면
+// 'group_over'까지) 지연 없이 곧장 보낸다. 예전에는 그 즉시 화면을 넘겨버려서, 정작 승부가
+// 갈리는 마지막 판에는 가위-바위-보!! 리빌 애니메이션을 아예 못 보고 화면이 훅 넘어가는
+// 것처럼 느껴졌다("도중에 게임이 넘어간다"는 제보의 원인). 리빌이 재생 중일 때 도착한
+// set_over/group_over는 큐에 쌓아뒀다가, 리빌이 끝난 뒤 잠깐 더 보여주고 나서 순서대로 처리한다.
+let chantInProgress = false;
+let deferredMessages: any[] = [];
+const REVEAL_HOLD_MS = 1000;
 const WINS_TO_SET = 2;
 const AUTO_ADVANCE_MS = 1800;
 
@@ -693,25 +701,13 @@ function handleServerMessage(msg: any) {
       opponentStatus.classList.add('hidden');
       matchWins = { you: msg.matchWins?.you ?? 0, opponent: msg.matchWins?.opponent ?? 0 };
       setScore = { you: msg.setScore?.you ?? setScore.you, opponent: msg.setScore?.opponent ?? setScore.opponent };
+      chantInProgress = true;
       playChantThenReveal(msg, messageGeneration);
       break;
 
     case 'set_over':
-      setScore = { you: msg.setScore?.you ?? setScore.you, opponent: msg.setScore?.opponent ?? setScore.opponent };
-      matchWins = { you: 0, opponent: 0 };
-      setOverResult.textContent = msg.youWon ? '🏆 세트 승리!' : '😞 세트 패배';
-      setOverResult.className = 'set-over-result ' + (msg.youWon ? 'win' : 'lose');
-      setOverScore.textContent = `${myName} ${setScore.you} : ${setScore.opponent} ${opponentName}`;
-      // Hide next-set in tournament/group (match_start will come automatically)
-      nextSetBtn.classList.toggle('hidden', roomMode !== '1v1');
-      setLeaveBtn.classList.toggle('hidden', roomMode !== '1v1');
-      if (roomMode !== '1v1') {
-        const waiting = document.createElement('p');
-        waiting.className = 'status-text';
-        waiting.textContent = '다음 대진을 기다리는 중…';
-        panels.setOver.appendChild(waiting);
-      }
-      setPhase('set_over');
+      if (chantInProgress) deferredMessages.push(msg);
+      else applySetOver(msg);
       break;
 
     case 'tournament_state':
@@ -753,20 +749,10 @@ function handleServerMessage(msg: any) {
       setPhase('tournament_winner');
       break;
 
-    case 'group_over': {
-      const s = (msg.scores as any[]).map((p: any, i: number) =>
-        `<div class="scores-row${i === 0 ? ' top' : ''}"><span class="rank">${i + 1}위</span><span>${p.name}</span><span>${p.sets}점</span></div>`
-      ).join('');
-      winnerText.textContent = msg.winnerName ? `🏆 ${msg.winnerName} 우승!` : '🏁 그룹전 종료';
-      winnerSub.textContent = '최종 점수';
-      panels.winner.querySelector('.scores-list')?.remove();
-      const sl = document.createElement('div');
-      sl.className = 'scores-list';
-      sl.innerHTML = s;
-      panels.winner.insertBefore(sl, winnerSub.nextSibling);
-      setPhase('group_over');
+    case 'group_over':
+      if (chantInProgress) deferredMessages.push(msg);
+      else applyGroupOver(msg);
       break;
-    }
 
     case 'guest_left':
       // 1v1: guest left, room persists, host waits for new player
@@ -910,6 +896,17 @@ function renderResult(msg: any) {
 
   choiceRow.classList.add('hidden');
   matchStatus.textContent = '';
+  setPhase('result');
+  chantInProgress = false;
+
+  if (deferredMessages.length) {
+    // 승부가 갈린 마지막 판: 리빌을 잠깐 더 보여준 뒤, 밀려있던 set_over/group_over를 순서대로 처리한다.
+    const queue = deferredMessages;
+    deferredMessages = [];
+    setTimeout(() => processDeferredQueue(queue), REVEAL_HOLD_MS);
+    return;
+  }
+
   if (roomMode === '1v1') {
     matchActions.classList.remove('hidden');
   } else {
@@ -926,7 +923,47 @@ function renderResult(msg: any) {
       }
     }, AUTO_ADVANCE_MS);
   }
-  setPhase('result');
+}
+
+function processDeferredQueue(queue: any[]) {
+  const [next, ...rest] = queue;
+  if (!next) return;
+  if (next.type === 'set_over') applySetOver(next);
+  else if (next.type === 'group_over') applyGroupOver(next);
+  if (rest.length) setTimeout(() => processDeferredQueue(rest), REVEAL_HOLD_MS);
+}
+
+function applySetOver(msg: any) {
+  setScore = { you: msg.setScore?.you ?? setScore.you, opponent: msg.setScore?.opponent ?? setScore.opponent };
+  matchWins = { you: 0, opponent: 0 };
+  setOverResult.textContent = msg.youWon ? '🏆 세트 승리!' : '😞 세트 패배';
+  setOverResult.className = 'set-over-result ' + (msg.youWon ? 'win' : 'lose');
+  setOverScore.textContent = `${myName} ${setScore.you} : ${setScore.opponent} ${opponentName}`;
+  // Hide next-set in tournament/group (match_start will come automatically)
+  nextSetBtn.classList.toggle('hidden', roomMode !== '1v1');
+  setLeaveBtn.classList.toggle('hidden', roomMode !== '1v1');
+  panels.setOver.querySelectorAll('.set-over-waiting-note').forEach((el) => el.remove());
+  if (roomMode !== '1v1') {
+    const waiting = document.createElement('p');
+    waiting.className = 'status-text set-over-waiting-note';
+    waiting.textContent = '다음 대진을 기다리는 중…';
+    panels.setOver.appendChild(waiting);
+  }
+  setPhase('set_over');
+}
+
+function applyGroupOver(msg: any) {
+  const s = (msg.scores as any[]).map((p: any, i: number) =>
+    `<div class="scores-row${i === 0 ? ' top' : ''}"><span class="rank">${i + 1}위</span><span>${p.name}</span><span>${p.sets}점</span></div>`
+  ).join('');
+  winnerText.textContent = msg.winnerName ? `🏆 ${msg.winnerName} 우승!` : '🏁 그룹전 종료';
+  winnerSub.textContent = '최종 점수';
+  panels.winner.querySelector('.scores-list')?.remove();
+  const sl = document.createElement('div');
+  sl.className = 'scores-list';
+  sl.innerHTML = s;
+  panels.winner.insertBefore(sl, winnerSub.nextSibling);
+  setPhase('group_over');
 }
 
 // ── Events ────────────────────────────────────────────────────────
