@@ -6,3 +6,4 @@ playwright-report/
 .env
 .idea/
 output/
+ws-server/data/

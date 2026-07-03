@@ -216,6 +216,9 @@ function resolvePair(roomCode, t1, t2) {
   if (p1?.ws) sendResult(p1.ws, c1, c2, o1, w1, w2, room.setScores.get(t1) || 0, room.setScores.get(t2) || 0);
   if (p2?.ws) sendResult(p2.ws, c2, c1, o2, w2, w1, room.setScores.get(t2) || 0, room.setScores.get(t1) || 0);
 
+  // 다른 조가 대기 중일 때 실시간 진행 현황을 볼 수 있도록, 세트가 끝나지 않아도 매 판마다 갱신해서 뿌린다.
+  if (room.mode === 'group') broadcastGroupScores(room);
+
   // Check set (best-of-3) completion
   const setWinner = w1 >= WINS_TO_SET ? t1 : w2 >= WINS_TO_SET ? t2 : null;
   if (setWinner) {
@@ -241,6 +244,8 @@ function resolvePair(roomCode, t1, t2) {
     } else if (room.mode === 'group') {
       // Track round result; pair completes this round
       room.activePairs = room.activePairs.filter(([a, b]) => !(a === t1 && b === t2) && !(a === t2 && b === t1));
+      // 방금 세트를 끝낸 플레이어들이 대기 화면에 들어가자마자 남은 조들의 현재 상황을 바로 볼 수 있도록.
+      broadcastGroupScores(room);
       checkGroupRound(roomCode);
     }
     // 1v1: pair stays active; players click "다음 세트" independently
@@ -376,8 +381,26 @@ function checkGroupRound(roomCode) {
 function broadcastGroupScores(room) {
   const scores = room.players.map(p => ({ name: p.name, sets: room.setScores.get(p.token) || 0, token: p.token }))
     .sort((a, b) => b.sets - a.sets);
+
+  // 지금 진행 중인 다른 조들의 실시간 세트 스코어
+  const activeMatches = room.activePairs.map(([t1, t2]) => {
+    const p1 = playerByToken(room, t1);
+    const p2 = playerByToken(room, t2);
+    const mw = getMatchWins(room, t1, t2);
+    return {
+      p1Name: p1?.name ?? '?',
+      p2Name: p2?.name ?? '?',
+      p1Wins: mw.get(t1) || 0,
+      p2Wins: mw.get(t2) || 0,
+    };
+  });
+
+  // 이번 라운드에 아직 안 뛰거나(부전승) 이미 끝낸 사람들
+  const activeTokens = new Set(room.activePairs.flat());
+  const waiting = room.players.filter(p => p.ws && !activeTokens.has(p.token)).map(p => p.name);
+
   for (const p of room.players) {
-    if (p.ws) send(p.ws, { type: 'group_scores', scores, round: room.round, yourToken: p.token });
+    if (p.ws) send(p.ws, { type: 'group_scores', scores, round: room.round, yourToken: p.token, activeMatches, waiting });
   }
 }
 
@@ -515,12 +538,14 @@ wss.on('connection', (ws) => {
 
       if (room.mode === '1v1') {
         const opponent = room.players.find(p => p.token !== token);
+        const mw = opponent ? getMatchWins(room, token, opponent.token) : null;
         send(ws, {
           type: 'rejoined',
           roomCode, token, mode: '1v1',
           opponentName: opponent ? opponent.name : null,
           opponentConnected: !!(opponent?.ws),
           score: { you: room.setScores.get(token) || 0, opponent: opponent ? room.setScores.get(opponent.token) || 0 : 0 },
+          matchWins: opponent ? { you: mw.get(token) || 0, opponent: mw.get(opponent.token) || 0 } : { you: 0, opponent: 0 },
         });
         if (opponent?.ws) send(opponent.ws, { type: 'opponent_reconnected' });
       } else {
@@ -532,7 +557,14 @@ wss.on('connection', (ws) => {
           if (pair) {
             const oppToken = pair[0] === token ? pair[1] : pair[0];
             const opp = playerByToken(room, oppToken);
-            send(ws, { type: 'match_start', opponentName: opp?.name || '?', round: room.round, isGroupMode: room.mode === 'group' });
+            const mw = getMatchWins(room, token, oppToken);
+            send(ws, {
+              type: 'match_start',
+              opponentName: opp?.name || '?',
+              round: room.round,
+              isGroupMode: room.mode === 'group',
+              matchWins: { you: mw.get(token) || 0, opponent: mw.get(oppToken) || 0 },
+            });
           } else if (room.byeTokens?.includes(token)) {
             send(ws, { type: 'bye', round: room.round });
           }

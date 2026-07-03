@@ -22,8 +22,27 @@ const RANKING_URL = WS_URL
   .replace(/\/rps$/, '/ranking');
 
 const NAME_KEY = 'run-hoban-run:rps-nickname';
+const SESSION_KEY = 'run-hoban-run:rps-session';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX = 24;
+
+interface SavedSession { roomCode: string; token: string; name: string; mode: Mode; }
+
+function saveSession() {
+  if (!myToken || !roomCode) return;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, token: myToken, name: myName, mode: roomMode }));
+  } catch { /* storage unavailable */ }
+}
+function loadSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* storage unavailable */ }
+}
 
 let phase: Phase = 'entry';
 let socket: WebSocket | null = null;
@@ -40,7 +59,9 @@ let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let matchWins = { you: 0, opponent: 0 };
 let setScore = { you: 0, opponent: 0 };
+let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
 const WINS_TO_SET = 2;
+const AUTO_ADVANCE_MS = 1800;
 
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
@@ -74,6 +95,14 @@ app.innerHTML = `
 
     <!-- Entry -->
     <div class="rps-panel" id="entry-panel">
+      <div class="resume-banner hidden" id="resume-banner">
+        <p class="status-text" id="resume-text">이전에 참여하던 대결이 있어요.</p>
+        <div class="resume-actions">
+          <button id="resume-btn" type="button" class="rps-btn primary">재입장하기</button>
+          <button id="resume-dismiss-btn" type="button" class="rps-btn secondary">새로 시작</button>
+        </div>
+      </div>
+
       <label class="field-label" for="nickname">닉네임</label>
       <input id="nickname" type="text" maxlength="20" placeholder="닉네임을 입력하세요" class="nickname-input" />
 
@@ -182,12 +211,14 @@ app.innerHTML = `
       <p class="status-text" id="set-over-score"></p>
       <button id="next-set-btn" type="button" class="rps-btn primary">다음 세트</button>
       <button id="set-leave-btn" type="button" class="rps-btn secondary">그만하기</button>
+      <div class="live-status hidden" id="set-over-live-status"></div>
     </div>
 
     <!-- Bye (tournament) -->
     <div class="rps-panel hidden" id="bye-panel">
       <p class="set-over-result">🎉 부전승!</p>
       <p class="status-text" id="bye-status">이번 라운드는 쉬어가세요. 다음 라운드를 기다리는 중…</p>
+      <div class="live-status hidden" id="bye-live-status"></div>
     </div>
 
     <!-- Round over (group) -->
@@ -244,6 +275,10 @@ const panels = {
   error: document.getElementById('error-panel')!,
 };
 
+const resumeBanner = document.getElementById('resume-banner')!;
+const resumeText = document.getElementById('resume-text')!;
+const resumeBtn = document.getElementById('resume-btn') as HTMLButtonElement;
+const resumeDismissBtn = document.getElementById('resume-dismiss-btn') as HTMLButtonElement;
 const nicknameInput = document.getElementById('nickname') as HTMLInputElement;
 const tabCreate = document.getElementById('tab-create') as HTMLButtonElement;
 const tabJoin = document.getElementById('tab-join') as HTMLButtonElement;
@@ -295,6 +330,8 @@ const nextSetBtn = document.getElementById('next-set-btn') as HTMLButtonElement;
 const setLeaveBtn = document.getElementById('set-leave-btn') as HTMLButtonElement;
 
 const byeStatus = document.getElementById('bye-status')!;
+const setOverLiveStatus = document.getElementById('set-over-live-status')!;
+const byeLiveStatus = document.getElementById('bye-live-status')!;
 
 const roundOverTitle = document.getElementById('round-over-title')!;
 const roundScores = document.getElementById('round-scores')!;
@@ -319,6 +356,15 @@ const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
   roomCodeInput.value = roomFromUrl.trim().toUpperCase().slice(0, 6);
   setTab('join');
+}
+
+// 실수로 탭을 새로고침/닫아서 소켓이 끊긴 경우, 토큰이 메모리에서만 있으면 사라져서
+// 다시 들어가려 해도 "방이 가득 찼습니다"만 뜨게 된다. localStorage에 저장해두고
+// 재입장을 제안한다.
+const resumableSession = loadSession();
+if (resumableSession) {
+  resumeText.textContent = `"${resumableSession.name}"님으로 참여하던 방(${resumableSession.roomCode})이 있어요. 다시 들어가시겠어요?`;
+  resumeBanner.classList.remove('hidden');
 }
 
 let selectedMode: Mode = '1v1';
@@ -502,6 +548,7 @@ function leaveRoom() {
   roomCode = '';
   matchWins = { you: 0, opponent: 0 };
   setScore = { you: 0, opponent: 0 };
+  clearSession();
   setPhase('entry');
 }
 
@@ -585,7 +632,7 @@ function handleServerMessage(msg: any) {
       roomMode = msg.mode ?? '1v1';
       if (roomMode === '1v1') {
         if (msg.opponentName) {
-          matchWins = { you: 0, opponent: 0 };
+          matchWins = { you: msg.matchWins?.you ?? 0, opponent: msg.matchWins?.opponent ?? 0 };
           setScore = { you: msg.score?.you ?? 0, opponent: msg.score?.opponent ?? 0 };
           enterMatch(msg.opponentName);
           if (!msg.opponentConnected) {
@@ -612,7 +659,7 @@ function handleServerMessage(msg: any) {
       break;
 
     case 'match_start':
-      matchWins = { you: 0, opponent: 0 };
+      matchWins = msg.matchWins ?? { you: 0, opponent: 0 };
       enterMatch(msg.opponentName, msg.round);
       break;
 
@@ -668,8 +715,10 @@ function handleServerMessage(msg: any) {
       break;
 
     case 'group_scores': {
-      // If we're in round_over, update the scores
+      // If we're in round_over, update the standings
       if (phase === 'round_over') renderGroupScores(msg.scores, msg.round, msg.yourToken);
+      // While waiting between rounds (set just finished / bye), show other pairs' live progress
+      renderLiveStatus(msg.activeMatches, msg.waiting);
       break;
     }
 
@@ -729,22 +778,59 @@ function handleServerMessage(msg: any) {
     case 'opponent_left':
       leftText.textContent = '상대방이 나갔습니다.';
       newRoomBtn.classList.remove('hidden');
+      clearSession();
       setPhase('opponent-left');
       break;
 
     case 'error':
       if (phase === 'reconnecting') {
         showError(msg.message ?? '재연결에 실패했습니다.');
+        clearSession();
       } else {
         showEntryError(msg.message ?? '방에 참가할 수 없습니다.');
         socket?.close();
         socket = null;
+        // 재입장(rejoin) 시도가 실패한 거라면, 더 이상 유효하지 않은 세션이니 지운다.
+        if (pendingAction?.kind === 'rejoin') clearSession();
         setPhase('entry');
       }
       break;
 
     default:
       break;
+  }
+
+  if (myToken && roomCode) saveSession();
+}
+
+function renderLiveStatus(
+  activeMatches: { p1Name: string; p2Name: string; p1Wins: number; p2Wins: number }[] | undefined,
+  waiting: string[] | undefined
+) {
+  if (roomMode !== 'group') return;
+
+  const hasActive = Boolean(activeMatches && activeMatches.length);
+  const hasWaiting = Boolean(waiting && waiting.length);
+  if (!hasActive && !hasWaiting) {
+    setOverLiveStatus.classList.add('hidden');
+    byeLiveStatus.classList.add('hidden');
+    return;
+  }
+
+  const rows = [
+    ...(activeMatches ?? []).map(
+      (m) => `<div class="live-status-row"><span>${m.p1Name} vs ${m.p2Name}</span><span class="live-status-score">${m.p1Wins} : ${m.p2Wins}</span></div>`
+    ),
+    ...(waiting ?? []).map((name) => `<div class="live-status-row waiting"><span>${name}</span><span class="live-status-score">대기 중</span></div>`),
+  ].join('');
+  const html = `<p class="live-status-title">다른 조 진행 현황</p>${rows}`;
+
+  if (phase === 'set_over') {
+    setOverLiveStatus.innerHTML = html;
+    setOverLiveStatus.classList.remove('hidden');
+  } else if (phase === 'bye') {
+    byeLiveStatus.innerHTML = html;
+    byeLiveStatus.classList.remove('hidden');
   }
 }
 
@@ -804,12 +890,44 @@ function renderResult(msg: any) {
 
   choiceRow.classList.add('hidden');
   matchStatus.textContent = '';
-  // In group/tournament, after result wait for set_over or next match_start
-  if (roomMode === '1v1') matchActions.classList.remove('hidden');
+  if (roomMode === '1v1') {
+    matchActions.classList.remove('hidden');
+  } else {
+    // 그룹전/토너먼트는 세트가 끝나지 않은 개별 판마다 "다음 판" 버튼이 없어서,
+    // 결과를 잠깐 보여준 뒤 자동으로 다음 판 선택 화면으로 넘어간다.
+    // set_over/round_over 등 다른 메시지가 먼저 phase를 바꿔놨다면 되돌리지 않는다.
+    if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+    autoAdvanceTimer = setTimeout(() => {
+      autoAdvanceTimer = null;
+      if (phase === 'result') {
+        resetArena();
+        matchStatus.textContent = '낼 것을 골라주세요';
+        setPhase('choosing');
+      }
+    }, AUTO_ADVANCE_MS);
+  }
   setPhase('result');
 }
 
 // ── Events ────────────────────────────────────────────────────────
+resumeBtn.addEventListener('click', () => {
+  const s = loadSession();
+  if (!s) { resumeBanner.classList.add('hidden'); return; }
+  myName = s.name;
+  nicknameInput.value = s.name;
+  localStorage.setItem(NAME_KEY, s.name);
+  roomCode = s.roomCode;
+  myToken = s.token;
+  roomMode = s.mode;
+  resumeBanner.classList.add('hidden');
+  connect({ kind: 'rejoin' });
+});
+
+resumeDismissBtn.addEventListener('click', () => {
+  clearSession();
+  resumeBanner.classList.add('hidden');
+});
+
 createBtn.addEventListener('click', () => {
   if (!requireName()) return;
   const capacity = Math.min(Math.max(Number(capacityInput.value) || 4, 2), 16);
@@ -869,6 +987,7 @@ newRoomBtn.addEventListener('click', () => {
   roomCode = '';
   matchWins = { you: 0, opponent: 0 };
   setScore = { you: 0, opponent: 0 };
+  clearSession();
   connect({ kind: 'create', mode: '1v1', capacity: 2 });
 });
 
@@ -878,6 +997,7 @@ quitBtn.addEventListener('click', () => {
   socket = null;
   myToken = null;
   roomCode = '';
+  clearSession();
   setPhase('entry');
 });
 
@@ -887,6 +1007,7 @@ winnerQuitBtn.addEventListener('click', () => {
   socket = null;
   myToken = null;
   roomCode = '';
+  clearSession();
   setPhase('entry');
 });
 
