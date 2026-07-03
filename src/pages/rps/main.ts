@@ -1,11 +1,12 @@
 import './rps.css';
 import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from './hand-icons';
 
-type Mode = '1v1' | 'group' | 'tournament';
+type Mode = '1v1' | 'battle' | 'tournament';
 type Phase =
   | 'entry' | 'connecting' | 'hosting' | 'lobby'
   | 'choosing' | 'result' | 'set_over' | 'bye'
-  | 'round_over' | 'tournament_winner' | 'group_over'
+  | 'battle_choosing' | 'battle_reveal' | 'battle_spectate'
+  | 'tournament_winner' | 'battle_over'
   | 'reconnecting' | 'opponent-left' | 'error';
 
 type PendingAction = { kind: 'create'; mode: Mode; capacity: number } | { kind: 'join'; roomCode: string } | { kind: 'rejoin' };
@@ -64,14 +65,15 @@ let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
 // 보낸다. 'result'의 가위-바위-보 콜 애니메이션은 ~1.3초가 걸려서, 그 사이 더 최신 메시지가
 // 이미 화면(phase)을 바꿔놨는데 뒤늦게 renderResult가 덮어써버리는 경쟁 상태가 있었다.
 // setPhase가 호출될 때마다 증가하는 세대 번호로, 자신이 처리되는 시점에 화면이 이미
-// 다른 곳으로 넘어갔으면(세대 번호가 달라졌으면) 조용히 무시한다. tournament_state/
-// group_scores처럼 화면을 안 바꾸는 순수 정보성 브로드캐스트는 세대를 올리지 않는다.
+// 다른 곳으로 넘어갔으면(세대 번호가 달라졌으면) 조용히 무시한다. tournament_state처럼
+// 화면을 안 바꾸는 순수 정보성 브로드캐스트는 세대를 올리지 않는다.
 let messageGeneration = 0;
-// 세트를 끝내는 판이면 서버가 'result' 바로 뒤에 'set_over'를(그룹 우승 조건까지 달성했다면
-// 'group_over'까지) 지연 없이 곧장 보낸다. 예전에는 그 즉시 화면을 넘겨버려서, 정작 승부가
-// 갈리는 마지막 판에는 가위-바위-보!! 리빌 애니메이션을 아예 못 보고 화면이 훅 넘어가는
-// 것처럼 느껴졌다("도중에 게임이 넘어간다"는 제보의 원인). 리빌이 재생 중일 때 도착한
-// set_over/group_over는 큐에 쌓아뒀다가, 리빌이 끝난 뒤 잠깐 더 보여주고 나서 순서대로 처리한다.
+// 세트를 끝내는 판이면 서버가 'result' 바로 뒤에 'set_over'를 지연 없이 곧장 보낸다.
+// 예전에는 그 즉시 화면을 넘겨버려서, 정작 승부가 갈리는 마지막 판에는 가위-바위-보!!
+// 리빌 애니메이션을 아예 못 보고 화면이 훅 넘어가는 것처럼 느껴졌다("도중에 게임이
+// 넘어간다"는 제보의 원인). 리빌이 재생 중일 때 도착한 set_over는 큐에 쌓아뒀다가,
+// 리빌이 끝난 뒤 잠깐 더 보여주고 나서 처리한다. (1v1/토너먼트 전용 — 배틀로얄은 이
+// 콜 애니메이션을 쓰지 않고 서버가 알아서 리빌 사이 간격을 띄워 보내준다.)
 let chantInProgress = false;
 let deferredMessages: any[] = [];
 const REVEAL_HOLD_MS = 1000;
@@ -130,7 +132,7 @@ app.innerHTML = `
         <span class="field-label">게임 모드</span>
         <div class="mode-selector">
           <button type="button" class="mode-btn active" data-mode="1v1">1 : 1</button>
-          <button type="button" class="mode-btn" data-mode="group">그룹전</button>
+          <button type="button" class="mode-btn" data-mode="battle">배틀로얄</button>
           <button type="button" class="mode-btn" data-mode="tournament">토너먼트</button>
         </div>
         <div id="capacity-row" class="hidden">
@@ -161,7 +163,7 @@ app.innerHTML = `
       <button id="cancel-btn" type="button" class="rps-btn secondary">취소</button>
     </div>
 
-    <!-- Lobby (group / tournament) -->
+    <!-- Lobby (battle / tournament) -->
     <div class="rps-panel hidden" id="lobby-panel">
       <div class="room-share" id="lobby-share">
         <span class="room-share-label">방 코드</span>
@@ -236,16 +238,38 @@ app.innerHTML = `
       <div class="live-status hidden" id="bye-live-status"></div>
     </div>
 
-    <!-- Round over (group) -->
-    <div class="rps-panel hidden" id="round-over-panel">
-      <p class="field-label" id="round-over-title">라운드 종료</p>
-      <div class="scores-list" id="round-scores"></div>
-      <button id="next-round-btn" type="button" class="rps-btn primary hidden">다음 라운드</button>
-      <button id="end-group-btn" type="button" class="rps-btn secondary hidden">게임 종료</button>
-      <p class="status-text hidden" id="waiting-next-round">호스트가 다음 라운드를 시작하기를 기다리는 중…</p>
+    <!-- Battle royale: choosing -->
+    <div class="rps-panel hidden" id="battle-panel">
+      <div class="battle-header">
+        <span class="round-badge" id="battle-round-badge">라운드 1</span>
+        <span class="battle-alive-count" id="battle-alive-count">생존자 0명</span>
+      </div>
+      <p class="status-text" id="battle-status">낼 것을 골라주세요</p>
+      <div class="choice-row" id="battle-choice-row">
+        <button class="choice-btn" data-choice="rock" type="button">${handIcon('rock', true)}<span>바위</span></button>
+        <button class="choice-btn" data-choice="scissors" type="button">${handIcon('scissors', true)}<span>가위</span></button>
+        <button class="choice-btn" data-choice="paper" type="button">${handIcon('paper', true)}<span>보</span></button>
+      </div>
+      <div class="scores-list" id="battle-survivors"></div>
+      <button id="battle-leave-btn" type="button" class="rps-btn secondary">그만하기</button>
     </div>
 
-    <!-- Tournament / group winner -->
+    <!-- Battle royale: reveal -->
+    <div class="rps-panel hidden" id="battle-reveal-panel">
+      <p class="field-label" id="battle-reveal-title">전원 공개!</p>
+      <div class="battle-reveal-grid" id="battle-reveal-grid"></div>
+      <p class="status-text" id="battle-reveal-note"></p>
+    </div>
+
+    <!-- Battle royale: spectate (eliminated) -->
+    <div class="rps-panel hidden" id="battle-spectate-panel">
+      <p class="set-over-result lose">😢 탈락했습니다</p>
+      <p class="status-text" id="battle-spectate-status">남은 생존자들의 대결을 지켜보세요…</p>
+      <div class="scores-list" id="battle-spectate-scores"></div>
+      <button id="battle-spectate-leave-btn" type="button" class="rps-btn secondary">나가기</button>
+    </div>
+
+    <!-- Tournament / battle royale winner -->
     <div class="rps-panel hidden" id="winner-panel">
       <p class="set-over-result" id="winner-text"></p>
       <p class="status-text" id="winner-sub"></p>
@@ -284,7 +308,9 @@ const panels = {
   match: document.getElementById('match-view')!,
   setOver: document.getElementById('set-over-panel')!,
   bye: document.getElementById('bye-panel')!,
-  roundOver: document.getElementById('round-over-panel')!,
+  battle: document.getElementById('battle-panel')!,
+  battleReveal: document.getElementById('battle-reveal-panel')!,
+  battleSpectate: document.getElementById('battle-spectate-panel')!,
   winner: document.getElementById('winner-panel')!,
   left: document.getElementById('left-panel')!,
   error: document.getElementById('error-panel')!,
@@ -348,11 +374,21 @@ const byeStatus = document.getElementById('bye-status')!;
 const setOverLiveStatus = document.getElementById('set-over-live-status')!;
 const byeLiveStatus = document.getElementById('bye-live-status')!;
 
-const roundOverTitle = document.getElementById('round-over-title')!;
-const roundScores = document.getElementById('round-scores')!;
-const nextRoundBtn = document.getElementById('next-round-btn') as HTMLButtonElement;
-const endGroupBtn = document.getElementById('end-group-btn') as HTMLButtonElement;
-const waitingNextRound = document.getElementById('waiting-next-round')!;
+const battleRoundBadge = document.getElementById('battle-round-badge')!;
+const battleAliveCountEl = document.getElementById('battle-alive-count')!;
+const battleStatus = document.getElementById('battle-status')!;
+const battleChoiceRow = document.getElementById('battle-choice-row')!;
+const battleChoiceButtons = Array.from(battleChoiceRow.querySelectorAll<HTMLButtonElement>('.choice-btn'));
+const battleSurvivors = document.getElementById('battle-survivors')!;
+const battleLeaveBtn = document.getElementById('battle-leave-btn') as HTMLButtonElement;
+
+const battleRevealTitle = document.getElementById('battle-reveal-title')!;
+const battleRevealGrid = document.getElementById('battle-reveal-grid')!;
+const battleRevealNote = document.getElementById('battle-reveal-note')!;
+
+const battleSpectateStatus = document.getElementById('battle-spectate-status')!;
+const battleSpectateScores = document.getElementById('battle-spectate-scores')!;
+const battleSpectateLeaveBtn = document.getElementById('battle-spectate-leave-btn') as HTMLButtonElement;
 
 const winnerText = document.getElementById('winner-text')!;
 const winnerSub = document.getElementById('winner-sub')!;
@@ -413,8 +449,10 @@ function setPhase(next: Phase) {
   vis(panels.match, next === 'choosing' || next === 'result');
   vis(panels.setOver, next === 'set_over');
   vis(panels.bye, next === 'bye');
-  vis(panels.roundOver, next === 'round_over');
-  vis(panels.winner, next === 'tournament_winner' || next === 'group_over');
+  vis(panels.battle, next === 'battle_choosing');
+  vis(panels.battleReveal, next === 'battle_reveal');
+  vis(panels.battleSpectate, next === 'battle_spectate');
+  vis(panels.winner, next === 'tournament_winner' || next === 'battle_over');
   vis(panels.left, next === 'opponent-left');
   vis(panels.error, next === 'error');
 }
@@ -517,9 +555,9 @@ function connect(action: PendingAction) {
 
   ws.addEventListener('close', () => {
     if (intentionalClose) return;
-    const inGame = ['hosting', 'lobby', 'choosing', 'result', 'set_over', 'bye', 'round_over', 'reconnecting'].includes(phase);
+    const inGame = ['hosting', 'lobby', 'choosing', 'result', 'set_over', 'bye', 'battle_choosing', 'battle_reveal', 'battle_spectate', 'reconnecting'].includes(phase);
     if (inGame) beginReconnect();
-    else if (!['opponent-left', 'entry', 'tournament_winner', 'group_over'].includes(phase)) {
+    else if (!['opponent-left', 'entry', 'tournament_winner', 'battle_over'].includes(phase)) {
       showError('서버와의 연결이 끊어졌습니다.');
     }
   });
@@ -598,7 +636,7 @@ function handleServerMessage(msg: any) {
     case 'joined_lobby':
       myToken = msg.token;
       roomCode = msg.roomCode;
-      roomMode = msg.mode ?? 'group';
+      roomMode = msg.mode ?? 'battle';
       isHost = false;
       reconnectAttempts = 0;
       lobbyCodeDisplay.textContent = roomCode;
@@ -669,7 +707,7 @@ function handleServerMessage(msg: any) {
       break;
 
     case 'tournament_starting':
-    case 'group_starting':
+    case 'battle_starting':
       setPhase('connecting');
       waitingStatus.textContent = '게임을 시작합니다…';
       break;
@@ -720,38 +758,30 @@ function handleServerMessage(msg: any) {
       renderLiveStatus(msg.activeMatches, msg.waiting);
       break;
 
-    case 'group_scores': {
-      // If we're in round_over, update the standings
-      if (phase === 'round_over') renderGroupScores(msg.scores, msg.round, msg.yourToken);
-      // While waiting between rounds (set just finished / bye), show other pairs' live progress
-      renderLiveStatus(msg.activeMatches, msg.waiting);
-      break;
-    }
-
-    case 'round_over':
-      renderGroupScores(null, msg.round, null);
-      roundOverTitle.textContent = `라운드 ${msg.round} 종료`;
-      if (isHost) {
-        nextRoundBtn.classList.remove('hidden');
-        endGroupBtn.classList.remove('hidden');
-        waitingNextRound.classList.add('hidden');
-      } else {
-        nextRoundBtn.classList.add('hidden');
-        endGroupBtn.classList.add('hidden');
-        waitingNextRound.classList.remove('hidden');
-      }
-      setPhase('round_over');
-      break;
-
     case 'tournament_winner':
       winnerText.textContent = `🏆 ${msg.winnerName} 우승!`;
       winnerSub.textContent = '토너먼트가 종료됐습니다.';
       setPhase('tournament_winner');
       break;
 
-    case 'group_over':
-      if (chantInProgress) deferredMessages.push(msg);
-      else applyGroupOver(msg);
+    case 'battle_round_start':
+      enterBattleRound(msg);
+      break;
+
+    case 'battle_progress':
+      updateBattleProgress(msg.chosenCount, msg.aliveCount);
+      break;
+
+    case 'battle_reveal':
+      renderBattleReveal(msg);
+      break;
+
+    case 'battle_spectate':
+      enterBattleSpectate(msg);
+      break;
+
+    case 'battle_over':
+      applyBattleOver(msg);
       break;
 
     case 'guest_left':
@@ -803,7 +833,7 @@ function renderLiveStatus(
   activeMatches: { p1Name: string; p2Name: string; p1Wins: number; p2Wins: number }[] | undefined,
   waiting: string[] | undefined
 ) {
-  if (roomMode !== 'group' && roomMode !== 'tournament') return;
+  if (roomMode !== 'tournament') return;
 
   const hasActive = Boolean(activeMatches && activeMatches.length);
   const hasWaiting = Boolean(waiting && waiting.length);
@@ -819,8 +849,7 @@ function renderLiveStatus(
     ),
     ...(waiting ?? []).map((name) => `<div class="live-status-row waiting"><span>${name}</span><span class="live-status-score">대기 중</span></div>`),
   ].join('');
-  const title = roomMode === 'tournament' ? '다른 대진 진행 현황' : '다른 조 진행 현황';
-  const html = `<p class="live-status-title">${title}</p>${rows}`;
+  const html = `<p class="live-status-title">다른 대진 진행 현황</p>${rows}`;
 
   if (phase === 'set_over') {
     setOverLiveStatus.innerHTML = html;
@@ -831,15 +860,74 @@ function renderLiveStatus(
   }
 }
 
-function renderGroupScores(scores: any[] | null, round: number, yourToken: string | null) {
-  roundOverTitle.textContent = `라운드 ${round} 종료`;
-  if (scores) {
-    roundScores.innerHTML = scores.map((p, i) =>
-      `<div class="scores-row${i === 0 ? ' top' : ''}${p.token === yourToken ? ' me' : ''}">
-        <span class="rank">${i + 1}위</span><span>${p.name}</span><span>${p.sets}점</span>
-      </div>`
-    ).join('');
+// ── Battle royale ────────────────────────────────────────────────
+type BattleScoreEntry = { name: string; wins: number; alive: boolean };
+
+function renderBattleScoreList(el: HTMLElement, scores: BattleScoreEntry[]) {
+  el.innerHTML = scores.map((s, i) =>
+    `<div class="scores-row${i === 0 ? ' top' : ''}${!s.alive ? ' eliminated' : ''}${s.name === myName ? ' me' : ''}">
+      <span class="rank">${i + 1}위</span><span>${s.name}${!s.alive ? ' (탈락)' : ''}</span><span>${s.wins}승</span>
+    </div>`
+  ).join('');
+}
+
+function enterBattleRound(msg: any) {
+  myChoice = null;
+  battleRoundBadge.textContent = `라운드 ${msg.round}`;
+  battleAliveCountEl.textContent = `생존자 ${msg.aliveCount}명`;
+  battleStatus.textContent = msg.retry ? '무승부! 다시 골라주세요' : '낼 것을 골라주세요';
+  battleChoiceButtons.forEach(b => { b.disabled = false; b.classList.remove('selected'); });
+  renderBattleScoreList(battleSurvivors, msg.scores);
+
+  if (msg.alreadyChosen) {
+    // 재연결 시점에 이미 이번 라운드 선택을 제출한 상태였다면 다시 고르지 못하게 막는다.
+    myChoice = 'rock'; // 실제 값은 서버가 알고 있고, 클라이언트는 버튼만 잠그면 된다.
+    battleChoiceButtons.forEach(b => { b.disabled = true; });
+    battleStatus.textContent = '선택완료! 다른 사람을 기다리는 중…';
   }
+  setPhase('battle_choosing');
+}
+
+function updateBattleProgress(chosenCount: number, aliveCount: number) {
+  if (phase !== 'battle_choosing' || !myChoice) return;
+  battleStatus.textContent = `선택완료! 다른 사람을 기다리는 중… (${chosenCount}/${aliveCount})`;
+}
+
+function renderBattleReveal(msg: any) {
+  const picks = msg.picks as { name: string; choice: Choice; result: 'win' | 'lose' | 'draw' }[];
+  battleRevealTitle.textContent = msg.draw ? '무승부!' : '전원 공개!';
+  battleRevealGrid.innerHTML = picks.map(p =>
+    `<div class="battle-reveal-card ${p.result}${p.name === myName ? ' me' : ''}">
+      <span class="battle-reveal-name">${p.name}</span>
+      <span class="battle-reveal-hand">${handIcon(p.choice)}</span>
+      <span class="battle-reveal-result">${p.result === 'win' ? '승' : p.result === 'lose' ? '탈락' : '무승부'}</span>
+    </div>`
+  ).join('');
+  battleRevealNote.textContent = msg.draw
+    ? '같은 손이거나 세 가지 손이 모두 나와 승부가 나지 않았어요. 곧 다시 진행합니다.'
+    : (msg.eliminatedNames?.length ? `${msg.eliminatedNames.join(', ')}님이 탈락했습니다.` : '');
+  setPhase('battle_reveal');
+}
+
+function enterBattleSpectate(msg: any) {
+  battleSpectateStatus.textContent = `라운드 ${msg.round} — 남은 생존자 ${msg.aliveCount}명의 대결을 지켜보세요…`;
+  renderBattleScoreList(battleSpectateScores, msg.scores);
+  setPhase('battle_spectate');
+}
+
+function applyBattleOver(msg: any) {
+  const s = (msg.scores as any[]).map((p: any, i: number) =>
+    `<div class="scores-row${i === 0 ? ' top' : ''}${p.name === myName ? ' me' : ''}"><span class="rank">${i + 1}위</span><span>${p.name}</span><span>${p.wins}승</span></div>`
+  ).join('');
+  winnerText.textContent = msg.winnerName ? `🏆 ${msg.winnerName} 우승!` : '🏁 배틀로얄 종료';
+  winnerSub.textContent = '최종 순위';
+  panels.winner.querySelector('.scores-list')?.remove();
+  const sl = document.createElement('div');
+  sl.className = 'scores-list';
+  sl.innerHTML = s;
+  panels.winner.insertBefore(sl, winnerSub.nextSibling);
+  clearSession();
+  setPhase('battle_over');
 }
 
 // ── Chant animation ───────────────────────────────────────────────
@@ -900,7 +988,7 @@ function renderResult(msg: any) {
   chantInProgress = false;
 
   if (deferredMessages.length) {
-    // 승부가 갈린 마지막 판: 리빌을 잠깐 더 보여준 뒤, 밀려있던 set_over/group_over를 순서대로 처리한다.
+    // 승부가 갈린 마지막 판: 리빌을 잠깐 더 보여준 뒤, 밀려있던 set_over를 처리한다.
     const queue = deferredMessages;
     deferredMessages = [];
     setTimeout(() => processDeferredQueue(queue), REVEAL_HOLD_MS);
@@ -910,9 +998,9 @@ function renderResult(msg: any) {
   if (roomMode === '1v1') {
     matchActions.classList.remove('hidden');
   } else {
-    // 그룹전/토너먼트는 세트가 끝나지 않은 개별 판마다 "다음 판" 버튼이 없어서,
+    // 토너먼트는 세트가 끝나지 않은 개별 판마다 "다음 판" 버튼이 없어서,
     // 결과를 잠깐 보여준 뒤 자동으로 다음 판 선택 화면으로 넘어간다.
-    // set_over/round_over 등 다른 메시지가 먼저 phase를 바꿔놨다면 되돌리지 않는다.
+    // set_over 등 다른 메시지가 먼저 phase를 바꿔놨다면 되돌리지 않는다.
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
     autoAdvanceTimer = setTimeout(() => {
       autoAdvanceTimer = null;
@@ -929,7 +1017,6 @@ function processDeferredQueue(queue: any[]) {
   const [next, ...rest] = queue;
   if (!next) return;
   if (next.type === 'set_over') applySetOver(next);
-  else if (next.type === 'group_over') applyGroupOver(next);
   if (rest.length) setTimeout(() => processDeferredQueue(rest), REVEAL_HOLD_MS);
 }
 
@@ -939,7 +1026,7 @@ function applySetOver(msg: any) {
   setOverResult.textContent = msg.youWon ? '🏆 세트 승리!' : '😞 세트 패배';
   setOverResult.className = 'set-over-result ' + (msg.youWon ? 'win' : 'lose');
   setOverScore.textContent = `${myName} ${setScore.you} : ${setScore.opponent} ${opponentName}`;
-  // Hide next-set in tournament/group (match_start will come automatically)
+  // Hide next-set in tournament (match_start will come automatically)
   nextSetBtn.classList.toggle('hidden', roomMode !== '1v1');
   setLeaveBtn.classList.toggle('hidden', roomMode !== '1v1');
   panels.setOver.querySelectorAll('.set-over-waiting-note').forEach((el) => el.remove());
@@ -950,20 +1037,6 @@ function applySetOver(msg: any) {
     panels.setOver.appendChild(waiting);
   }
   setPhase('set_over');
-}
-
-function applyGroupOver(msg: any) {
-  const s = (msg.scores as any[]).map((p: any, i: number) =>
-    `<div class="scores-row${i === 0 ? ' top' : ''}"><span class="rank">${i + 1}위</span><span>${p.name}</span><span>${p.sets}점</span></div>`
-  ).join('');
-  winnerText.textContent = msg.winnerName ? `🏆 ${msg.winnerName} 우승!` : '🏁 그룹전 종료';
-  winnerSub.textContent = '최종 점수';
-  panels.winner.querySelector('.scores-list')?.remove();
-  const sl = document.createElement('div');
-  sl.className = 'scores-list';
-  sl.innerHTML = s;
-  panels.winner.insertBefore(sl, winnerSub.nextSibling);
-  setPhase('group_over');
 }
 
 // ── Events ────────────────────────────────────────────────────────
@@ -1036,8 +1109,19 @@ nextSetBtn.addEventListener('click', () => {
   setPhase('choosing');
 });
 
-nextRoundBtn.addEventListener('click', () => { send({ type: 'next_round' }); setPhase('connecting'); waitingStatus.textContent = '다음 라운드 시작 중…'; });
-endGroupBtn.addEventListener('click', () => { send({ type: 'end_group' }); });
+battleChoiceButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (myChoice) return;
+    const choice = btn.dataset.choice as Choice;
+    myChoice = choice;
+    battleChoiceButtons.forEach(b => { b.disabled = true; b.classList.toggle('selected', b === btn); });
+    battleStatus.textContent = '선택완료! 다른 사람을 기다리는 중…';
+    send({ type: 'choice', choice });
+  });
+});
+
+battleLeaveBtn.addEventListener('click', leaveRoom);
+battleSpectateLeaveBtn.addEventListener('click', leaveRoom);
 
 newRoomBtn.addEventListener('click', () => {
   myToken = null;
@@ -1071,7 +1155,7 @@ winnerQuitBtn.addEventListener('click', () => {
 retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAction); });
 
 // ── Ranking popup ─────────────────────────────────────────────────
-const MODE_LABEL: Record<string, string> = { '1v1': '1:1', group: '그룹전', tournament: '토너먼트' };
+const MODE_LABEL: Record<string, string> = { '1v1': '1:1', battle: '배틀로얄', tournament: '토너먼트' };
 const RANK_MEDAL: Record<number, string> = { 0: '🥇', 1: '🥈', 2: '🥉' };
 let rankingPrevWeek = '';
 

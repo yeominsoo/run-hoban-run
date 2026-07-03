@@ -11,7 +11,7 @@ const BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000;
 const WINS_TO_SET = 2;    // best-of-3 within a set: 2 wins
-const WINS_TO_GROUP = 3;  // group mode: first to 3 set-points wins
+const WINS_TO_BATTLE = 3; // battle royale: first to 3 round wins (or last survivor) wins
 
 // ── Ranking DB (file-backed in-memory store) ─────────────────────
 const DATA_DIR = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), 'data');
@@ -41,12 +41,12 @@ function isoWeekKey(date = new Date()) {
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
-/** Record a set win for a player in the current ISO week. */
+/** Record a set/round win for a player in the current ISO week. */
 function recordSetWin(name, mode) {
   if (!name || !mode) return;
   const week = isoWeekKey();
   if (!rankingData[week]) rankingData[week] = {};
-  if (!rankingData[week][name]) rankingData[week][name] = { '1v1': 0, group: 0, tournament: 0 };
+  if (!rankingData[week][name]) rankingData[week][name] = { '1v1': 0, battle: 0, tournament: 0 };
   rankingData[week][name][mode] = (rankingData[week][name][mode] || 0) + 1;
   scheduleSave();
 }
@@ -56,8 +56,8 @@ function getRanking(week) {
   const weekData = rankingData[week] || {};
   return Object.entries(weekData)
     .map(([name, modes]) => {
-      const byMode = { '1v1': modes['1v1'] || 0, group: modes.group || 0, tournament: modes.tournament || 0 };
-      return { name, byMode, total: byMode['1v1'] + byMode.group + byMode.tournament };
+      const byMode = { '1v1': modes['1v1'] || 0, battle: modes.battle || 0, tournament: modes.tournament || 0 };
+      return { name, byMode, total: byMode['1v1'] + byMode.battle + byMode.tournament };
     })
     .filter(e => e.total > 0)
     .sort((a, b) => b.total - a.total)
@@ -89,21 +89,22 @@ const wss = new WebSocketServer({ server: httpServer, path: '/rps' });
 /**
  * Room:
  * {
- *   mode: '1v1' | 'group' | 'tournament',
+ *   mode: '1v1' | 'battle' | 'tournament',
  *   hostToken: string,
  *   capacity: number,
  *   players: [{ token, name, ws }],   // ws = null when disconnected
  *   choices: Map<token, choice>,
- *   matchWins: Map<pairKey, Map<token, number>>,  // pairKey = sorted tokens joined by ':'
- *   setScores: Map<token, number>,    // cumulative set wins
+ *   matchWins: Map<pairKey, Map<token, number>>,  // pairKey = sorted tokens joined by ':' — 1v1/tournament only
+ *   setScores: Map<token, number>,    // 1v1/tournament: cumulative set wins. battle: cumulative round wins.
  *   disconnectTimers: Map<token, timer>,
- *   // group/tournament:
  *   started: boolean,
+ *   round: number,
+ *   // tournament only:
  *   activePairs: [string, string][],  // token pairs currently playing
  *   byeTokens: string[],              // players sitting out this round
- *   round: number,
- *   eliminated: Set<string>,          // tournament only
- *   roundResults: { token, setWins }[], // group only — accumulate across rounds
+ *   eliminated: Set<string>,          // eliminated (out of the bracket)
+ *   // battle only:
+ *   aliveTokens: Set<string>,         // survivors still in the current round
  * }
  */
 const rooms = new Map();
@@ -216,9 +217,8 @@ function resolvePair(roomCode, t1, t2) {
   if (p1?.ws) sendResult(p1.ws, c1, c2, o1, w1, w2, room.setScores.get(t1) || 0, room.setScores.get(t2) || 0);
   if (p2?.ws) sendResult(p2.ws, c2, c1, o2, w2, w1, room.setScores.get(t2) || 0, room.setScores.get(t1) || 0);
 
-  // 다른 조/대진이 대기 중일 때 실시간 진행 현황을 볼 수 있도록, 세트가 끝나지 않아도 매 판마다 갱신해서 뿌린다.
-  if (room.mode === 'group') broadcastGroupScores(room);
-  else if (room.mode === 'tournament') broadcastTournamentState(room, roomCode);
+  // 다른 대진이 대기 중일 때 실시간 진행 현황을 볼 수 있도록, 세트가 끝나지 않아도 매 판마다 갱신해서 뿌린다.
+  if (room.mode === 'tournament') broadcastTournamentState(room, roomCode);
 
   // Check set (best-of-3) completion
   const setWinner = w1 >= WINS_TO_SET ? t1 : w2 >= WINS_TO_SET ? t2 : null;
@@ -244,12 +244,6 @@ function resolvePair(roomCode, t1, t2) {
       // 방금 세트를 끝낸 플레이어가 대기 화면에 들어가자마자 남은 대진의 현재 상황을 바로 볼 수 있도록.
       broadcastTournamentState(room, roomCode);
       checkTournamentRound(roomCode);
-    } else if (room.mode === 'group') {
-      // Track round result; pair completes this round
-      room.activePairs = room.activePairs.filter(([a, b]) => !(a === t1 && b === t2) && !(a === t2 && b === t1));
-      // 방금 세트를 끝낸 플레이어들이 대기 화면에 들어가자마자 남은 조들의 현재 상황을 바로 볼 수 있도록.
-      broadcastGroupScores(room);
-      checkGroupRound(roomCode);
     }
     // 1v1: pair stays active; players click "다음 세트" independently
   }
@@ -351,99 +345,118 @@ function broadcastTournamentState(room, roomCode) {
   }
 }
 
-// ── group (n:n) logic ────────────────────────────────────────────
-function startGroupRound(roomCode) {
+// ── battle royale logic ───────────────────────────────────────────
+// 카드게임처럼 생존자 전원이 동시에 손을 낸 뒤 한꺼번에 공개한다. 나온 손모양이 정확히
+// 2종류일 때만 승부가 갈리고(이긴 손을 낸 사람은 라운드 승, 진 손을 낸 사람은 즉시 탈락),
+// 1종류(전원 같은 손) 또는 3종류(가위바위보 모두 등장)면 무승부라 같은 라운드를 다시 진행한다.
+// 누군가 개인 누적 3승을 먼저 채우거나, 생존자가 1명만 남으면 그 사람이 최종 우승이다.
+function battleScoreboard(room) {
+  return room.players
+    .map(p => ({ name: p.name, wins: room.setScores.get(p.token) || 0, alive: room.aliveTokens.has(p.token) }))
+    .sort((a, b) => b.wins - a.wins);
+}
+
+function startBattleRound(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room) return;
+  if (room.aliveTokens.size < 1) return;
+
+  room.round++;
+  room.choices.clear();
+
+  const scores = battleScoreboard(room);
+  const aliveNames = [...room.aliveTokens].map(t => playerByToken(room, t)?.name ?? '?');
+
+  for (const p of room.players) {
+    if (!p.ws) continue;
+    if (room.aliveTokens.has(p.token)) {
+      send(p.ws, { type: 'battle_round_start', round: room.round, aliveNames, aliveCount: room.aliveTokens.size, scores });
+    } else {
+      send(p.ws, { type: 'battle_spectate', round: room.round, aliveNames, aliveCount: room.aliveTokens.size, scores });
+    }
+  }
+}
+
+function checkBattleReady(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room || room.mode !== 'battle' || !room.started) return;
+  if (room.aliveTokens.size <= 1) { finishBattle(roomCode); return; }
+  if (room.choices.size >= room.aliveTokens.size) resolveBattleRound(roomCode);
+}
+
+function resolveBattleRound(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
-  const connected = room.players.filter(p => p.ws);
-  if (connected.length < 2) {
-    for (const p of room.players) if (p.ws) send(p.ws, { type: 'group_waiting', message: '인원이 부족합니다. 더 기다려주세요.' });
+  const picks = [...room.aliveTokens].map(t => ({
+    token: t, name: playerByToken(room, t)?.name ?? '?', choice: room.choices.get(t),
+  }));
+  room.choices.clear();
+
+  const distinctMoves = [...new Set(picks.map(p => p.choice))];
+
+  if (distinctMoves.length !== 2) {
+    // 전원 같은 손(1종류) 또는 세 손 모두 등장(3종류) → 무승부, 같은 라운드를 재시도한다.
+    const revealPicks = picks.map(p => ({ name: p.name, choice: p.choice, result: 'draw' }));
+    for (const p of room.players) {
+      if (p.ws) send(p.ws, { type: 'battle_reveal', round: room.round, draw: true, picks: revealPicks, scores: battleScoreboard(room) });
+    }
+    setTimeout(() => {
+      if (!rooms.has(roomCode)) return;
+      const aliveNames = [...room.aliveTokens].map(t => playerByToken(room, t)?.name ?? '?');
+      const scores = battleScoreboard(room);
+      for (const t of room.aliveTokens) {
+        const p = playerByToken(room, t);
+        if (p?.ws) send(p.ws, { type: 'battle_round_start', round: room.round, aliveNames, aliveCount: room.aliveTokens.size, scores, retry: true });
+      }
+    }, ROUND_ADVANCE_DELAY_MS);
     return;
   }
 
-  const shuffled = [...connected].sort(() => Math.random() - 0.5);
-  const pairs = [];
-  for (let i = 0; i + 1 < shuffled.length; i += 2) {
-    pairs.push([shuffled[i].token, shuffled[i + 1].token]);
+  const [moveA, moveB] = distinctMoves;
+  const winningMove = BEATS[moveA] === moveB ? moveA : moveB;
+  const losingMove = winningMove === moveA ? moveB : moveA;
+
+  const winners = picks.filter(p => p.choice === winningMove);
+  const losers = picks.filter(p => p.choice === losingMove);
+
+  for (const w of winners) {
+    room.setScores.set(w.token, (room.setScores.get(w.token) || 0) + 1);
+    recordSetWin(w.name, 'battle');
   }
-  const byeTokens = shuffled.length % 2 === 1 ? [shuffled[shuffled.length - 1].token] : [];
+  for (const l of losers) room.aliveTokens.delete(l.token);
 
-  room.activePairs = pairs;
-  room.byeTokens = byeTokens;
-  room.round++;
-
-  for (const [t1, t2] of pairs) {
-    const p1 = playerByToken(room, t1);
-    const p2 = playerByToken(room, t2);
-    if (p1?.ws) send(p1.ws, { type: 'match_start', opponentName: p2.name, round: room.round, isGroupMode: true });
-    if (p2?.ws) send(p2.ws, { type: 'match_start', opponentName: p1.name, round: room.round, isGroupMode: true });
-  }
-  for (const bt of byeTokens) {
-    const bp = playerByToken(room, bt);
-    if (bp?.ws) send(bp.ws, { type: 'bye', round: room.round });
-  }
-
-  broadcastGroupScores(room);
-}
-
-function checkGroupRound(roomCode) {
-  const room = rooms.get(roomCode);
-  if (!room || room.activePairs.length > 0) return;
-  broadcastGroupScores(room);
-
-  // Check if any player reached the group-win target
-  const winner = room.players.find(p => (room.setScores.get(p.token) || 0) >= WINS_TO_GROUP);
-  if (winner) {
-    const scores = room.players
-      .map(p => ({ name: p.name, sets: room.setScores.get(p.token) || 0 }))
-      .sort((a, b) => b.sets - a.sets);
-    for (const p of room.players) if (p.ws) send(p.ws, { type: 'group_over', scores, winnerName: winner.name });
-    rooms.delete(roomCode);
-    return;
+  const revealPicks = picks.map(p => ({ name: p.name, choice: p.choice, result: p.choice === winningMove ? 'win' : 'lose' }));
+  const scores = battleScoreboard(room);
+  for (const p of room.players) {
+    if (p.ws) send(p.ws, {
+      type: 'battle_reveal', round: room.round, draw: false, picks: revealPicks,
+      winningMove, losingMove, eliminatedNames: losers.map(l => l.name), scores,
+    });
   }
 
+  // 개인 누적 3승을 먼저 채운 사람이 정확히 1명이면 그 자리에서 최종 우승 확정.
+  // (동시에 여러 명이 3승에 도달하면 우열을 가릴 수 없으니, 생존자가 1명으로 좁혀질 때까지 계속 진행한다.)
+  const finishers = winners.filter(w => (room.setScores.get(w.token) || 0) >= WINS_TO_BATTLE);
   setTimeout(() => {
-    if (rooms.has(roomCode)) broadcastGroupRoundOver(roomCode);
+    if (!rooms.has(roomCode)) return;
+    if (finishers.length === 1) finishBattle(roomCode, finishers[0].token);
+    else if (room.aliveTokens.size <= 1) finishBattle(roomCode);
+    else startBattleRound(roomCode);
   }, ROUND_ADVANCE_DELAY_MS);
 }
 
-function broadcastGroupScores(room) {
-  const scores = room.players.map(p => ({ name: p.name, sets: room.setScores.get(p.token) || 0, token: p.token }))
-    .sort((a, b) => b.sets - a.sets);
-
-  // 지금 진행 중인 다른 조들의 실시간 세트 스코어
-  const activeMatches = room.activePairs.map(([t1, t2]) => {
-    const p1 = playerByToken(room, t1);
-    const p2 = playerByToken(room, t2);
-    const mw = getMatchWins(room, t1, t2);
-    return {
-      p1Name: p1?.name ?? '?',
-      p2Name: p2?.name ?? '?',
-      p1Wins: mw.get(t1) || 0,
-      p2Wins: mw.get(t2) || 0,
-    };
-  });
-
-  // 이번 라운드에 아직 안 뛰거나(부전승) 이미 끝낸 사람들
-  const activeTokens = new Set(room.activePairs.flat());
-  const waiting = room.players.filter(p => p.ws && !activeTokens.has(p.token)).map(p => p.name);
-
-  for (const p of room.players) {
-    if (p.ws) send(p.ws, { type: 'group_scores', scores, round: room.round, yourToken: p.token, activeMatches, waiting });
-  }
-}
-
-function broadcastGroupRoundOver(roomCode) {
+function finishBattle(roomCode, forcedWinnerToken) {
   const room = rooms.get(roomCode);
   if (!room) return;
+  const winnerToken = forcedWinnerToken ?? [...room.aliveTokens][0];
+  const winner = winnerToken ? playerByToken(room, winnerToken) : null;
+  if (winner) recordSetWin(winner.name, 'battle'); // 최종 우승 보너스 1점 (토너먼트 우승 보너스와 동일한 정책)
+  const scores = battleScoreboard(room);
   for (const p of room.players) {
-    if (p.ws) send(p.ws, {
-      type: 'round_over',
-      round: room.round,
-      isHost: p.token === room.hostToken,
-    });
+    if (p.ws) send(p.ws, { type: 'battle_over', winnerName: winner?.name || '?', scores });
   }
+  rooms.delete(roomCode);
 }
 
 // ── finalizeLeave ────────────────────────────────────────────────
@@ -472,7 +485,7 @@ function finalizeLeave(roomCode, leavingToken) {
       if (host?.ws) send(host.ws, { type: 'guest_left', roomCode });
     }
   } else {
-    // group/tournament: remove player from room
+    // battle/tournament: remove player from room
     room.players = remaining;
     if (remaining.length === 0) { rooms.delete(roomCode); return; }
     if (leavingIsHost && remaining.length > 0) {
@@ -483,9 +496,14 @@ function finalizeLeave(roomCode, leavingToken) {
     wsIdentity.forEach((id, ws) => { if (id.token === leavingToken) wsIdentity.delete(ws); });
     broadcastLobbyUpdate(room, roomCode);
     if (room.started) {
-      room.activePairs = room.activePairs.filter(([a, b]) => a !== leavingToken && b !== leavingToken);
-      if (room.mode === 'tournament') checkTournamentRound(roomCode);
-      else checkGroupRound(roomCode);
+      if (room.mode === 'tournament') {
+        room.activePairs = room.activePairs.filter(([a, b]) => a !== leavingToken && b !== leavingToken);
+        checkTournamentRound(roomCode);
+      } else if (room.mode === 'battle') {
+        room.aliveTokens.delete(leavingToken);
+        room.choices.delete(leavingToken);
+        checkBattleReady(roomCode);
+      }
     }
   }
 }
@@ -507,7 +525,7 @@ wss.on('connection', (ws) => {
     // ── create ──────────────────────────────────────────────────
     if (msg.type === 'create') {
       const name = sanitizeName(msg.name);
-      const mode = ['1v1', 'group', 'tournament'].includes(msg.mode) ? msg.mode : '1v1';
+      const mode = ['1v1', 'battle', 'tournament'].includes(msg.mode) ? msg.mode : '1v1';
       const capacity = mode === '1v1' ? 2 : Math.min(Math.max(Number(msg.capacity) || 8, 2), 16);
       const roomCode = genRoomCode();
       const token = randomUUID();
@@ -523,6 +541,7 @@ wss.on('connection', (ws) => {
         byeTokens: [],
         round: 0,
         eliminated: new Set(),
+        aliveTokens: new Set(),
       });
       wsIdentity.set(ws, { roomCode, token });
       send(ws, { type: 'room_created', roomCode, token, mode, capacity });
@@ -593,7 +612,7 @@ wss.on('connection', (ws) => {
           matchWins: opponent ? { you: mw.get(token) || 0, opponent: mw.get(opponent.token) || 0 } : { you: 0, opponent: 0 },
         });
         if (opponent?.ws) send(opponent.ws, { type: 'opponent_reconnected' });
-      } else {
+      } else if (room.mode === 'tournament') {
         send(ws, { type: 'rejoined', roomCode, token, mode: room.mode, started: room.started });
         broadcastLobbyUpdate(room, roomCode);
         if (room.started) {
@@ -607,18 +626,33 @@ wss.on('connection', (ws) => {
               type: 'match_start',
               opponentName: opp?.name || '?',
               round: room.round,
-              isGroupMode: room.mode === 'group',
               matchWins: { you: mw.get(token) || 0, opponent: mw.get(oppToken) || 0 },
             });
           } else if (room.byeTokens?.includes(token)) {
             send(ws, { type: 'bye', round: room.round });
           }
         }
+      } else {
+        // battle
+        send(ws, { type: 'rejoined', roomCode, token, mode: room.mode, started: room.started });
+        broadcastLobbyUpdate(room, roomCode);
+        if (room.started) {
+          const scores = battleScoreboard(room);
+          const aliveNames = [...room.aliveTokens].map(t => playerByToken(room, t)?.name ?? '?');
+          if (room.aliveTokens.has(token)) {
+            send(ws, {
+              type: 'battle_round_start', round: room.round, aliveNames, aliveCount: room.aliveTokens.size,
+              scores, alreadyChosen: room.choices.has(token),
+            });
+          } else {
+            send(ws, { type: 'battle_spectate', round: room.round, aliveNames, aliveCount: room.aliveTokens.size, scores });
+          }
+        }
       }
       return;
     }
 
-    // ── start (host only, group/tournament) ──────────────────────
+    // ── start (host only, battle/tournament) ──────────────────────
     if (msg.type === 'start') {
       const identity = wsIdentity.get(ws);
       const room = identity && rooms.get(identity.roomCode);
@@ -632,19 +666,10 @@ wss.on('connection', (ws) => {
         for (const p of room.players) if (p.ws) send(p.ws, { type: 'tournament_starting' });
         startTournamentRound(identity.roomCode);
       } else {
-        for (const p of room.players) if (p.ws) send(p.ws, { type: 'group_starting', round: 1 });
-        startGroupRound(identity.roomCode);
+        room.aliveTokens = new Set(room.players.filter(p => p.ws).map(p => p.token));
+        for (const p of room.players) if (p.ws) send(p.ws, { type: 'battle_starting', totalPlayers: room.aliveTokens.size });
+        startBattleRound(identity.roomCode);
       }
-      return;
-    }
-
-    // ── next_round (host only, group) ─────────────────────────────
-    if (msg.type === 'next_round') {
-      const identity = wsIdentity.get(ws);
-      const room = identity && rooms.get(identity.roomCode);
-      if (!room || room.mode !== 'group' || identity.token !== room.hostToken) return;
-      if (room.activePairs.length > 0) return; // round still going
-      startGroupRound(identity.roomCode);
       return;
     }
 
@@ -655,6 +680,18 @@ wss.on('connection', (ws) => {
       const room = identity && rooms.get(identity.roomCode);
       if (!room) return;
       const { token, roomCode } = identity;
+
+      if (room.mode === 'battle') {
+        if (!room.aliveTokens.has(token) || room.choices.has(token)) return;
+        room.choices.set(token, msg.choice);
+        const chosenCount = room.choices.size;
+        const aliveCount = room.aliveTokens.size;
+        for (const p of room.players) {
+          if (p.ws) send(p.ws, { type: 'battle_progress', chosenCount, aliveCount });
+        }
+        checkBattleReady(roomCode);
+        return;
+      }
 
       let pair;
       if (room.mode === '1v1') {
@@ -681,18 +718,6 @@ wss.on('connection', (ws) => {
     if (msg.type === 'leave') {
       const identity = wsIdentity.get(ws);
       if (identity) finalizeLeave(identity.roomCode, identity.token);
-      return;
-    }
-
-    // ── end_group (host ends group game) ──────────────────────────
-    if (msg.type === 'end_group') {
-      const identity = wsIdentity.get(ws);
-      const room = identity && rooms.get(identity.roomCode);
-      if (!room || room.mode !== 'group' || identity.token !== room.hostToken) return;
-      const scores = room.players.map(p => ({ name: p.name, sets: room.setScores.get(p.token) || 0 }))
-        .sort((a, b) => b.sets - a.sets);
-      for (const p of room.players) if (p.ws) send(p.ws, { type: 'group_over', scores });
-      rooms.delete(identity.roomCode);
       return;
     }
   });
