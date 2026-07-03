@@ -10,6 +10,7 @@ export default defineConfig({
         team: resolve(__dirname, 'team/index.html'),
         dice: resolve(__dirname, 'dice/index.html'),
         rps: resolve(__dirname, 'rps/index.html'),
+        liar: resolve(__dirname, 'liar/index.html'),
       },
       output: {
         manualChunks(id) {

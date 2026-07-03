@@ -29,6 +29,11 @@ app.innerHTML = `
         <h2 class="game-card-name">가위바위보 대결</h2>
         <p class="game-card-desc">방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.</p>
       </a>
+      <a class="game-card" href="/liar/">
+        <span class="game-card-icon liar-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">라이어게임</h2>
+        <p class="game-card-desc">3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.</p>
+      </a>
     </nav>
   </div>
 `;

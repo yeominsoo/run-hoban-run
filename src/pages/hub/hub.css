@@ -190,6 +190,29 @@ body {
 .rps-mark::before { transform: rotate(35deg); }
 .rps-mark::after { transform: rotate(-35deg); }
 
+.liar-mark::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 9px;
+  bottom: 13px;
+  border: 2px solid #7ec8f8;
+  border-radius: 50% 50% 45% 45%;
+}
+
+.liar-mark::after {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 14px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #7ec8f8;
+  box-shadow: 12px 0 0 #7ec8f8;
+}
+
 .game-card-name {
   margin: 0;
   font-size: 1.3rem;

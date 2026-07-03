@@ -44,6 +44,8 @@ spec:
                   key: FIREBASE_TOKEN
             - name: VITE_RPS_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/rps"
+            - name: VITE_LIAR_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/liar"
           command:
             - /bin/bash
             - -lc

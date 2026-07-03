@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { registerLiarServer } from './liar.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
@@ -84,7 +85,11 @@ const httpServer = createServer((req, res) => {
   res.writeHead(404); res.end();
 });
 
-const wss = new WebSocketServer({ server: httpServer, path: '/rps' });
+// ws는 같은 httpServer에 path별로 여러 WebSocketServer를 그냥 붙이는 걸 지원하지 않는다 —
+// 각 인스턴스가 'upgrade' 리스너를 등록해 path가 안 맞으면 그 자리에서 즉시 400을 응답해버려서,
+// 나중에 등록된 서버(liar)가 처리할 기회조차 없이 소켓이 끊긴다. 그래서 noServer 모드로 만들고
+// 이 파일 하단에서 요청 경로를 보고 수동으로 라우팅한다.
+const wss = new WebSocketServer({ noServer: true });
 
 /**
  * Room:
@@ -746,6 +751,19 @@ wss.on('connection', (ws) => {
   });
 });
 
+const liarWss = registerLiarServer();
+
+httpServer.on('upgrade', (req, socket, head) => {
+  const pathname = req.url.split('?')[0];
+  if (pathname === '/rps') {
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  } else if (pathname === '/liar') {
+    liarWss.handleUpgrade(req, socket, head, (ws) => liarWss.emit('connection', ws, req));
+  } else {
+    socket.destroy();
+  }
+});
+
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws path: /rps)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar)`);
 });
