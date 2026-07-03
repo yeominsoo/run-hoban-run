@@ -216,8 +216,9 @@ function resolvePair(roomCode, t1, t2) {
   if (p1?.ws) sendResult(p1.ws, c1, c2, o1, w1, w2, room.setScores.get(t1) || 0, room.setScores.get(t2) || 0);
   if (p2?.ws) sendResult(p2.ws, c2, c1, o2, w2, w1, room.setScores.get(t2) || 0, room.setScores.get(t1) || 0);
 
-  // 다른 조가 대기 중일 때 실시간 진행 현황을 볼 수 있도록, 세트가 끝나지 않아도 매 판마다 갱신해서 뿌린다.
+  // 다른 조/대진이 대기 중일 때 실시간 진행 현황을 볼 수 있도록, 세트가 끝나지 않아도 매 판마다 갱신해서 뿌린다.
   if (room.mode === 'group') broadcastGroupScores(room);
+  else if (room.mode === 'tournament') broadcastTournamentState(room, roomCode);
 
   // Check set (best-of-3) completion
   const setWinner = w1 >= WINS_TO_SET ? t1 : w2 >= WINS_TO_SET ? t2 : null;
@@ -240,6 +241,8 @@ function resolvePair(roomCode, t1, t2) {
       // Eliminate loser, advance winner
       room.eliminated.add(setLoser);
       room.activePairs = room.activePairs.filter(([a, b]) => !(a === t1 && b === t2) && !(a === t2 && b === t1));
+      // 방금 세트를 끝낸 플레이어가 대기 화면에 들어가자마자 남은 대진의 현재 상황을 바로 볼 수 있도록.
+      broadcastTournamentState(room, roomCode);
       checkTournamentRound(roomCode);
     } else if (room.mode === 'group') {
       // Track round result; pair completes this round
@@ -309,6 +312,26 @@ function broadcastTournamentState(room, roomCode) {
   const elim = room.players.filter(p => room.eliminated.has(p.token)).map(p => ({
     name: p.name, token: p.token, isEliminated: true
   }));
+
+  // 지금 진행 중인 다른 대진들의 실시간 세트 스코어
+  const activeMatches = room.activePairs.map(([t1, t2]) => {
+    const p1 = playerByToken(room, t1);
+    const p2 = playerByToken(room, t2);
+    const mw = getMatchWins(room, t1, t2);
+    return {
+      p1Name: p1?.name ?? '?',
+      p2Name: p2?.name ?? '?',
+      p1Wins: mw.get(t1) || 0,
+      p2Wins: mw.get(t2) || 0,
+    };
+  });
+
+  // 이번 라운드에 아직 안 뛰거나(부전승) 이미 이겨서 다음 라운드를 기다리는 사람들
+  const activeTokens = new Set(room.activePairs.flat());
+  const waiting = room.players
+    .filter(p => p.ws && !room.eliminated.has(p.token) && !activeTokens.has(p.token))
+    .map(p => p.name);
+
   for (const p of room.players) {
     if (p.ws) {
       send(p.ws, {
@@ -316,6 +339,8 @@ function broadcastTournamentState(room, roomCode) {
         round: room.round,
         players: [...alive, ...elim],
         yourToken: p.token,
+        activeMatches,
+        waiting,
       });
     }
   }

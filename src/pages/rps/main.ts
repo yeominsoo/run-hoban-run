@@ -60,6 +60,13 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let matchWins = { you: 0, opponent: 0 };
 let setScore = { you: 0, opponent: 0 };
 let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+// 세트를 끝내는 판은 서버가 'result' 다음에 곧바로 'set_over'(+다음 라운드 match_start)를
+// 보낸다. 'result'의 가위-바위-보 콜 애니메이션은 ~1.3초가 걸려서, 그 사이 더 최신 메시지가
+// 이미 화면(phase)을 바꿔놨는데 뒤늦게 renderResult가 덮어써버리는 경쟁 상태가 있었다.
+// setPhase가 호출될 때마다 증가하는 세대 번호로, 자신이 처리되는 시점에 화면이 이미
+// 다른 곳으로 넘어갔으면(세대 번호가 달라졌으면) 조용히 무시한다. tournament_state/
+// group_scores처럼 화면을 안 바꾸는 순수 정보성 브로드캐스트는 세대를 올리지 않는다.
+let messageGeneration = 0;
 const WINS_TO_SET = 2;
 const AUTO_ADVANCE_MS = 1800;
 
@@ -389,6 +396,7 @@ modeBtns.forEach(btn => {
 });
 
 function setPhase(next: Phase) {
+  messageGeneration++;
   phase = next;
   const vis = (el: HTMLElement, show: boolean) => el.classList.toggle('hidden', !show);
   vis(panels.entry, next === 'entry');
@@ -685,7 +693,7 @@ function handleServerMessage(msg: any) {
       opponentStatus.classList.add('hidden');
       matchWins = { you: msg.matchWins?.you ?? 0, opponent: msg.matchWins?.opponent ?? 0 };
       setScore = { you: msg.setScore?.you ?? setScore.you, opponent: msg.setScore?.opponent ?? setScore.opponent };
-      playChantThenReveal(msg);
+      playChantThenReveal(msg, messageGeneration);
       break;
 
     case 'set_over':
@@ -712,6 +720,8 @@ function handleServerMessage(msg: any) {
         roundBadge.textContent = `라운드 ${msg.round}`;
         roundBadge.classList.remove('hidden');
       }
+      // 세트를 끝내고 기다리는 동안 다른 대진의 실시간 진행 상황을 보여준다.
+      renderLiveStatus(msg.activeMatches, msg.waiting);
       break;
 
     case 'group_scores': {
@@ -807,7 +817,7 @@ function renderLiveStatus(
   activeMatches: { p1Name: string; p2Name: string; p1Wins: number; p2Wins: number }[] | undefined,
   waiting: string[] | undefined
 ) {
-  if (roomMode !== 'group') return;
+  if (roomMode !== 'group' && roomMode !== 'tournament') return;
 
   const hasActive = Boolean(activeMatches && activeMatches.length);
   const hasWaiting = Boolean(waiting && waiting.length);
@@ -823,7 +833,8 @@ function renderLiveStatus(
     ),
     ...(waiting ?? []).map((name) => `<div class="live-status-row waiting"><span>${name}</span><span class="live-status-score">대기 중</span></div>`),
   ].join('');
-  const html = `<p class="live-status-title">다른 조 진행 현황</p>${rows}`;
+  const title = roomMode === 'tournament' ? '다른 대진 진행 현황' : '다른 조 진행 현황';
+  const html = `<p class="live-status-title">${title}</p>${rows}`;
 
   if (phase === 'set_over') {
     setOverLiveStatus.innerHTML = html;
@@ -849,7 +860,7 @@ function renderGroupScores(scores: any[] | null, round: number, yourToken: strin
 const CHANT_WORDS = ['가위', '바위', '보!!'];
 const CHANT_STEP_MS = 420;
 
-function playChantThenReveal(msg: any) {
+function playChantThenReveal(msg: any, gen: number) {
   choiceRow.classList.add('hidden');
   matchStatus.textContent = '';
   chantText.textContent = '';
@@ -861,13 +872,22 @@ function playChantThenReveal(msg: any) {
 
   let step = 0;
   const tick = () => {
+    // 애니메이션이 도는 동안 세트 종료/다음 라운드 등 더 최신 메시지가 이미 도착했다면
+    // 그쪽 화면을 건드리지 않고 조용히 중단한다.
+    if (gen !== messageGeneration) {
+      chantText.classList.add('hidden');
+      return;
+    }
     chantText.textContent = CHANT_WORDS[step];
     chantText.classList.remove('pop');
     void chantText.offsetWidth;
     chantText.classList.add('pop');
     step++;
     if (step < CHANT_WORDS.length) setTimeout(tick, CHANT_STEP_MS);
-    else setTimeout(() => { chantText.classList.add('hidden'); renderResult(msg); }, CHANT_STEP_MS);
+    else setTimeout(() => {
+      chantText.classList.add('hidden');
+      if (gen === messageGeneration) renderResult(msg);
+    }, CHANT_STEP_MS);
   };
   tick();
 }
