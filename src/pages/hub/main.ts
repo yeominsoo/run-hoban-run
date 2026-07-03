@@ -34,6 +34,11 @@ app.innerHTML = `
         <h2 class="game-card-name">라이어게임</h2>
         <p class="game-card-desc">3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.</p>
       </a>
+      <a class="game-card" href="/mafia/">
+        <span class="game-card-icon mafia-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">마피아게임</h2>
+        <p class="game-card-desc">4~12명이 참여하는 역할 추리 게임. 밤에는 마피아·경찰·의사가 은밀히 행동하고, 낮에는 토론과 투표로 마피아를 찾아낸다.</p>
+      </a>
     </nav>
   </div>
 `;

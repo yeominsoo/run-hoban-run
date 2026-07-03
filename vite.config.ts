@@ -11,6 +11,7 @@ export default defineConfig({
         dice: resolve(__dirname, 'dice/index.html'),
         rps: resolve(__dirname, 'rps/index.html'),
         liar: resolve(__dirname, 'liar/index.html'),
+        mafia: resolve(__dirname, 'mafia/index.html'),
       },
       output: {
         manualChunks(id) {

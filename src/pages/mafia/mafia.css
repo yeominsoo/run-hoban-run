@@ -1,0 +1,366 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh; min-height: 100dvh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background: radial-gradient(ellipse at 50% 0%, #1a2a3c 0%, #0b0f1e 60%);
+  color: #e8f4ff;
+}
+
+button, input { font: inherit; }
+button { border: 0; cursor: pointer; }
+.hidden { display: none !important; }
+
+.mafia-shell {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+}
+
+/* ── Top bar ────────────────────────────────── */
+.mafia-top-bar {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 18px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(232,244,255,0.7);
+  text-decoration: none;
+  background: rgba(255,255,255,0.045);
+}
+.back-link:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+.mafia-stage {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.mafia-title {
+  margin: 0;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-weight: 900;
+  text-align: center;
+  background: linear-gradient(135deg, #fff 20%, #ff9a8f 80%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.mafia-sub {
+  margin: 0 0 22px;
+  font-size: 0.82rem;
+  color: rgba(232,244,255,0.5);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+/* ── Panels ─────────────────────────────────── */
+.mafia-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 28px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+}
+
+.field-label {
+  align-self: flex-start;
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(232,244,255,0.6);
+}
+
+.nickname-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: #e8f4ff;
+  font-size: 1rem;
+}
+.nickname-input:focus { outline: none; border-color: rgba(255,154,143,0.55); }
+.nickname-input::placeholder { color: rgba(232,244,255,0.28); }
+
+.capacity-input { text-align: center; max-width: 120px; align-self: center; }
+
+.mafia-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 11px;
+  font-weight: 800;
+  font-size: 0.94rem;
+  color: #f0f9ff;
+}
+.mafia-btn.primary { background: #b0392f; }
+.mafia-btn.primary:hover:not(:disabled) { background: #c74436; }
+.mafia-btn.secondary {
+  background: rgba(255,255,255,0.065);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(232,244,255,0.78);
+}
+.mafia-btn.secondary:hover:not(:disabled) { background: rgba(255,255,255,0.11); color: #fff; }
+.mafia-btn:disabled { opacity: 0.4; cursor: default; }
+
+.status-text {
+  margin: 0;
+  font-size: 0.92rem;
+  color: rgba(232,244,255,0.72);
+  text-align: center;
+}
+.status-text.muted { font-size: 0.78rem; color: rgba(232,244,255,0.45); }
+
+.spinner {
+  width: 34px; height: 34px;
+  border: 4px solid rgba(255,154,143,0.22);
+  border-top-color: #ff9a8f;
+  border-radius: 50%;
+  animation: mafia-spin 850ms linear infinite;
+}
+@keyframes mafia-spin { to { transform: rotate(360deg); } }
+
+/* ── Entry tabs ─────────────────────────────── */
+.entry-tabs {
+  width: 100%;
+  display: flex;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  padding: 3px;
+  gap: 3px;
+}
+.entry-tab {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(232,244,255,0.6);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.entry-tab.active { background: rgba(255,154,143,0.18); color: #eaf6ff; }
+
+.entry-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-code-input {
+  text-align: center;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.entry-error {
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(255,120,110,0.12);
+  border: 1px solid rgba(255,120,110,0.32);
+  color: #ff9a8f;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+/* ── Resume-session banner ──────────────────── */
+.resume-banner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255,154,143,0.08);
+  border: 1px solid rgba(255,154,143,0.24);
+}
+.resume-banner .status-text { margin: 0; text-align: left; color: #ffd7d2; }
+.resume-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.resume-actions .mafia-btn { min-height: 38px; font-size: 0.84rem; }
+
+/* ── Room share / lobby ─────────────────────── */
+.room-share {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  background: rgba(255,154,143,0.08);
+  border: 1px solid rgba(255,154,143,0.24);
+  border-radius: 12px;
+}
+.room-share-label {
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(232,244,255,0.55);
+}
+.room-code-display {
+  font-size: 1.7rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #eaf6ff;
+}
+
+.lobby-players {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.lobby-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px;
+}
+.lobby-player.disconnected { opacity: 0.45; }
+.lobby-name { flex: 1; font-weight: 700; font-size: 0.9rem; }
+.lobby-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.lobby-badge.host { background: rgba(255,154,143,0.2); border: 1px solid rgba(255,154,143,0.4); color: #ffb3a8; }
+.lobby-badge.offline { background: rgba(255,120,110,0.15); border: 1px solid rgba(255,120,110,0.3); color: #ff9a8f; }
+
+/* ── Role card ──────────────────────────────── */
+.role-card {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.role-card.mafia { background: rgba(255,120,110,0.1); border: 1px solid rgba(255,120,110,0.3); }
+.role-card.police { background: rgba(126,200,248,0.1); border: 1px solid rgba(126,200,248,0.28); }
+.role-card.doctor { background: rgba(143,240,176,0.1); border: 1px solid rgba(143,240,176,0.3); }
+.role-card.citizen { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+.role-card-badge { margin: 0; font-weight: 800; font-size: 0.95rem; }
+.role-card-detail { margin: 4px 0 0; font-size: 0.8rem; color: rgba(232,244,255,0.8); line-height: 1.5; }
+
+/* ── Target buttons (night action / day vote) ───────── */
+.target-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.target-btn {
+  padding: 12px 8px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(232,244,255,0.85);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.target-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+.target-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Chat log ───────────────────────────────── */
+.chat-log {
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 9px;
+  font-size: 0.85rem;
+}
+.chat-name { font-weight: 800; color: #ffb3a8; white-space: nowrap; }
+.chat-text { color: rgba(232,244,255,0.85); }
+
+.chat-input-row {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+}
+.chat-input-row .nickname-input { flex: 1; }
+.chat-input-row .mafia-btn { width: auto; padding: 0 18px; }
+
+/* ── Game over / roles list ─────────────────── */
+.set-over-result {
+  font-size: 1.5rem;
+  font-weight: 900;
+  margin: 0;
+  text-align: center;
+}
+.set-over-result.win { color: #8ff0b0; }
+.set-over-result.lose { color: #ff9a8f; }
+
+.roles-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scores-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.scores-row.me { border-color: rgba(255,154,143,0.4); }
+.scores-row span:last-child { margin-left: auto; font-weight: 800; }
+
+@media (max-width: 420px) {
+  .mafia-panel { padding: 24px 18px; }
+  .target-row { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+}

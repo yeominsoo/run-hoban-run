@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { registerLiarServer } from './liar.mjs';
+import { registerMafiaServer } from './mafia.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
@@ -752,6 +753,7 @@ wss.on('connection', (ws) => {
 });
 
 const liarWss = registerLiarServer();
+const mafiaWss = registerMafiaServer();
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -759,11 +761,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   } else if (pathname === '/liar') {
     liarWss.handleUpgrade(req, socket, head, (ws) => liarWss.emit('connection', ws, req));
+  } else if (pathname === '/mafia') {
+    mafiaWss.handleUpgrade(req, socket, head, (ws) => mafiaWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia)`);
 });

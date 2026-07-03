@@ -213,6 +213,25 @@ body {
   box-shadow: 12px 0 0 #7ec8f8;
 }
 
+.mafia-mark::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: #7ec8f8;
+}
+
+.mafia-mark::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  bottom: 8px;
+  right: 6px;
+  border-radius: 50%;
+  background: rgba(126, 200, 248, 0.12);
+}
+
 .game-card-name {
   margin: 0;
   font-size: 1.3rem;

@@ -70,6 +70,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/mafia/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -112,6 +121,14 @@
       {
         "source": "/liar/**",
         "destination": "/liar/index.html"
+      },
+      {
+        "source": "/mafia",
+        "destination": "/mafia/index.html"
+      },
+      {
+        "source": "/mafia/**",
+        "destination": "/mafia/index.html"
       }
     ]
   }
