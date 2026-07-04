@@ -12,6 +12,7 @@ export default defineConfig({
         rps: resolve(__dirname, 'rps/index.html'),
         liar: resolve(__dirname, 'liar/index.html'),
         mafia: resolve(__dirname, 'mafia/index.html'),
+        halligalli: resolve(__dirname, 'halligalli/index.html'),
       },
       output: {
         manualChunks(id) {

@@ -48,6 +48,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/liar"
             - name: VITE_MAFIA_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/mafia"
+            - name: VITE_HALLIGALLI_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/halligalli"
           command:
             - /bin/bash
             - -lc

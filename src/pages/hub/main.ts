@@ -39,6 +39,11 @@ app.innerHTML = `
         <h2 class="game-card-name">마피아게임</h2>
         <p class="game-card-desc">4~12명이 참여하는 역할 추리 게임. 밤에는 마피아·경찰·의사가 은밀히 행동하고, 낮에는 토론과 투표로 마피아를 찾아낸다.</p>
       </a>
+      <a class="game-card" href="/halligalli/">
+        <span class="game-card-icon halligalli-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">할리갈리</h2>
+        <p class="game-card-desc">2~6명이 참여하는 순발력 카드게임. 같은 과일이 5개가 되는 순간 누구보다 먼저 종을 쳐야 카드를 독식한다.</p>
+      </a>
     </nav>
   </div>
 `;
