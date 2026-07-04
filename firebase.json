@@ -79,6 +79,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/halligalli/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -129,6 +138,14 @@
       {
         "source": "/mafia/**",
         "destination": "/mafia/index.html"
+      },
+      {
+        "source": "/halligalli",
+        "destination": "/halligalli/index.html"
+      },
+      {
+        "source": "/halligalli/**",
+        "destination": "/halligalli/index.html"
       }
     ]
   }
