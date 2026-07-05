@@ -1,5 +1,6 @@
 import './rps.css';
 import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from './hand-icons';
+import { shareRoomLink } from '../../shared/share';
 
 type Mode = '1v1' | 'battle' | 'tournament';
 type Phase =
@@ -158,7 +159,7 @@ app.innerHTML = `
       <div class="room-share hidden" id="room-share">
         <span class="room-share-label">방 코드</span>
         <span class="room-code-display" id="room-code-display"></span>
-        <button id="copy-link-btn" type="button" class="rps-btn secondary">초대 링크 복사</button>
+        <button id="copy-link-btn" type="button" class="rps-btn secondary">공유하기</button>
       </div>
       <button id="cancel-btn" type="button" class="rps-btn secondary">취소</button>
     </div>
@@ -168,7 +169,7 @@ app.innerHTML = `
       <div class="room-share" id="lobby-share">
         <span class="room-share-label">방 코드</span>
         <span class="room-code-display" id="lobby-code-display"></span>
-        <button id="lobby-copy-btn" type="button" class="rps-btn secondary">초대 링크 복사</button>
+        <button id="lobby-copy-btn" type="button" class="rps-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
       <p class="status-text" id="lobby-status">호스트가 시작하기를 기다리는 중…</p>
@@ -509,14 +510,7 @@ function requireName(): string | null {
 
 async function copyLink(code: string, btn: HTMLButtonElement) {
   const link = `${location.origin}/rps/?room=${code}`;
-  try {
-    await navigator.clipboard.writeText(link);
-    const orig = btn.textContent!;
-    btn.textContent = '복사됨!';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  } catch {
-    window.prompt('아래 링크를 복사해서 공유하세요', link);
-  }
+  await shareRoomLink({ url: link, title: '가위바위보 대결 초대', text: `가위바위보 대결 방(${code})에 초대할게요!`, btn });
 }
 
 // ── Networking ────────────────────────────────────────────────────

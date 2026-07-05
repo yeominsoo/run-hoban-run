@@ -1,4 +1,5 @@
 import './liar.css';
+import { shareRoomLink } from '../../shared/share';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -115,7 +116,7 @@ app.innerHTML = `
       <div class="room-share" id="lobby-share">
         <span class="room-share-label">방 코드</span>
         <span class="room-code-display" id="lobby-code-display"></span>
-        <button id="lobby-copy-btn" type="button" class="liar-btn secondary">초대 링크 복사</button>
+        <button id="lobby-copy-btn" type="button" class="liar-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
@@ -291,14 +292,7 @@ function hideEntryError() { entryError.classList.add('hidden'); }
 
 async function copyLink(code: string, btn: HTMLButtonElement) {
   const link = `${location.origin}/liar/?room=${code}`;
-  try {
-    await navigator.clipboard.writeText(link);
-    const orig = btn.textContent!;
-    btn.textContent = '복사됨!';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  } catch {
-    window.prompt('아래 링크를 복사해서 공유하세요', link);
-  }
+  await shareRoomLink({ url: link, title: '라이어게임 초대', text: `라이어게임 방(${code})에 초대할게요!`, btn });
 }
 
 // ── Networking ────────────────────────────────────────────────────
