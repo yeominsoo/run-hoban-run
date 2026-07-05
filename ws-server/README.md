@@ -194,6 +194,10 @@ ISO 주 단위로 `DATA_DIR/ranking.json`에 파일로 영속된다(과거에 Po
 
 ### 재배포 절차 (server.mjs/liar.mjs/mafia.mjs/halligalli.mjs/Dockerfile/package.json 변경 시)
 
+> 할리갈리(`/halligalli`) 반영은 아래 절차 + nginx `/halligalli` location 추가까지 한 번에 실행하는
+> `ws-server/deploy-halligalli-was.sh` 스크립트로 대체 가능(WSL2 등 SSH 키가 있는 로컬 머신에서
+> 저장소 루트 기준으로 실행).
+
 ```bash
 SSH="ssh -p 10022 -i /home/msyeo/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes msyeo@58.228.188.17"
 
