@@ -1,15 +1,17 @@
-# WebSocket Server (RPS + 라이어게임 + 마피아게임 + 할리갈리)
+# WebSocket Server (RPS + 라이어게임 + 마피아게임 + 할리갈리 + 전략윷놀이)
 
-가위바위보 대결(`/rps`)·라이어게임(`/liar`)·마피아게임(`/mafia`)·할리갈리(`/halligalli`)가 함께
-쓰는 실시간 서버. 이 저장소의 나머지 게임(레이스/주사위/팀배분)과 달리 정적 파일만으로는
-동작하지 않고, 항상 켜져 있는 Node 프로세스 + WAS 배포가 필요하다. 네 게임 모두 **같은 Node
-프로세스, 같은 컨테이너, 같은 포트/TLS/도메인**을 공유하고, 서로 다른 WebSocket 경로(`/rps`,
-`/liar`, `/mafia`, `/halligalli`)와 완전히 독립된 room 상태(`server.mjs` vs `liar.mjs` vs
-`mafia.mjs` vs `halligalli.mjs`)로만 나뉜다 — 새 게임을 추가할 때마다 서버/포트/인증서를 새로
-만들 필요 없이 이 패턴을 반복하면 된다.
+가위바위보 대결(`/rps`)·라이어게임(`/liar`)·마피아게임(`/mafia`)·할리갈리(`/halligalli`)·
+전략윷놀이(`/yutnori`)가 함께 쓰는 실시간 서버. 이 저장소의 나머지 게임(레이스/주사위/팀배분)과
+달리 정적 파일만으로는 동작하지 않고, 항상 켜져 있는 Node 프로세스 + WAS 배포가 필요하다. 다섯
+게임 모두 **같은 Node 프로세스, 같은 컨테이너, 같은 포트/TLS/도메인**을 공유하고, 서로 다른
+WebSocket 경로(`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`)와 완전히 독립된 room 상태
+(`server.mjs` vs `liar.mjs` vs `mafia.mjs` vs `halligalli.mjs` vs `yutnori.mjs`+`yutnori-rules.mjs`
++`yutnori-board.mjs`)로만 나뉜다 — 새 게임을 추가할 때마다 서버/포트/인증서를 새로 만들 필요 없이
+이 패턴을 반복하면 된다.
 
 ⚠️ **이 파일은 실제 배포 상태를 반영하는 단일 진실 공급원(source of truth)이다.** 다른 세션/환경에서
-`/rps`, `/liar`, `/mafia`, `/halligalli`나 WAS를 건드리기 전에 반드시 이 파일을 먼저 읽을 것. 이
+`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`나 WAS를 건드리기 전에 반드시 이 파일을 먼저
+읽을 것. 이
 저장소는 **동시에 여러 Claude Code 세션이 `/rps`를 병렬로 작업한 적이 있다** (2026-07-02~03에 두
 세션이 서로 다른 방향으로 완전히 다시 작성해서 나중에 사용자가 한쪽을 골라야 했음). 작업 전에 항상:
 
@@ -23,20 +25,20 @@ git fetch origin && git log origin/master --oneline -10
 
 ```
 사용자 브라우저
-   │  https://hoban-lakepark-ab19.web.app/{rps,liar,mafia,halligalli}/   (Firebase Hosting, 정적 프론트엔드)
-   │  wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli}   (VITE_RPS_WS_URL / VITE_LIAR_WS_URL / VITE_MAFIA_WS_URL / VITE_HALLIGALLI_WS_URL로 빌드 시점에 주입됨)
+   │  https://hoban-lakepark-ab19.web.app/{rps,liar,mafia,halligalli,yutnori}/   (Firebase Hosting, 정적 프론트엔드)
+   │  wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori}   (VITE_RPS_WS_URL / VITE_LIAR_WS_URL / VITE_MAFIA_WS_URL / VITE_HALLIGALLI_WS_URL / VITE_YUTNORI_WS_URL로 빌드 시점에 주입됨)
    ▼
 공유기 (58.228.188.17, WAN) ── 포트 30080 포워딩 ──▶ WAS 내부(192.168.75.194)
    ▼
 rps-tls 컨테이너 (nginx, --network host, 30080에서 TLS 종료, Let's Encrypt 정식 인증서)
-   │  proxy_pass http://127.0.0.1:30081/{rps,liar,mafia,halligalli,healthz,ranking}
+   │  proxy_pass http://127.0.0.1:30081/{rps,liar,mafia,halligalli,yutnori,healthz,ranking}
    ▼
 rps-server 컨테이너 (Node, 8787→30081 포워딩)
    │  server.mjs가 /rps를 직접, import한 liar.mjs가 /liar를, mafia.mjs가 /mafia를,
-   │  halligalli.mjs가 /halligalli를
-   │  같은 httpServer의 noServer 모드 WebSocketServer 4개로 서비스 (수동 upgrade 라우팅)
+   │  halligalli.mjs가 /halligalli를, yutnori.mjs가 /yutnori를
+   │  같은 httpServer의 noServer 모드 WebSocketServer 5개로 서비스 (수동 upgrade 라우팅)
    │  랭킹(rps 전용)은 파일 기반: /app/data/ranking.json (named volume rps-server-data)
-   │  라이어게임/마피아게임/할리갈리는 인메모리 상태만 사용 — 랭킹/영속화 없음, 방이 끝나면 소멸
+   │  라이어게임/마피아게임/할리갈리/전략윷놀이는 인메모리 상태만 사용 — 랭킹/영속화 없음, 방이 끝나면 소멸
 ```
 
 WAS 자체는 공인 IP를 가진 공유기 뒤의 홈서버이고, k8s(ArgoCD가 다른 앱들 관리) +
@@ -150,6 +152,32 @@ PORT=8787 npm start
 
 랭킹 시스템 없음(라이어게임/마피아게임과 동일하게 인메모리 전용).
 
+## 전략윷놀이 (`/yutnori`, `ws-server/yutnori.mjs` + `yutnori-rules.mjs` + `yutnori-board.mjs`)
+
+방 코드 기반 로비(최소 2명, 최대 4명 — 보드에 코너가 4개뿐이라 인원 상한이 다른 게임과 다르다) →
+호스트가 시작하면 참가자마다 말 4개, 보드는 외곽 20칸(그중 4개 코너) + 코너마다 중앙으로 꺾는
+대각선 1칸 + 중앙 1칸(총 25칸)짜리 공유 그래프로 표현된다(`yutnori-board.mjs`). 할리갈리처럼
+**숨길 정보가 전혀 없는 게임**이라 서버 권위 원칙이 적용될 지점은 없고, 핵심은 순수 규칙 엔진의
+정확성이다(`yutnori-rules.mjs`, `src/game/yutnori-rules.ts`와 로직을 동일하게 유지해야 함 — 규칙을
+고칠 때는 두 파일을 같이 고칠 것).
+
+- 턴은 **던지기(`throw`) 단계 → 이동(`move`) 단계**로 나뉜다. `submit_throw`로 던진 결과가
+  윷/모가 아니면 바로 이동 단계로 넘어가고, 윷/모면 이동 전에 한 번 더 던질 수 있다(`extraTurn`).
+- `submit_move`로 대기 중인 던지기 하나를 골라 말을 옮긴다. 같은 편 말이 서 있는 칸에 도착하면
+  업기(자동 스택 합류), 상대 말이 서 있는 칸에 도착하면 잡기(상대 말 전부 시작점으로 귀환 +
+  보너스 던지기). 스택에서 말 하나만 떼어 옮기고 싶으면(갈라치기) `submit_move`에 `splitOff:true`.
+  백도(`backdo`)는 온보드 말만 가능하고 정확히 한 칸 후진한다.
+- 코너 칸을 **떠날 때마다**(처음 놓인 순간이 아니라 그 이후 매번) "그대로 vs 지름길" 분기가
+  필요하면 서버가 그 이동을 확정하지 않고 이동한 사람에게만 `await_branch`를 보낸다 — 클라이언트는
+  `branch: 'straight'|'shortcut'`를 채워 같은 `pendingThrowId`로 `submit_move`를 다시 보내야 한다.
+- 차례인 사람이 20초(`TURN_TIMEOUT_MS`) 안에 아무 것도 안 하면 대기 중이던 던지기를 버리고 다음
+  사람에게 순서가 넘어간다(`turn_skipped`).
+- 승리 조건은 말 4개를 전부 완주(홈)시키는 것. 게임 도중 누군가 이탈하면 그 사람의 말은 즉시
+  보드에서 제거되고(카드게임인 할리갈리와 달리 말의 위치는 재분배 대상이 아니다) 순번에서
+  빠진다 — 남은 인원이 2명 미만이 되면 즉시 남은 한 명의 승리로 종료.
+
+랭킹 시스템 없음(다른 파티게임들과 동일하게 인메모리 전용).
+
 ## 재연결 / 재입장
 
 - 소켓이 예기치 않게 끊기면(카카오톡 공유 등으로 탭이 백그라운드로 가는 경우 포함) 서버가
@@ -192,7 +220,7 @@ ISO 주 단위로 `DATA_DIR/ranking.json`에 파일로 영속된다(과거에 Po
 장비(Synology NAS)로 이미 포워딩돼 있어서, 정식 인증서는 HTTP-01이 아니라 DNS-01로 발급했다
 (`~/rps-tls/hooks/duckdns-auth-hook.py`, DuckDNS `txt=` 파라미터 사용, https://www.duckdns.org/spec.jsp 참고).
 
-### 재배포 절차 (server.mjs/liar.mjs/mafia.mjs/halligalli.mjs/Dockerfile/package.json 변경 시)
+### 재배포 절차 (server.mjs/liar.mjs/mafia.mjs/halligalli.mjs/yutnori*.mjs/Dockerfile/package.json 변경 시)
 
 > 할리갈리(`/halligalli`) 반영은 아래 절차 + nginx `/halligalli` location 추가까지 한 번에 실행하는
 > `ws-server/deploy-halligalli-was.sh` 스크립트로 대체 가능(WSL2 등 SSH 키가 있는 로컬 머신에서
@@ -219,7 +247,7 @@ curl -sk https://toris-arcade.duckdns.org:30080/healthz
 ```
 
 `nginx.conf`만 바꿨다면 3~4단계 대신 `~/rps-tls/nginx.conf`를 갱신하고 `docker restart rps-tls`.
-**`/liar`, `/mafia`, `/halligalli` 같은 새 location을 처음 추가할 때는 WAS의 `~/rps-tls/nginx.conf`
+**`/liar`, `/mafia`, `/halligalli`, `/yutnori` 같은 새 location을 처음 추가할 때는 WAS의 `~/rps-tls/nginx.conf`
 (저장소의 `ws-server/nginx.conf`와는 별개 사본)에 수동으로 반영해야 한다** — 안 하면 저장소 파일만
 바뀌고 실제 서비스는 여전히 기존 경로만 프록시해서 새 경로 접속이 404/연결거부로 조용히 실패한다.
 
@@ -244,13 +272,14 @@ VITE_RPS_WS_URL="wss://toris-arcade.duckdns.org:30080/rps" \
 VITE_LIAR_WS_URL="wss://toris-arcade.duckdns.org:30080/liar" \
 VITE_MAFIA_WS_URL="wss://toris-arcade.duckdns.org:30080/mafia" \
 VITE_HALLIGALLI_WS_URL="wss://toris-arcade.duckdns.org:30080/halligalli" \
+VITE_YUTNORI_WS_URL="wss://toris-arcade.duckdns.org:30080/yutnori" \
 npm run build
 npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19
 ```
 
-`VITE_RPS_WS_URL`/`VITE_LIAR_WS_URL`/`VITE_MAFIA_WS_URL`/`VITE_HALLIGALLI_WS_URL` 전부
-`.env`(gitignore됨)에도 저장돼 있지 않다 — **빌드할 때마다 명시적으로 지정해야 한다.** 안 하면
-각각 `ws://<hostname>:8787/{rps,liar,mafia,halligalli}`로 조용히 fallback해서 프로덕션에서
+`VITE_RPS_WS_URL`/`VITE_LIAR_WS_URL`/`VITE_MAFIA_WS_URL`/`VITE_HALLIGALLI_WS_URL`/`VITE_YUTNORI_WS_URL`
+전부 `.env`(gitignore됨)에도 저장돼 있지 않다 — **빌드할 때마다 명시적으로 지정해야 한다.** 안 하면
+각각 `ws://<hostname>:8787/{rps,liar,mafia,halligalli,yutnori}`로 조용히 fallback해서 프로덕션에서
 연결이 깨진다. (참고: `deploy/k8s/base/firebase-deploy-job.yaml`에는 ArgoCD가 자동 배포할 때 쓰는
 값이 이미 들어있지만, 로컬에서 수동으로 `firebase deploy`할 때는 별개로 챙겨야 한다.)
 
@@ -259,21 +288,25 @@ npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19
 - 서버 로직: 로컬 WebSocket 클라이언트 스크립트로 직접 연결해 방 생성 → 참가 → 대결(rps) 또는
   로비 → 역할배정 → 설명 → 투표 → 결과(라이어게임) 또는 로비 → 역할배정 → 밤행동 → 낮채팅/투표 →
   승패판정(마피아게임) 또는 로비 → 카드분배 → 순서대로 뒤집기 → 정답/오답 종치기 → 카드 독식
-  종료(할리갈리)까지.
+  종료(할리갈리) 또는 로비 → 던지기 → 이동(업기/갈라치기/잡기/지름길분기) → 4개 말 완주(전략윷놀이)까지.
 - 화면 레이스 컨디션류 버그: Playwright로 여러 페이지를 동시에 띄워 실제 타이밍대로 재현
-  (rps 배틀로얄/토너먼트는 4명 이상, 라이어게임/마피아게임/할리갈리는 각각 최소 인원(3명/4명/2명)
-  이상으로 테스트해야 대기/타이밍 케이스가 나온다).
+  (rps 배틀로얄/토너먼트는 4명 이상, 라이어게임/마피아게임/할리갈리/전략윷놀이는 각각 최소
+  인원(3명/4명/2명/2명) 이상으로 테스트해야 대기/타이밍 케이스가 나온다).
 - **안티치트 검증(라이어게임/마피아게임 공통 원칙)**: 비공개 정보를 가진 역할(라이어의 제시어,
   마피아 외 역할의 팀 구성)로 접속한 클라이언트가 받는 `role_assigned`/`rejoined` WS
   프레임(JSON 문자열)에 해당 키(`word`, `teammates` 등)가 문자 그대로 존재하지 않는지 브라우저
   DevTools의 Network→WS 탭 또는 raw 클라이언트 스크립트로 직접 확인 — 값이 비어있는 게 아니라
-  키 자체가 없어야 한다. (할리갈리는 숨길 정보가 없어 이 검증은 해당 없음 — 대신 아래 종치기
-  판정 검증을 참고.)
+  키 자체가 없어야 한다. (할리갈리/전략윷놀이는 숨길 정보가 없어 이 검증은 해당 없음 — 대신
+  아래 판정 검증을 참고.)
 - **할리갈리 종치기 판정 검증**: 여러 raw 클라이언트를 동시에 접속시켜 같은 타이밍에 `submit_ring`을
   보내고, 서버가 먼저 수신한 클라이언트만 정답/오답 판정을 받고 나머지는 결과에 영향을 주지 않는지
   확인. 조건이 거짓일 때 친 오답 케이스(카드 분배 확인)와 정답 케이스(카드 독식 확인)를 모두
   검증한다.
+- **전략윷놀이 규칙 엔진 검증**: `tests/yutnori-rules.spec.ts`의 순수 유닛테스트(던지기 확률 분포,
+  업기/갈라치기/잡기/보너스턴/백도/지름길분기/승리조건)를 우선 신뢰하고, 서버 쪽은 raw 클라이언트로
+  같은 시나리오(특히 잡기 시 보너스 던지기, 코너를 떠날 때의 `await_branch` 왕복, 이탈 시 말 제거)를
+  재현해 `src/game/yutnori-rules.ts`와 `ws-server/yutnori-rules.mjs`의 동작이 어긋나지 않는지 확인한다.
 - 인증서 신뢰 여부: `rejectUnauthorized`를 끄지 않은 기본 WebSocket 클라이언트, 그리고
   Playwright에서 `ignoreHTTPSErrors` 옵션 없이 접속 — 둘 다 정상 연결되면 브라우저도 경고 없이 신뢰한다는 뜻.
-- 항상 실제 WAS(`wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli}`)까지 왕복하는
-  e2e로 마무리 확인하고, Firebase에 배포된 실제 프로덕션 페이지에서도 한 번 더 확인한다.
+- 항상 실제 WAS(`wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori}`)까지
+  왕복하는 e2e로 마무리 확인하고, Firebase에 배포된 실제 프로덕션 페이지에서도 한 번 더 확인한다.

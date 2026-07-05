@@ -13,6 +13,8 @@ export default defineConfig({
         liar: resolve(__dirname, 'liar/index.html'),
         mafia: resolve(__dirname, 'mafia/index.html'),
         halligalli: resolve(__dirname, 'halligalli/index.html'),
+        yutnori: resolve(__dirname, 'yutnori/index.html'),
+        'strategy-yutnori': resolve(__dirname, 'strategy-yutnori/index.html'),
       },
       output: {
         manualChunks(id) {

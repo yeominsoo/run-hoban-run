@@ -7,6 +7,8 @@ import { WebSocketServer } from 'ws';
 import { registerLiarServer } from './liar.mjs';
 import { registerMafiaServer } from './mafia.mjs';
 import { registerHalliGalliServer } from './halligalli.mjs';
+import { registerYutnoriServer } from './yutnori.mjs';
+import { registerStrategyYutnoriServer } from './strategy-yutnori.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
@@ -756,6 +758,8 @@ wss.on('connection', (ws) => {
 const liarWss = registerLiarServer();
 const mafiaWss = registerMafiaServer();
 const halliGalliWss = registerHalliGalliServer();
+const yutnoriWss = registerYutnoriServer();
+const strategyYutnoriWss = registerStrategyYutnoriServer();
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -767,11 +771,15 @@ httpServer.on('upgrade', (req, socket, head) => {
     mafiaWss.handleUpgrade(req, socket, head, (ws) => mafiaWss.emit('connection', ws, req));
   } else if (pathname === '/halligalli') {
     halliGalliWss.handleUpgrade(req, socket, head, (ws) => halliGalliWss.emit('connection', ws, req));
+  } else if (pathname === '/yutnori') {
+    yutnoriWss.handleUpgrade(req, socket, head, (ws) => yutnoriWss.emit('connection', ws, req));
+  } else if (pathname === '/strategy-yutnori') {
+    strategyYutnoriWss.handleUpgrade(req, socket, head, (ws) => strategyYutnoriWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori)`);
 });

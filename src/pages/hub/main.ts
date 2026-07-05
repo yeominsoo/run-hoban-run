@@ -44,6 +44,11 @@ app.innerHTML = `
         <h2 class="game-card-name">할리갈리</h2>
         <p class="game-card-desc">2~6명이 참여하는 순발력 카드게임. 같은 과일이 5개가 되는 순간 누구보다 먼저 종을 쳐야 카드를 독식한다.</p>
       </a>
+      <a class="game-card" href="/yutnori/">
+        <span class="game-card-icon yutnori-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">전략윷놀이</h2>
+        <p class="game-card-desc">2~4명이 실시간으로 즐기는 3D 윷놀이. 업기·잡기·갈라치기·지름길까지 표준 규칙 그대로.</p>
+      </a>
     </nav>
   </div>
 `;

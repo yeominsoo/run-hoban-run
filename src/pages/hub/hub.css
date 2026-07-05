@@ -255,6 +255,21 @@ body {
   box-shadow: 0 6px 0 0 rgba(126, 200, 248, 0.4);
 }
 
+.yutnori-mark::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 9px;
+  bottom: 9px;
+  background: repeating-linear-gradient(
+    90deg,
+    #f6c445 0px, #f6c445 4px,
+    transparent 4px, transparent 10px
+  );
+  border-radius: 2px;
+}
+
 .game-card-name {
   margin: 0;
   font-size: 1.3rem;

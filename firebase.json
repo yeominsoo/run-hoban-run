@@ -88,6 +88,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/yutnori/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -146,6 +155,14 @@
       {
         "source": "/halligalli/**",
         "destination": "/halligalli/index.html"
+      },
+      {
+        "source": "/yutnori",
+        "destination": "/yutnori/index.html"
+      },
+      {
+        "source": "/yutnori/**",
+        "destination": "/yutnori/index.html"
       }
     ]
   }
