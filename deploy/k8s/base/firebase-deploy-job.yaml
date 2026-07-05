@@ -52,6 +52,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/halligalli"
             - name: VITE_YUTNORI_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/yutnori"
+            - name: VITE_STRATEGY_YUTNORI_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/strategy-yutnori"
           command:
             - /bin/bash
             - -lc

@@ -46,8 +46,13 @@ app.innerHTML = `
       </a>
       <a class="game-card" href="/yutnori/">
         <span class="game-card-icon yutnori-mark" aria-hidden="true"></span>
-        <h2 class="game-card-name">전략윷놀이</h2>
+        <h2 class="game-card-name">윷놀이</h2>
         <p class="game-card-desc">2~4명이 실시간으로 즐기는 3D 윷놀이. 업기·잡기·갈라치기·지름길까지 표준 규칙 그대로.</p>
+      </a>
+      <a class="game-card" href="/strategy-yutnori/">
+        <span class="game-card-icon strategy-yutnori-mark" aria-hidden="true"></span>
+        <h2 class="game-card-name">전략윷놀이</h2>
+        <p class="game-card-desc">4명이 2:2로 겨루는 심리전 윷놀이. 앞면·뒷면을 비공개로 동시에 내 윷값을 정하고, 팀원마저 배신할 수 있다. &lt;더 지니어스&gt; 데스매치 변형.</p>
       </a>
     </nav>
   </div>

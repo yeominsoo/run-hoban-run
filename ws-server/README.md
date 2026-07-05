@@ -1,17 +1,19 @@
-# WebSocket Server (RPS + 라이어게임 + 마피아게임 + 할리갈리 + 전략윷놀이)
+# WebSocket Server (RPS + 라이어게임 + 마피아게임 + 할리갈리 + 윷놀이 + 전략윷놀이)
 
 가위바위보 대결(`/rps`)·라이어게임(`/liar`)·마피아게임(`/mafia`)·할리갈리(`/halligalli`)·
-전략윷놀이(`/yutnori`)가 함께 쓰는 실시간 서버. 이 저장소의 나머지 게임(레이스/주사위/팀배분)과
-달리 정적 파일만으로는 동작하지 않고, 항상 켜져 있는 Node 프로세스 + WAS 배포가 필요하다. 다섯
-게임 모두 **같은 Node 프로세스, 같은 컨테이너, 같은 포트/TLS/도메인**을 공유하고, 서로 다른
-WebSocket 경로(`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`)와 완전히 독립된 room 상태
-(`server.mjs` vs `liar.mjs` vs `mafia.mjs` vs `halligalli.mjs` vs `yutnori.mjs`+`yutnori-rules.mjs`
-+`yutnori-board.mjs`)로만 나뉜다 — 새 게임을 추가할 때마다 서버/포트/인증서를 새로 만들 필요 없이
-이 패턴을 반복하면 된다.
+윷놀이(`/yutnori`)·전략윷놀이(`/strategy-yutnori`)가 함께 쓰는 실시간 서버. 이 저장소의 나머지
+게임(레이스/주사위/팀배분)과 달리 정적 파일만으로는 동작하지 않고, 항상 켜져 있는 Node 프로세스
++ WAS 배포가 필요하다. 여섯 게임 모두 **같은 Node 프로세스, 같은 컨테이너, 같은 포트/TLS/도메인**을
+공유하고, 서로 다른 WebSocket 경로(`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`,
+`/strategy-yutnori`)와 완전히 독립된 room 상태(`server.mjs` vs `liar.mjs` vs `mafia.mjs` vs
+`halligalli.mjs` vs `yutnori.mjs`+`yutnori-rules.mjs`+`yutnori-board.mjs` vs
+`strategy-yutnori.mjs`+`strategy-yutnori-rules.mjs`, 보드 그래프 `yutnori-board.mjs`는 두 윷놀이가
+공유)로만 나뉜다 — 새 게임을 추가할 때마다 서버/포트/인증서를 새로 만들 필요 없이 이 패턴을
+반복하면 된다.
 
 ⚠️ **이 파일은 실제 배포 상태를 반영하는 단일 진실 공급원(source of truth)이다.** 다른 세션/환경에서
-`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`나 WAS를 건드리기 전에 반드시 이 파일을 먼저
-읽을 것. 이
+`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`, `/strategy-yutnori`나 WAS를 건드리기 전에
+반드시 이 파일을 먼저 읽을 것. 이
 저장소는 **동시에 여러 Claude Code 세션이 `/rps`를 병렬로 작업한 적이 있다** (2026-07-02~03에 두
 세션이 서로 다른 방향으로 완전히 다시 작성해서 나중에 사용자가 한쪽을 골라야 했음). 작업 전에 항상:
 
@@ -25,20 +27,20 @@ git fetch origin && git log origin/master --oneline -10
 
 ```
 사용자 브라우저
-   │  https://hoban-lakepark-ab19.web.app/{rps,liar,mafia,halligalli,yutnori}/   (Firebase Hosting, 정적 프론트엔드)
-   │  wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori}   (VITE_RPS_WS_URL / VITE_LIAR_WS_URL / VITE_MAFIA_WS_URL / VITE_HALLIGALLI_WS_URL / VITE_YUTNORI_WS_URL로 빌드 시점에 주입됨)
+   │  https://hoban-lakepark-ab19.web.app/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}/   (Firebase Hosting, 정적 프론트엔드)
+   │  wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}   (VITE_RPS_WS_URL / VITE_LIAR_WS_URL / VITE_MAFIA_WS_URL / VITE_HALLIGALLI_WS_URL / VITE_YUTNORI_WS_URL / VITE_STRATEGY_YUTNORI_WS_URL로 빌드 시점에 주입됨)
    ▼
 공유기 (58.228.188.17, WAN) ── 포트 30080 포워딩 ──▶ WAS 내부(192.168.75.194)
    ▼
 rps-tls 컨테이너 (nginx, --network host, 30080에서 TLS 종료, Let's Encrypt 정식 인증서)
-   │  proxy_pass http://127.0.0.1:30081/{rps,liar,mafia,halligalli,yutnori,healthz,ranking}
+   │  proxy_pass http://127.0.0.1:30081/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori,healthz,ranking}
    ▼
 rps-server 컨테이너 (Node, 8787→30081 포워딩)
    │  server.mjs가 /rps를 직접, import한 liar.mjs가 /liar를, mafia.mjs가 /mafia를,
-   │  halligalli.mjs가 /halligalli를, yutnori.mjs가 /yutnori를
-   │  같은 httpServer의 noServer 모드 WebSocketServer 5개로 서비스 (수동 upgrade 라우팅)
+   │  halligalli.mjs가 /halligalli를, yutnori.mjs가 /yutnori를, strategy-yutnori.mjs가 /strategy-yutnori를
+   │  같은 httpServer의 noServer 모드 WebSocketServer 6개로 서비스 (수동 upgrade 라우팅)
    │  랭킹(rps 전용)은 파일 기반: /app/data/ranking.json (named volume rps-server-data)
-   │  라이어게임/마피아게임/할리갈리/전략윷놀이는 인메모리 상태만 사용 — 랭킹/영속화 없음, 방이 끝나면 소멸
+   │  라이어게임/마피아게임/할리갈리/윷놀이/전략윷놀이는 인메모리 상태만 사용 — 랭킹/영속화 없음, 방이 끝나면 소멸
 ```
 
 WAS 자체는 공인 IP를 가진 공유기 뒤의 홈서버이고, k8s(ArgoCD가 다른 앱들 관리) +
@@ -152,7 +154,7 @@ PORT=8787 npm start
 
 랭킹 시스템 없음(라이어게임/마피아게임과 동일하게 인메모리 전용).
 
-## 전략윷놀이 (`/yutnori`, `ws-server/yutnori.mjs` + `yutnori-rules.mjs` + `yutnori-board.mjs`)
+## 윷놀이 (`/yutnori`, `ws-server/yutnori.mjs` + `yutnori-rules.mjs` + `yutnori-board.mjs`)
 
 방 코드 기반 로비(최소 2명, 최대 4명 — 보드에 코너가 4개뿐이라 인원 상한이 다른 게임과 다르다) →
 호스트가 시작하면 참가자마다 말 4개, 보드는 외곽 20칸(그중 4개 코너) + 코너마다 중앙으로 꺾는
@@ -177,6 +179,37 @@ PORT=8787 npm start
   빠진다 — 남은 인원이 2명 미만이 되면 즉시 남은 한 명의 승리로 종료.
 
 랭킹 시스템 없음(다른 파티게임들과 동일하게 인메모리 전용).
+
+## 전략윷놀이 (`/strategy-yutnori`, `ws-server/strategy-yutnori.mjs` + `strategy-yutnori-rules.mjs`, 보드는 `yutnori-board.mjs` 재사용)
+
+tvN <더 지니어스> 데스매치에서 쓰인 2:2 윷놀이 변형. 보드 그래프(25칸)는 표준 윷놀이와 **완전히
+동일**하지만(같은 `yutnori-board.mjs`를 공유), 던지기 방식과 승패 단위가 다르다. 표준 윷놀이와 달리
+**숨길 정보가 있는 게임**이라 서버 권위 원칙이 적용된다.
+
+- **정확히 4명** 고정(코너 4개에 한 명씩 진입). join 순서대로 (0,1)조 / (2,3)조 두 팀이지만, 팀원
+  말끼리도 서로 잡을 수 있다(배신 가능). 인당 말은 **2개**뿐.
+- 던지기는 무작위가 아니다. 라운드마다 4명이 각자 자기 막대 1개를 **앞면/뒷면 중 골라 비공개로 동시
+  제출**(`submit_face` `{face:'front'|'back'}`)한다. 4명이 다 낼 때까지 서버는 **누가 냈는지만**
+  (`game_update` event `face_submitted` + `submittedTokens`) 알리고 **낸 값은 절대 브로드캐스트하지
+  않는다**. 4명이 다 모이면 뒷면 개수로 도개걸윷모를 확정한다: 0=모(5), 2=개(2), 3=걸(3), 4=윷(4),
+  **뒷면이 정확히 1개면 항상 백도(-1)로 강제**(원 방송 규칙 추정 — `strategy-yutnori-rules.ts` 상단
+  주석 참고).
+- **시그널 카드**(`submit_signal` `{suggestion:'front'|'back'|'free'}`): 자기 짝에게만 "앞면 내줘/뒷면
+  내줘/자유롭게" 힌트를 보낸다. 서버는 이 프레임(`signal_received`)을 **오직 파트너 소켓 1개에만**
+  보낸다 — 다른 세 명에게 새어나가면 안 된다.
+- 던지기가 확정되면 `moving` 단계로 넘어가 `moveOrder`대로 각자 그 값으로 **한 번씩** 이동
+  (`submit_move`). 보너스 던지기는 없다. 이동할 말이 없는 사람은 조용히 건너뛴다. 업기(같은 개인
+  소유 말끼리만)·잡기(팀 무관 전원)·갈라치기(`splitOff:true`)·코너 이탈 시 `await_branch` 왕복은
+  표준 윷놀이와 동일한 규칙 엔진 패턴을 따른다.
+- **승리 조건은 개인전**: 자기 말 2개를 먼저 완주(홈)시킨 **사람**이 이긴다(파트너 상태 무관).
+  `game_over`에 승자와 파트너를 함께 실어 보낸다.
+- 타임아웃: 던지기 미제출 20초(`FACE_TIMEOUT_MS`)면 자동 `front` 제출, 자기 차례 20초
+  (`MOVE_TIMEOUT_MS`)면 첫 번째 가능한 말을 straight 분기로 강제 이동.
+- 4인 고정 게임이라 게임 도중 **누구든 한 명이라도 이탈하면 즉시 종료**(`abandonGame`, `opponentLeft`
+  플래그). 로비 단계 이탈은 표준대로 자리만 비운다.
+
+규칙 엔진은 표준 윷놀이처럼 `src/game/strategy-yutnori-rules.ts`와 `ws-server/strategy-yutnori-rules.mjs`
+두 벌을 **로직 동일하게 유지**해야 한다(규칙 수정 시 두 파일 같이). 랭킹 없음(인메모리 전용).
 
 ## 재연결 / 재입장
 
@@ -220,7 +253,7 @@ ISO 주 단위로 `DATA_DIR/ranking.json`에 파일로 영속된다(과거에 Po
 장비(Synology NAS)로 이미 포워딩돼 있어서, 정식 인증서는 HTTP-01이 아니라 DNS-01로 발급했다
 (`~/rps-tls/hooks/duckdns-auth-hook.py`, DuckDNS `txt=` 파라미터 사용, https://www.duckdns.org/spec.jsp 참고).
 
-### 재배포 절차 (server.mjs/liar.mjs/mafia.mjs/halligalli.mjs/yutnori*.mjs/Dockerfile/package.json 변경 시)
+### 재배포 절차 (server.mjs/liar.mjs/mafia.mjs/halligalli.mjs/yutnori*.mjs/strategy-yutnori*.mjs/Dockerfile/package.json 변경 시)
 
 > 할리갈리(`/halligalli`) 반영은 아래 절차 + nginx `/halligalli` location 추가까지 한 번에 실행하는
 > `ws-server/deploy-halligalli-was.sh` 스크립트로 대체 가능(WSL2 등 SSH 키가 있는 로컬 머신에서
@@ -247,7 +280,7 @@ curl -sk https://toris-arcade.duckdns.org:30080/healthz
 ```
 
 `nginx.conf`만 바꿨다면 3~4단계 대신 `~/rps-tls/nginx.conf`를 갱신하고 `docker restart rps-tls`.
-**`/liar`, `/mafia`, `/halligalli`, `/yutnori` 같은 새 location을 처음 추가할 때는 WAS의 `~/rps-tls/nginx.conf`
+**`/liar`, `/mafia`, `/halligalli`, `/yutnori`, `/strategy-yutnori` 같은 새 location을 처음 추가할 때는 WAS의 `~/rps-tls/nginx.conf`
 (저장소의 `ws-server/nginx.conf`와는 별개 사본)에 수동으로 반영해야 한다** — 안 하면 저장소 파일만
 바뀌고 실제 서비스는 여전히 기존 경로만 프록시해서 새 경로 접속이 404/연결거부로 조용히 실패한다.
 
@@ -273,13 +306,14 @@ VITE_LIAR_WS_URL="wss://toris-arcade.duckdns.org:30080/liar" \
 VITE_MAFIA_WS_URL="wss://toris-arcade.duckdns.org:30080/mafia" \
 VITE_HALLIGALLI_WS_URL="wss://toris-arcade.duckdns.org:30080/halligalli" \
 VITE_YUTNORI_WS_URL="wss://toris-arcade.duckdns.org:30080/yutnori" \
+VITE_STRATEGY_YUTNORI_WS_URL="wss://toris-arcade.duckdns.org:30080/strategy-yutnori" \
 npm run build
 npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19
 ```
 
-`VITE_RPS_WS_URL`/`VITE_LIAR_WS_URL`/`VITE_MAFIA_WS_URL`/`VITE_HALLIGALLI_WS_URL`/`VITE_YUTNORI_WS_URL`
+`VITE_RPS_WS_URL`/`VITE_LIAR_WS_URL`/`VITE_MAFIA_WS_URL`/`VITE_HALLIGALLI_WS_URL`/`VITE_YUTNORI_WS_URL`/`VITE_STRATEGY_YUTNORI_WS_URL`
 전부 `.env`(gitignore됨)에도 저장돼 있지 않다 — **빌드할 때마다 명시적으로 지정해야 한다.** 안 하면
-각각 `ws://<hostname>:8787/{rps,liar,mafia,halligalli,yutnori}`로 조용히 fallback해서 프로덕션에서
+각각 `ws://<hostname>:8787/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}`로 조용히 fallback해서 프로덕션에서
 연결이 깨진다. (참고: `deploy/k8s/base/firebase-deploy-job.yaml`에는 ArgoCD가 자동 배포할 때 쓰는
 값이 이미 들어있지만, 로컬에서 수동으로 `firebase deploy`할 때는 별개로 챙겨야 한다.)
 
@@ -288,25 +322,35 @@ npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19
 - 서버 로직: 로컬 WebSocket 클라이언트 스크립트로 직접 연결해 방 생성 → 참가 → 대결(rps) 또는
   로비 → 역할배정 → 설명 → 투표 → 결과(라이어게임) 또는 로비 → 역할배정 → 밤행동 → 낮채팅/투표 →
   승패판정(마피아게임) 또는 로비 → 카드분배 → 순서대로 뒤집기 → 정답/오답 종치기 → 카드 독식
-  종료(할리갈리) 또는 로비 → 던지기 → 이동(업기/갈라치기/잡기/지름길분기) → 4개 말 완주(전략윷놀이)까지.
+  종료(할리갈리) 또는 로비 → 던지기 → 이동(업기/갈라치기/잡기/지름길분기) → 4개 말 완주(윷놀이) 또는
+  로비 → 앞/뒷면 비공개 제출 → 도개걸윷모 확정 → 순서대로 이동 → 개인 말 2개 완주(전략윷놀이)까지.
 - 화면 레이스 컨디션류 버그: Playwright로 여러 페이지를 동시에 띄워 실제 타이밍대로 재현
-  (rps 배틀로얄/토너먼트는 4명 이상, 라이어게임/마피아게임/할리갈리/전략윷놀이는 각각 최소
-  인원(3명/4명/2명/2명) 이상으로 테스트해야 대기/타이밍 케이스가 나온다).
+  (rps 배틀로얄/토너먼트는 4명 이상, 라이어게임/마피아게임/할리갈리/윷놀이/전략윷놀이는 각각 최소
+  인원(3명/4명/2명/2명/정확히 4명) 이상으로 테스트해야 대기/타이밍 케이스가 나온다).
 - **안티치트 검증(라이어게임/마피아게임 공통 원칙)**: 비공개 정보를 가진 역할(라이어의 제시어,
   마피아 외 역할의 팀 구성)로 접속한 클라이언트가 받는 `role_assigned`/`rejoined` WS
   프레임(JSON 문자열)에 해당 키(`word`, `teammates` 등)가 문자 그대로 존재하지 않는지 브라우저
   DevTools의 Network→WS 탭 또는 raw 클라이언트 스크립트로 직접 확인 — 값이 비어있는 게 아니라
-  키 자체가 없어야 한다. (할리갈리/전략윷놀이는 숨길 정보가 없어 이 검증은 해당 없음 — 대신
-  아래 판정 검증을 참고.)
+  키 자체가 없어야 한다. (할리갈리/윷놀이는 숨길 정보가 없어 이 검증은 해당 없음 — 대신 아래 판정
+  검증을 참고. 단 **전략윷놀이는 비공개 앞/뒷면과 파트너 전용 시그널이 있어** 아래 별도 검증이 필요.)
+- **전략윷놀이 비공개 정보 검증**: `collecting` 단계에서 4명이 다 내기 전까지 오는 `game_update`
+  프레임에 개별 `face` 값이 문자 그대로 없어야 한다(`submittedTokens`/`face_submitted`에는 token/name만).
+  또 한 명이 `submit_signal`을 보냈을 때 `signal_received` 프레임이 **오직 파트너 소켓에만** 도착하고
+  나머지 두 명에게는 전달되지 않는지 raw 클라이언트 4개로 확인한다.
 - **할리갈리 종치기 판정 검증**: 여러 raw 클라이언트를 동시에 접속시켜 같은 타이밍에 `submit_ring`을
   보내고, 서버가 먼저 수신한 클라이언트만 정답/오답 판정을 받고 나머지는 결과에 영향을 주지 않는지
   확인. 조건이 거짓일 때 친 오답 케이스(카드 분배 확인)와 정답 케이스(카드 독식 확인)를 모두
   검증한다.
-- **전략윷놀이 규칙 엔진 검증**: `tests/yutnori-rules.spec.ts`의 순수 유닛테스트(던지기 확률 분포,
+- **윷놀이 규칙 엔진 검증**: `tests/yutnori-rules.spec.ts`의 순수 유닛테스트(던지기 확률 분포,
   업기/갈라치기/잡기/보너스턴/백도/지름길분기/승리조건)를 우선 신뢰하고, 서버 쪽은 raw 클라이언트로
   같은 시나리오(특히 잡기 시 보너스 던지기, 코너를 떠날 때의 `await_branch` 왕복, 이탈 시 말 제거)를
   재현해 `src/game/yutnori-rules.ts`와 `ws-server/yutnori-rules.mjs`의 동작이 어긋나지 않는지 확인한다.
+- **전략윷놀이 규칙 엔진 검증**: `tests/strategy-yutnori-rules.spec.ts`의 순수 유닛테스트(뒷면 개수→
+  도개걸윷모 매핑과 뒷면 1개=백도 강제, 업기/갈라치기/잡기(파트너 배신 포함)/백도/지름길분기, 개인
+  말 2개 완주 승리)를 우선 신뢰하고, 서버 쪽은 raw 클라이언트 4개로 같은 시나리오를 재현해
+  `src/game/strategy-yutnori-rules.ts`와 `ws-server/strategy-yutnori-rules.mjs`의 동작이 어긋나지
+  않는지 확인한다.
 - 인증서 신뢰 여부: `rejectUnauthorized`를 끄지 않은 기본 WebSocket 클라이언트, 그리고
   Playwright에서 `ignoreHTTPSErrors` 옵션 없이 접속 — 둘 다 정상 연결되면 브라우저도 경고 없이 신뢰한다는 뜻.
-- 항상 실제 WAS(`wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori}`)까지
+- 항상 실제 WAS(`wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}`)까지
   왕복하는 e2e로 마무리 확인하고, Firebase에 배포된 실제 프로덕션 페이지에서도 한 번 더 확인한다.

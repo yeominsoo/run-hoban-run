@@ -97,6 +97,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/strategy-yutnori/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -163,6 +172,14 @@
       {
         "source": "/yutnori/**",
         "destination": "/yutnori/index.html"
+      },
+      {
+        "source": "/strategy-yutnori",
+        "destination": "/strategy-yutnori/index.html"
+      },
+      {
+        "source": "/strategy-yutnori/**",
+        "destination": "/strategy-yutnori/index.html"
       }
     ]
   }
