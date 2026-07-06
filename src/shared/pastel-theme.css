@@ -1,0 +1,31 @@
+:root {
+  --color-page-text: #4b3447;
+  --color-page-muted: rgba(75, 52, 71, 0.66);
+  --color-page-faint: rgba(75, 52, 71, 0.42);
+  --color-page-bg: linear-gradient(180deg, #fffaf1 0%, #fff4f8 48%, #f4fbf4 100%);
+  --color-hub-bg:
+    linear-gradient(135deg, rgba(255, 139, 177, 0.10) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(225deg, rgba(94, 207, 188, 0.10) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(180deg, #fff8e8 0%, #fff0f7 50%, #effbf5 100%);
+  --color-surface: rgba(255, 255, 255, 0.78);
+  --color-surface-strong: #fffdf8;
+  --color-surface-soft: rgba(255, 247, 236, 0.74);
+  --color-border: rgba(214, 128, 158, 0.22);
+  --color-border-strong: rgba(255, 122, 162, 0.42);
+  --color-primary: #ff6f91;
+  --color-primary-hover: #ff567f;
+  --color-primary-contrast: #fffdf8;
+  --color-primary-soft: rgba(255, 111, 145, 0.16);
+  --color-secondary: #5ecfbc;
+  --color-secondary-soft: rgba(94, 207, 188, 0.16);
+  --color-accent: #ffc857;
+  --color-accent-strong: #f59f3a;
+  --color-accent-soft: rgba(255, 200, 87, 0.20);
+  --color-lilac: #9b87f5;
+  --color-lilac-soft: rgba(155, 135, 245, 0.16);
+  --color-danger: #e85d75;
+  --color-danger-soft: rgba(232, 93, 117, 0.14);
+  --color-success: #39b879;
+  --shadow-soft: 0 12px 30px rgba(177, 91, 124, 0.13);
+  --shadow-card: 0 18px 44px rgba(177, 91, 124, 0.16);
+}

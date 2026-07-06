@@ -429,17 +429,17 @@ function ensureScene() {
   if (scene) { onResize(); return; }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x140f1a);
-  scene.fog = new THREE.Fog(0x140f1a, 14, 30);
+  scene.background = new THREE.Color(0xfff8f2);
+  scene.fog = new THREE.Fog(0xfff8f2, 28, 58);
 
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-  camera.position.set(0, 11, 8.5);
+  camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
+  camera.position.set(0, 23, 18);
   camera.lookAt(0, 0, 0);
 
-  const hemi = new THREE.HemisphereLight(0xe9d6ff, 0x180f1e, 0.9);
+  const hemi = new THREE.HemisphereLight(0xe9d6ff, 0xf7d8e8, 1.05);
   scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xf3d9ff, 1.1);
-  dir.position.set(6, 10, 4);
+  const dir = new THREE.DirectionalLight(0xf3d9ff, 1.0);
+  dir.position.set(7, 12, 6);
   dir.castShadow = true;
   scene.add(dir);
 

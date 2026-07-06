@@ -79,7 +79,7 @@ app.innerHTML = `
     <a class="back-link" href="/">← 게임 선택</a>
   </div>
   <div class="yn-stage">
-    <h1 class="yn-title">전략윷놀이</h1>
+    <h1 class="yn-title">윷놀이</h1>
     <p class="yn-sub">윷을 던지고 말을 옮겨 4개를 모두 완주시키세요</p>
 
     <!-- Entry -->
@@ -265,7 +265,7 @@ function hideEntryError() { entryError.classList.add('hidden'); }
 
 async function copyLink(code: string, btn: HTMLButtonElement) {
   const link = `${location.origin}/yutnori/?room=${code}`;
-  await shareRoomLink({ url: link, title: '전략윷놀이 초대', text: `전략윷놀이 방(${code})에 초대할게요!`, btn });
+  await shareRoomLink({ url: link, title: '윷놀이 초대', text: `윷놀이 방(${code})에 초대할게요!`, btn });
 }
 
 // ── Networking ────────────────────────────────────────────────────
@@ -413,17 +413,17 @@ function ensureScene() {
   if (scene) { onResize(); return; }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x120f0a);
-  scene.fog = new THREE.Fog(0x120f0a, 14, 30);
+  scene.background = new THREE.Color(0xfff9ef);
+  scene.fog = new THREE.Fog(0xfff9ef, 28, 58);
 
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-  camera.position.set(0, 11, 8.5);
+  camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
+  camera.position.set(0, 23, 18);
   camera.lookAt(0, 0, 0);
 
-  const hemi = new THREE.HemisphereLight(0xfff3d6, 0x1a1408, 0.9);
+  const hemi = new THREE.HemisphereLight(0xfff3d6, 0xf7d8c9, 1.05);
   scene!.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffe9bd, 1.1);
-  dir.position.set(6, 10, 4);
+  const dir = new THREE.DirectionalLight(0xffe9bd, 1.0);
+  dir.position.set(7, 12, 6);
   dir.castShadow = true;
   scene!.add(dir);
 

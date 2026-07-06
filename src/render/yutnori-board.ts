@@ -13,17 +13,17 @@ export function buildYutnoriBoardScene(graph: YutBoardGraph): THREE.Group {
   const group = new THREE.Group();
   group.name = 'yutnori-board';
 
-  const plateMaterial = new THREE.MeshStandardMaterial({ color: 0x2b2116, roughness: 0.85 });
+  const plateMaterial = new THREE.MeshStandardMaterial({ color: 0xffefd3, roughness: 0.82 });
   const plateRadius = YUTNORI_BOARD_SCALE * 5 + 1.3;
   const plate = new THREE.Mesh(new THREE.CylinderGeometry(plateRadius, plateRadius, 0.3, 48), plateMaterial);
   plate.position.y = -0.16;
   plate.receiveShadow = true;
   group.add(plate);
 
-  const outerMaterial = new THREE.MeshStandardMaterial({ color: 0xd9c48a, roughness: 0.55 });
-  const cornerMaterial = new THREE.MeshStandardMaterial({ color: 0xf6c445, roughness: 0.4 });
-  const diagonalMaterial = new THREE.MeshStandardMaterial({ color: 0xb98d4a, roughness: 0.5 });
-  const centerMaterial = new THREE.MeshStandardMaterial({ color: 0xe8543f, roughness: 0.4 });
+  const outerMaterial = new THREE.MeshStandardMaterial({ color: 0xffc857, roughness: 0.55 });
+  const cornerMaterial = new THREE.MeshStandardMaterial({ color: 0xff8faf, roughness: 0.42 });
+  const diagonalMaterial = new THREE.MeshStandardMaterial({ color: 0x5ecfbc, roughness: 0.5 });
+  const centerMaterial = new THREE.MeshStandardMaterial({ color: 0x9b87f5, roughness: 0.42 });
 
   for (const node of Object.values(graph)) {
     const material =
