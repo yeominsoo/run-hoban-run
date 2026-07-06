@@ -207,7 +207,7 @@ button { border: 0; cursor: pointer; }
   background: rgba(255,154,143,0.08);
   border: 1px solid rgba(255,154,143,0.24);
 }
-.resume-banner .status-text { margin: 0; text-align: left; color: #ffd7d2; }
+.resume-banner .status-text { margin: 0; text-align: left; color: var(--color-page-text); font-weight: 700; }
 .resume-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

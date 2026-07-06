@@ -206,7 +206,7 @@ button { border: 0; cursor: pointer; }
   background: var(--color-secondary-soft);
   border: 1px solid rgba(94, 207, 188, 0.28);
 }
-.resume-banner .status-text { margin: 0; text-align: left; color: var(--color-secondary); }
+.resume-banner .status-text { margin: 0; text-align: left; color: var(--color-page-text); font-weight: 700; }
 .resume-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
