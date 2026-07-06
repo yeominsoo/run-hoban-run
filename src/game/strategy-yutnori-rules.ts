@@ -1,6 +1,8 @@
 import {
   buildYutBoardGraph,
+  CENTER_NODE_ID,
   cornerIndexOfDiagonal,
+  cornerNodeId,
   entryNodeId,
   getCenterExit,
   type YutBoardGraph,
@@ -15,12 +17,12 @@ import {
  *  - 원 방송 규칙("도가 나오면 전부 뒷도로 간주") — 이 구현에서도 뒷면이 정확히 1개 나온
  *    경우는 항상 "백도"(후진 1칸)로 강제 치환한다. (원문을 직접 확인하지 못해 정확한 앞/뒤
  *    대응 방향은 최선 추정이다 — namu.wiki 접근이 막혀 검색 스니펫으로만 교차 확인함.)
+ *  - 4명이 제출한 값은 현재 순서 플레이어 한 명의 이동값이다. 이동이 끝나면 다음 플레이어 차례로
+ *    넘어가며, 윷/모 또는 잡기에는 같은 플레이어가 한 번 더 던진다.
  *  - 4명은 서로 다른 개인(2명씩 팀을 이루지만 팀원끼리도 서로 잡을 수 있다 — 배신 가능).
  *  - 인당 말은 2개뿐이고, 승패는 "그 라운드에 자기 말 2개를 먼저 완주시킨 사람"이 결정한다
  *    (파트너의 말 상태와 무관 — 개인 승리).
  *  - 원작의 가넷 보상/탈락후보 서바이벌 설정은 이 구현에서 의도적으로 뺐다(사용자 확인).
- *  - 원작엔 "윷/모/잡기 시 보너스 던지기"가 있는지 불확실해, 이 구현에서는 매 라운드
- *    "전원 제출 → 순서대로 각자 그 값으로 이동" 한 번씩만 진행하고 보너스 던지기는 없다.
  */
 
 export type FaceChoice = 'front' | 'back';
@@ -63,14 +65,15 @@ export interface Piece {
 
 export interface GameState {
   graph: YutBoardGraph;
-  tokens: string[]; // 길이 4, 인덱스 = 진입 코너 인덱스
+  tokens: string[]; // 길이 4, join 순서 = 이동 순서/팀 편성 기준
   teams: [[string, string], [string, string]]; // (0,1)조 / (2,3)조 — 팀원끼리도 서로 잡을 수 있다
   pieces: Piece[];
-  moveOrder: string[]; // 라운드마다 이 순서대로 한 번씩 이동
+  moveOrder: string[]; // 플레이어 턴 순서
   moveIndex: number;
   phase: 'collecting' | 'moving';
   faces: Record<string, FaceChoice>;
   lastThrow: ThrowResult | null;
+  awaitingBranch: { pieceId: string; cornerId: string; remainingSteps: number } | null;
   round: number;
   winner: string | null;
 }
@@ -96,6 +99,7 @@ export function createStrategyYutGame(tokens: string[]): GameState {
     phase: 'collecting',
     faces: {},
     lastThrow: null,
+    awaitingBranch: null,
     round: 1,
     winner: null,
   };
@@ -108,7 +112,7 @@ export function partnerOf(state: GameState, token: string): string {
 }
 
 export function currentMover(state: GameState): string | null {
-  if (state.phase !== 'moving') return null;
+  if (state.winner) return null;
   return state.moveOrder[state.moveIndex] ?? null;
 }
 
@@ -126,6 +130,9 @@ function followersOf(state: GameState, leadId: string): Piece[] {
 function currentPosition(piece: Piece): string {
   return piece.path.length === 0 ? 'start' : piece.path[piece.path.length - 1];
 }
+function progressFromStart(piece: Piece): number {
+  return piece.path.length;
+}
 
 /** submit_face: 라운드마다 4명 전원이 한 번씩 호출. 4명 다 제출되면 자동으로 던지기가 확정된다. */
 export function submitFace(state: GameState, token: string, face: FaceChoice): ThrowResult | null {
@@ -140,7 +147,7 @@ export function submitFace(state: GameState, token: string, face: FaceChoice): T
   const result = resolveThrow(state.faces);
   state.lastThrow = result;
   state.phase = 'moving';
-  state.moveIndex = 0;
+  if (!isEligibleMover(state, currentMover(state)!)) advanceTurn(state);
   return result;
 }
 
@@ -151,20 +158,17 @@ function isEligibleMover(state: GameState, token: string): boolean {
   return ownPieces.length > 0;
 }
 
-/** 이번 라운드 값으로는 아무 것도 옮길 수 없는 사람은 조용히 건너뛴다. */
-function advanceMoveIndexIfSkippable(state: GameState) {
-  while (state.moveIndex < state.moveOrder.length && !isEligibleMover(state, state.moveOrder[state.moveIndex])) {
-    state.moveIndex += 1;
-  }
-  if (state.moveIndex >= state.moveOrder.length) startNextRound(state);
-}
-
-function startNextRound(state: GameState) {
+function startNextThrow(state: GameState) {
   state.phase = 'collecting';
   state.faces = {};
   state.lastThrow = null;
-  state.moveIndex = 0;
+  state.awaitingBranch = null;
   state.round += 1;
+}
+
+function advanceTurn(state: GameState) {
+  state.moveIndex = (state.moveIndex + 1) % state.moveOrder.length;
+  startNextThrow(state);
 }
 
 interface WalkOutcome {
@@ -194,7 +198,7 @@ function walkForward(
       nextId = ownCornerId;
     } else {
       const node = graph[currentId];
-      if (node.kind === 'corner') {
+      if (node.kind === 'corner' && node.shortcutNext) {
         const choice = branchChoiceFor(currentId);
         if (choice === undefined) {
           return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
@@ -204,6 +208,8 @@ function walkForward(
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
+      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
+        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
       } else {
         nextId = node.next;
       }
@@ -239,6 +245,7 @@ export type MoveOutcome =
       path: string[];
       capturedPieceIds: string[];
       joinedPieceIds: string[];
+      bonusThrow: boolean;
       gameOver: boolean;
       roundOver: boolean;
     };
@@ -266,9 +273,12 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
     throw new Error('cannot backdo a piece still at start');
   }
 
-  const ownCornerId = entryNodeId(state.tokens.indexOf(token));
+  const ownCornerId = entryNodeId(0);
   // awaiting-branch 상태에서 재호출될 때만 branch가 채워져 있고, 그 외엔 아직 결정 전이다.
-  const branchChoiceFor = () => req.branch;
+  const branchChoiceFor = (cornerId: string) => {
+    if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
+    return undefined;
+  };
 
   const outcome =
     state.lastThrow.kind === 'backdo'
@@ -276,8 +286,10 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
       : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps, branchChoiceFor);
 
   if (outcome.status === 'awaiting-branch') {
+    state.awaitingBranch = { pieceId: movingLead.id, cornerId: outcome.cornerId!, remainingSteps: outcome.remainingSteps! };
     return { status: 'awaiting-branch', cornerId: outcome.cornerId!, remainingSteps: outcome.remainingSteps! };
   }
+  state.awaitingBranch = null;
 
   const capturedPieceIds: string[] = [];
   const joinedPieceIds: string[] = [];
@@ -320,13 +332,16 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
   const gameOver = homeCountForToken === PIECES_PER_PLAYER;
   if (gameOver) state.winner = token;
 
+  const bonusThrow = !gameOver && (capturedPieceIds.length > 0 || state.lastThrow.kind === 'yut' || state.lastThrow.kind === 'mo');
+
   let roundOver = false;
   if (!gameOver) {
-    state.moveIndex += 1;
-    const before = state.moveIndex;
-    advanceMoveIndexIfSkippable(state);
+    if (bonusThrow) {
+      startNextThrow(state);
+    } else {
+      advanceTurn(state);
+    }
     roundOver = state.phase === 'collecting';
-    void before;
   } else {
     roundOver = true;
   }
@@ -338,6 +353,7 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
     path: outcome.path,
     capturedPieceIds,
     joinedPieceIds,
+    bonusThrow,
     gameOver,
     roundOver,
   };
@@ -346,6 +362,27 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
 /** 게임 도중 이탈: 4인 고정 인원 게임이라 한 명이라도 빠지면 계속 진행이 불가능 — 즉시 종료 처리한다. */
 export function abandonGame(state: GameState, leavingToken: string): void {
   state.winner = state.tokens.find((t) => t !== leavingToken) ?? null;
+}
+
+export function getAutoMoveRequest(state: GameState, token: string): MoveRequest | null {
+  if (state.winner || state.phase !== 'moving' || currentMover(state) !== token || !state.lastThrow) return null;
+
+  if (state.awaitingBranch) {
+    return { pieceId: state.awaitingBranch.pieceId, branch: 'straight' };
+  }
+
+  const leadPieces = state.pieces
+    .filter((p) => p.ownerToken === token && !p.home && p.leadId === p.id)
+    .sort((a, b) => progressFromStart(a) - progressFromStart(b) || a.id.localeCompare(b.id));
+  if (state.lastThrow.kind !== 'backdo') {
+    const freshPiece = leadPieces.find((p) => p.path.length === 0);
+    if (freshPiece) return { pieceId: freshPiece.id };
+  }
+
+  const candidate = state.lastThrow.kind === 'backdo'
+    ? leadPieces.find((p) => p.path.length > 0)
+    : leadPieces[0];
+  return candidate ? { pieceId: candidate.id } : null;
 }
 
 export function buildBoardSnapshot(state: GameState) {

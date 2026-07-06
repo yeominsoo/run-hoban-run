@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { entryNodeId } from '../src/game/yutnori-board';
+import { cornerNodeId, entryNodeId } from '../src/game/yutnori-board';
 import {
   createYutGame,
   currentToken,
+  getAutoMoveRequest,
   mulberry32,
   rollYutThrow,
   submitMove,
@@ -52,6 +53,53 @@ test('a basic forward move places a fresh piece exactly on its own entry corner'
   if (outcome.status !== 'applied') throw new Error('unreachable');
   expect(outcome.event.path).toEqual([entryNodeId(0)]);
   expect(currentToken(state)).toBe('B'); // do는 추가 턴이 없으니 바로 다음 사람 차례로 넘어간다
+});
+
+test('all players share the same start/home node and leave it in the fixed outer direction', () => {
+  const state = createYutGame(['A', 'B'], 11);
+  forceThrow(state, 'do');
+  let outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual(['outer-0']);
+
+  resetTurnTo(state, 'A');
+  forceThrow(state, 'do');
+  outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual(['outer-0', 'outer-1']);
+});
+
+test('yut and mo keep the player in throw phase for one more throw', () => {
+  const state = createYutGame(['A', 'B'], 12);
+  forceThrow(state, 'yut');
+  expect(state.phase).toBe('throw');
+  expect(currentToken(state)).toBe('A');
+  expect(state.pendingThrows).toHaveLength(1);
+
+  forceThrow(state, 'mo');
+  expect(state.phase).toBe('throw');
+  expect(currentToken(state)).toBe('A');
+  expect(state.pendingThrows).toHaveLength(2);
+
+  forceThrow(state, 'do');
+  expect(state.phase).toBe('move');
+  expect(currentToken(state)).toBe('A');
+  expect(state.pendingThrows).toHaveLength(3);
+});
+
+test('auto move launches a fresh piece first, otherwise moves the piece closest to start', () => {
+  const state = createYutGame(['A', 'B'], 13);
+  state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-0', 'outer-1', 'outer-2'];
+  state.pieces.find((p) => p.id === 'A-1')!.path = ['outer-0'];
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'gae');
+  expect(getAutoMoveRequest(state)).toEqual({ pieceId: 'A-2', pendingThrowId: state.pendingThrows[0].id });
+  state.pieces.find((p) => p.id === 'A-2')!.path = ['outer-0', 'outer-1'];
+  state.pieces.find((p) => p.id === 'A-3')!.path = ['outer-0', 'outer-1', 'outer-2', 'outer-3'];
+  expect(getAutoMoveRequest(state)).toEqual({ pieceId: 'A-1', pendingThrowId: state.pendingThrows[0].id });
 });
 
 test('landing on your own piece piggybacks it, and 갈라치기 splits it back off', () => {
@@ -117,7 +165,7 @@ test('backdo retreats a piece by exactly one step', () => {
 
 test('taking the shortcut at a corner asks for a branch choice and cuts through the center', () => {
   const state = createYutGame(['A', 'B'], 6);
-  state.pieces.find((p) => p.id === 'A-0')!.path = [entryNodeId(0)]; // 자기 코너에 이미 서 있음
+  state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1)]; // 지름길이 있는 코너에 이미 서 있음
   resetTurnTo(state, 'A');
 
   forceThrow(state, 'gae'); // 코너에서 2칸 더 가려면 반드시 분기를 골라야 한다
@@ -125,12 +173,12 @@ test('taking the shortcut at a corner asks for a branch choice and cuts through 
   const first = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId });
   expect(first.status).toBe('awaiting-branch');
   if (first.status !== 'awaiting-branch') throw new Error('unreachable');
-  expect(first.branch.cornerId).toBe(entryNodeId(0));
+  expect(first.branch.cornerId).toBe(cornerNodeId(1));
 
   const resolved = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId, branch: 'shortcut' });
   expect(resolved.status).toBe('applied');
   if (resolved.status !== 'applied') throw new Error('unreachable');
-  expect(resolved.event.path).toEqual([entryNodeId(0), 'diag-0', 'center']);
+  expect(resolved.event.path).toEqual([cornerNodeId(1), 'diag-1', 'center']);
 });
 
 test('a player wins once all 4 pieces reach home', () => {

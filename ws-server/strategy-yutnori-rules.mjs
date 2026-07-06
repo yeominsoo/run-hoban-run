@@ -3,7 +3,9 @@
  * 보드 토폴로지는 yutnori-board.mjs를 그대로 재사용한다(일반 윷놀이와 같은 보드). */
 import {
   buildYutBoardGraph,
+  CENTER_NODE_ID,
   cornerIndexOfDiagonal,
+  cornerNodeId,
   entryNodeId,
   getCenterExit,
 } from './yutnori-board.mjs';
@@ -49,6 +51,7 @@ export function createStrategyYutGame(tokens) {
     phase: 'collecting',
     faces: {},
     lastThrow: null,
+    awaitingBranch: null,
     round: 1,
     winner: null,
   };
@@ -61,7 +64,7 @@ export function partnerOf(state, token) {
 }
 
 export function currentMover(state) {
-  if (state.phase !== 'moving') return null;
+  if (state.winner) return null;
   return state.moveOrder[state.moveIndex] ?? null;
 }
 
@@ -79,6 +82,9 @@ function followersOf(state, leadId) {
 function currentPosition(piece) {
   return piece.path.length === 0 ? 'start' : piece.path[piece.path.length - 1];
 }
+function progressFromStart(piece) {
+  return piece.path.length;
+}
 
 export function submitFace(state, token, face) {
   if (state.winner) throw new Error('game already over');
@@ -92,7 +98,7 @@ export function submitFace(state, token, face) {
   const result = resolveThrow(state.faces);
   state.lastThrow = result;
   state.phase = 'moving';
-  state.moveIndex = 0;
+  if (!isEligibleMover(state, currentMover(state))) advanceTurn(state);
   return result;
 }
 
@@ -103,19 +109,17 @@ function isEligibleMover(state, token) {
   return ownPieces.length > 0;
 }
 
-function advanceMoveIndexIfSkippable(state) {
-  while (state.moveIndex < state.moveOrder.length && !isEligibleMover(state, state.moveOrder[state.moveIndex])) {
-    state.moveIndex += 1;
-  }
-  if (state.moveIndex >= state.moveOrder.length) startNextRound(state);
-}
-
-function startNextRound(state) {
+function startNextThrow(state) {
   state.phase = 'collecting';
   state.faces = {};
   state.lastThrow = null;
-  state.moveIndex = 0;
+  state.awaitingBranch = null;
   state.round += 1;
+}
+
+function advanceTurn(state) {
+  state.moveIndex = (state.moveIndex + 1) % state.moveOrder.length;
+  startNextThrow(state);
 }
 
 function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
@@ -132,7 +136,7 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
       nextId = ownCornerId;
     } else {
       const node = graph[currentId];
-      if (node.kind === 'corner') {
+      if (node.kind === 'corner' && node.shortcutNext) {
         const choice = branchChoiceFor(currentId);
         if (choice === undefined) {
           return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
@@ -142,6 +146,8 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
+      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
+        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
       } else {
         nextId = node.next;
       }
@@ -184,8 +190,11 @@ export function submitMove(state, token, req) {
     throw new Error('cannot backdo a piece still at start');
   }
 
-  const ownCornerId = entryNodeId(state.tokens.indexOf(token));
-  const branchChoiceFor = () => req.branch;
+  const ownCornerId = entryNodeId(0);
+  const branchChoiceFor = (cornerId) => {
+    if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
+    return undefined;
+  };
 
   const outcome =
     state.lastThrow.kind === 'backdo'
@@ -193,8 +202,10 @@ export function submitMove(state, token, req) {
       : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps, branchChoiceFor);
 
   if (outcome.status === 'awaiting-branch') {
+    state.awaitingBranch = { pieceId: movingLead.id, cornerId: outcome.cornerId, remainingSteps: outcome.remainingSteps };
     return { status: 'awaiting-branch', cornerId: outcome.cornerId, remainingSteps: outcome.remainingSteps };
   }
+  state.awaitingBranch = null;
 
   const capturedPieceIds = [];
   const joinedPieceIds = [];
@@ -235,10 +246,15 @@ export function submitMove(state, token, req) {
   const gameOver = homeCountForToken === PIECES_PER_PLAYER;
   if (gameOver) state.winner = token;
 
+  const bonusThrow = !gameOver && (capturedPieceIds.length > 0 || state.lastThrow.kind === 'yut' || state.lastThrow.kind === 'mo');
+
   let roundOver = false;
   if (!gameOver) {
-    state.moveIndex += 1;
-    advanceMoveIndexIfSkippable(state);
+    if (bonusThrow) {
+      startNextThrow(state);
+    } else {
+      advanceTurn(state);
+    }
     roundOver = state.phase === 'collecting';
   } else {
     roundOver = true;
@@ -251,6 +267,7 @@ export function submitMove(state, token, req) {
     path: outcome.path,
     capturedPieceIds,
     joinedPieceIds,
+    bonusThrow,
     gameOver,
     roundOver,
   };
@@ -259,6 +276,27 @@ export function submitMove(state, token, req) {
 /** 4인 고정 게임이라 한 명이라도 중도 이탈하면 계속 진행이 불가능 — 즉시 종료 처리한다. */
 export function abandonGame(state, leavingToken) {
   state.winner = state.tokens.find((t) => t !== leavingToken) ?? null;
+}
+
+export function getAutoMoveRequest(state, token) {
+  if (state.winner || state.phase !== 'moving' || currentMover(state) !== token || !state.lastThrow) return null;
+
+  if (state.awaitingBranch) {
+    return { pieceId: state.awaitingBranch.pieceId, branch: 'straight' };
+  }
+
+  const leadPieces = state.pieces
+    .filter((p) => p.ownerToken === token && !p.home && p.leadId === p.id)
+    .sort((a, b) => progressFromStart(a) - progressFromStart(b) || a.id.localeCompare(b.id));
+  if (state.lastThrow.kind !== 'backdo') {
+    const freshPiece = leadPieces.find((p) => p.path.length === 0);
+    if (freshPiece) return { pieceId: freshPiece.id };
+  }
+
+  const candidate = state.lastThrow.kind === 'backdo'
+    ? leadPieces.find((p) => p.path.length > 0)
+    : leadPieces[0];
+  return candidate ? { pieceId: candidate.id } : null;
 }
 
 export function buildBoardSnapshot(state) {

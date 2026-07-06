@@ -7,6 +7,7 @@ import {
   buildBoardSnapshot,
   submitFace,
   submitMove,
+  getAutoMoveRequest,
   abandonGame,
   PLAYERS_REQUIRED,
 } from './strategy-yutnori-rules.mjs';
@@ -14,7 +15,7 @@ import {
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000;
 const FACE_TIMEOUT_MS = 20000; // 라운드마다 20초 안에 앞/뒷면을 제출하지 않으면 자동으로 '앞면' 제출 처리
-const MOVE_TIMEOUT_MS = 20000; // 자기 차례에 20초 안에 말을 고르지 않으면 강제로 첫 번째 가능한 말을 이동
+const MOVE_TIMEOUT_MS = 20000; // 자기 차례에 20초 안에 말을 고르지 않으면 자동 이동 정책으로 말을 이동
 
 /**
  * Room:
@@ -121,10 +122,9 @@ export function registerStrategyYutnoriServer() {
       const game = room.game;
       if (!game || game.phase !== 'collecting') return;
       let autoSubmitted = null;
-      for (const token of game.tokens) {
-        if (!game.faces[token]) {
-          autoSubmitted = submitFace(game, token, 'front');
-        }
+      const missingTokens = game.tokens.filter(token => !game.faces[token]);
+      for (const token of missingTokens) {
+        autoSubmitted = submitFace(game, token, 'front');
       }
       armMoveOrRoundTimer(roomCode, room);
       broadcastGameUpdate(room, autoSubmitted ? { kind: 'round_resolved', throw: autoSubmitted, timedOut: true } : null);
@@ -139,13 +139,16 @@ export function registerStrategyYutnoriServer() {
       if (!game || game.phase !== 'moving') return;
       const token = currentMover(game);
       if (!token) return;
-      const myPieces = game.pieces.filter(p => p.ownerToken === token && !p.home && p.leadId === p.id);
-      const candidate = game.lastThrow?.kind === 'backdo' ? myPieces.find(p => p.path.length > 0) : myPieces[0];
-      if (!candidate) return;
+      const req = getAutoMoveRequest(game, token);
+      if (!req) {
+        armMoveOrRoundTimer(roomCode, room);
+        broadcastGameUpdate(room, { kind: 'auto_no_move', token, name: nameOf(room, token), timedOut: true });
+        return;
+      }
       let outcome;
-      try { outcome = submitMove(game, token, { pieceId: candidate.id }); } catch { return; }
+      try { outcome = submitMove(game, token, req); } catch { return; }
       if (outcome.status === 'awaiting-branch') {
-        try { outcome = submitMove(game, token, { pieceId: candidate.id, branch: 'straight' }); } catch { return; }
+        try { outcome = submitMove(game, token, { pieceId: req.pieceId, branch: 'straight' }); } catch { return; }
       }
       if (outcome.status !== 'applied') return;
       handleMoveApplied(room, roomCode, { ...outcome, name: nameOf(room, token), timedOut: true });
@@ -210,6 +213,7 @@ export function registerStrategyYutnoriServer() {
       path: outcome.path,
       capturedPieceIds: outcome.capturedPieceIds,
       joinedPieceIds: outcome.joinedPieceIds,
+      bonusThrow: !!outcome.bonusThrow,
       roundOver: outcome.roundOver,
       timedOut: !!outcome.timedOut,
     };
@@ -248,6 +252,7 @@ export function registerStrategyYutnoriServer() {
     if (outcome.status === 'awaiting-branch') {
       const player = playerByToken(room, token);
       if (player?.ws) send(player.ws, { type: 'await_branch', pieceId: req.pieceId, cornerId: outcome.cornerId, remainingSteps: outcome.remainingSteps });
+      armMoveTimer(roomCode, room);
       return;
     }
 

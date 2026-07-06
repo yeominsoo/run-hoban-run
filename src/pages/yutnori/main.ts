@@ -399,13 +399,15 @@ const pieceMeshes = new Map<string, THREE.Group>();
 const pieceTargets = new Map<string, THREE.Vector3>();
 
 function stagingPosition(cornerIndex: number, outward: number, stackIndex: number): THREE.Vector3 {
-  const cornerNode = boardGraph[entryNodeId(cornerIndex)];
-  const dir = new THREE.Vector2(cornerNode.gridPos[0], cornerNode.gridPos[1]).normalize();
-  const base = nodeWorldPosition(cornerNode.gridPos).add(
+  const startNode = boardGraph[entryNodeId(0)];
+  const dir = new THREE.Vector2(startNode.gridPos[0], startNode.gridPos[1]).normalize();
+  const tangent = new THREE.Vector2(-dir.y, dir.x);
+  const laneOffset = cornerIndex - (players.length - 1) / 2;
+  const base = nodeWorldPosition(startNode.gridPos).add(
     new THREE.Vector3(dir.x, 0, dir.y).multiplyScalar(outward),
   );
-  base.x += (stackIndex % 2) * 0.5 - 0.25;
-  base.z += Math.floor(stackIndex / 2) * 0.5;
+  base.x += tangent.x * laneOffset * 0.58 + (stackIndex % 2) * 0.24 - 0.12;
+  base.z += tangent.y * laneOffset * 0.58 + Math.floor(stackIndex / 2) * 0.36;
   return base;
 }
 

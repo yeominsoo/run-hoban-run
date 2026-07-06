@@ -1,6 +1,8 @@
 import {
   buildYutBoardGraph,
+  CENTER_NODE_ID,
   cornerIndexOfDiagonal,
+  cornerNodeId,
   entryNodeId,
   getCenterExit,
   MAX_PLAYERS,
@@ -123,10 +125,6 @@ export function currentToken(state: GameState): string {
   return state.turnOrder[state.turnIndex];
 }
 
-function cornerIndexOfToken(state: GameState, token: string): number {
-  return state.tokens.indexOf(token);
-}
-
 function findPiece(state: GameState, pieceId: string): Piece {
   const piece = state.pieces.find((p) => p.id === pieceId);
   if (!piece) throw new Error(`unknown piece ${pieceId}`);
@@ -145,6 +143,10 @@ function currentPosition(piece: Piece): string {
   return piece.path.length === 0 ? 'start' : piece.path[piece.path.length - 1];
 }
 
+function progressFromStart(piece: Piece): number {
+  return piece.path.length;
+}
+
 /** submit_throw: 현재 턴 플레이어가 윷을 던진다. throw 단계에서만 허용된다. */
 export function submitThrow(state: GameState): ThrowResult {
   if (state.winner) throw new Error('game already over');
@@ -154,7 +156,11 @@ export function submitThrow(state: GameState): ThrowResult {
   const result = rollYutThrow(state.rng);
   state.throwSeq += 1;
   state.pendingThrows.push({ id: `throw-${state.throwSeq}`, result });
-  if (!result.extraTurn) state.phase = 'move';
+  if (!result.extraTurn) {
+    state.phase = 'move';
+    discardDeadThrows(state);
+    if (state.pendingThrows.length === 0) advanceTurn(state);
+  }
   return result;
 }
 
@@ -200,7 +206,7 @@ function walkForward(
       nextId = ownCornerId;
     } else {
       const node = graph[currentId];
-      if (node.kind === 'corner') {
+      if (node.kind === 'corner' && node.shortcutNext) {
         const choice = branchChoiceFor(currentId);
         if (choice === undefined) {
           return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
@@ -210,6 +216,8 @@ function walkForward(
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
+      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
+        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
       } else {
         nextId = node.next;
       }
@@ -270,7 +278,7 @@ export function submitMove(state: GameState, req: MoveRequest): MoveOutcome {
     throw new Error('cannot backdo a piece still at start');
   }
 
-  const ownCornerId = entryNodeId(cornerIndexOfToken(state, token));
+  const ownCornerId = entryNodeId(0);
   const branchChoiceFor = (cornerId: string) => {
     if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
     return undefined;
@@ -368,6 +376,50 @@ function advanceTurn(state: GameState): void {
   state.phase = 'throw';
   state.pendingThrows = [];
   state.awaitingBranch = null;
+}
+
+export function skipTurn(state: GameState): void {
+  advanceTurn(state);
+}
+
+export function getAutoMoveRequest(state: GameState): MoveRequest | null {
+  if (state.winner || state.phase !== 'move') return null;
+
+  if (state.awaitingBranch) {
+    return {
+      pieceId: state.awaitingBranch.pieceId,
+      pendingThrowId: state.awaitingBranch.pendingThrowId,
+      branch: 'straight',
+    };
+  }
+
+  discardDeadThrows(state);
+  if (state.pendingThrows.length === 0) {
+    advanceTurn(state);
+    return null;
+  }
+
+  const token = currentToken(state);
+  const leadPieces = state.pieces
+    .filter((p) => p.ownerToken === token && !p.home && p.leadId === p.id)
+    .sort((a, b) => progressFromStart(a) - progressFromStart(b) || a.id.localeCompare(b.id));
+  const freshPiece = leadPieces.find((p) => p.path.length === 0);
+  const forwardThrow = state.pendingThrows.find((pt) => pt.result.kind !== 'backdo' && freshPiece);
+  if (forwardThrow && freshPiece) {
+    return { pieceId: freshPiece.id, pendingThrowId: forwardThrow.id };
+  }
+
+  for (const pendingThrow of state.pendingThrows) {
+    const candidate = pendingThrow.result.kind === 'backdo'
+      ? leadPieces.find((p) => p.path.length > 0)
+      : leadPieces[0];
+    if (candidate) {
+      return { pieceId: candidate.id, pendingThrowId: pendingThrow.id };
+    }
+  }
+
+  advanceTurn(state);
+  return null;
 }
 
 /** 게임 도중 이탈: 해당 플레이어의 말을 전부 보드에서 제거하고 순번에서 뺀다. */

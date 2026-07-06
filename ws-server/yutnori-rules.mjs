@@ -1,8 +1,10 @@
-/** 전략윷놀이 순수 규칙 엔진(서버 권위). src/game/yutnori-rules.ts와 로직이 동일해야 한다 —
+/** 윷놀이 순수 규칙 엔진(서버 권위). src/game/yutnori-rules.ts와 로직이 동일해야 한다 —
  * 규칙을 바꿀 때는 두 파일을 같이 고칠 것. 상태는 halligalli.mjs의 room 패턴처럼 직접 변형(mutate)한다. */
 import {
   buildYutBoardGraph,
+  CENTER_NODE_ID,
   cornerIndexOfDiagonal,
+  cornerNodeId,
   entryNodeId,
   getCenterExit,
   MAX_PLAYERS,
@@ -65,10 +67,6 @@ export function currentToken(state) {
   return state.turnOrder[state.turnIndex];
 }
 
-function cornerIndexOfToken(state, token) {
-  return state.tokens.indexOf(token);
-}
-
 function findPiece(state, pieceId) {
   const piece = state.pieces.find((p) => p.id === pieceId);
   if (!piece) throw new Error(`unknown piece ${pieceId}`);
@@ -87,6 +85,10 @@ function currentPosition(piece) {
   return piece.path.length === 0 ? 'start' : piece.path[piece.path.length - 1];
 }
 
+function progressFromStart(piece) {
+  return piece.path.length;
+}
+
 export function submitThrow(state) {
   if (state.winner) throw new Error('game already over');
   if (state.phase !== 'throw') throw new Error('not in throw phase');
@@ -95,7 +97,11 @@ export function submitThrow(state) {
   const result = rollYutThrow(state.rng);
   state.throwSeq += 1;
   state.pendingThrows.push({ id: `throw-${state.throwSeq}`, result });
-  if (!result.extraTurn) state.phase = 'move';
+  if (!result.extraTurn) {
+    state.phase = 'move';
+    discardDeadThrows(state);
+    if (state.pendingThrows.length === 0) advanceTurn(state);
+  }
   return result;
 }
 
@@ -126,7 +132,7 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
       nextId = ownCornerId;
     } else {
       const node = graph[currentId];
-      if (node.kind === 'corner') {
+      if (node.kind === 'corner' && node.shortcutNext) {
         const choice = branchChoiceFor(currentId);
         if (choice === undefined) {
           return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
@@ -136,6 +142,8 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
+      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
+        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
       } else {
         nextId = node.next;
       }
@@ -183,7 +191,7 @@ export function submitMove(state, req) {
     throw new Error('cannot backdo a piece still at start');
   }
 
-  const ownCornerId = entryNodeId(cornerIndexOfToken(state, token));
+  const ownCornerId = entryNodeId(0);
   const branchChoiceFor = (cornerId) => {
     if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
     return undefined;
@@ -285,6 +293,46 @@ function advanceTurn(state) {
 /** 시간 초과로 차례를 강제로 넘길 때 서버(ws-server)가 호출한다. */
 export function skipTurn(state) {
   advanceTurn(state);
+}
+
+export function getAutoMoveRequest(state) {
+  if (state.winner || state.phase !== 'move') return null;
+
+  if (state.awaitingBranch) {
+    return {
+      pieceId: state.awaitingBranch.pieceId,
+      pendingThrowId: state.awaitingBranch.pendingThrowId,
+      branch: 'straight',
+    };
+  }
+
+  discardDeadThrows(state);
+  if (state.pendingThrows.length === 0) {
+    advanceTurn(state);
+    return null;
+  }
+
+  const token = currentToken(state);
+  const leadPieces = state.pieces
+    .filter((p) => p.ownerToken === token && !p.home && p.leadId === p.id)
+    .sort((a, b) => progressFromStart(a) - progressFromStart(b) || a.id.localeCompare(b.id));
+  const freshPiece = leadPieces.find((p) => p.path.length === 0);
+  const forwardThrow = state.pendingThrows.find((pt) => pt.result.kind !== 'backdo' && freshPiece);
+  if (forwardThrow && freshPiece) {
+    return { pieceId: freshPiece.id, pendingThrowId: forwardThrow.id };
+  }
+
+  for (const pendingThrow of state.pendingThrows) {
+    const candidate = pendingThrow.result.kind === 'backdo'
+      ? leadPieces.find((p) => p.path.length > 0)
+      : leadPieces[0];
+    if (candidate) {
+      return { pieceId: candidate.id, pendingThrowId: pendingThrow.id };
+    }
+  }
+
+  advanceTurn(state);
+  return null;
 }
 
 /** 게임 도중 이탈: 해당 플레이어의 말을 전부 보드에서 제거하고 순번에서 뺀다. */

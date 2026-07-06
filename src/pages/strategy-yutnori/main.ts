@@ -417,11 +417,13 @@ const pieceMeshes = new Map<string, THREE.Group>();
 const pieceTargets = new Map<string, THREE.Vector3>();
 
 function stagingPosition(cornerIndex: number, outward: number, stackIndex: number): THREE.Vector3 {
-  const cornerNode = boardGraph[entryNodeId(cornerIndex)];
-  const dir = new THREE.Vector2(cornerNode.gridPos[0], cornerNode.gridPos[1]).normalize();
-  const base = nodeWorldPosition(cornerNode.gridPos).add(new THREE.Vector3(dir.x, 0, dir.y).multiplyScalar(outward));
-  base.x += (stackIndex % 2) * 0.5 - 0.25;
-  base.z += Math.floor(stackIndex / 2) * 0.5;
+  const startNode = boardGraph[entryNodeId(0)];
+  const dir = new THREE.Vector2(startNode.gridPos[0], startNode.gridPos[1]).normalize();
+  const tangent = new THREE.Vector2(-dir.y, dir.x);
+  const laneOffset = cornerIndex - (players.length - 1) / 2;
+  const base = nodeWorldPosition(startNode.gridPos).add(new THREE.Vector3(dir.x, 0, dir.y).multiplyScalar(outward));
+  base.x += tangent.x * laneOffset * 0.58 + (stackIndex % 2) * 0.24 - 0.12;
+  base.z += tangent.y * laneOffset * 0.58 + Math.floor(stackIndex / 2) * 0.36;
   return base;
 }
 
@@ -598,9 +600,10 @@ function renderPlaying() {
   if (pendingBranch && currentMoverToken === myToken) {
     turnStatus.textContent = `말이 코너에 도착했어요 — 남은 ${pendingBranch.remainingSteps}칸을 어떻게 갈까요?`;
   } else if (syPhase === 'collecting') {
+    const activeName = currentMoverToken ? nameOfToken(currentMoverToken) : '현재 플레이어';
     turnStatus.textContent = mySubmittedThisRound
-      ? `제출 완료 — 다른 사람 기다리는 중 (${submittedTokens.length}/4)`
-      : '앞면/뒷면 중 하나를 골라 비공개로 제출하세요';
+      ? `${activeName}님의 던지기 — 제출 완료 (${submittedTokens.length}/4)`
+      : `${activeName}님의 던지기 — 앞면/뒷면 중 하나를 비공개로 제출하세요`;
   } else if (currentMoverToken === myToken) {
     turnStatus.textContent = `${THROW_LABEL[lastThrow?.kind ?? ''] ?? ''} — 이동할 말을 골라주세요`;
   } else {
@@ -696,7 +699,7 @@ function handleServerMessage(msg: any) {
       const event = msg.event as
         | { kind: 'face_submitted'; token: string; name: string }
         | { kind: 'round_resolved'; throw: ThrowResult; timedOut?: boolean }
-        | { kind: 'move' | 'capture'; token: string; name: string; pieceId: string; capturedPieceIds: string[]; joinedPieceIds: string[]; roundOver: boolean; timedOut?: boolean }
+        | { kind: 'move' | 'capture'; token: string; name: string; pieceId: string; capturedPieceIds: string[]; joinedPieceIds: string[]; bonusThrow?: boolean; roundOver: boolean; timedOut?: boolean }
         | { kind: 'player_left'; name: string }
         | null;
 
@@ -711,6 +714,9 @@ function handleServerMessage(msg: any) {
             showToast(`${event.name}님이 ${captureNames.join(', ')}님의 말을 잡았어요!${event.timedOut ? ' (시간초과 자동이동)' : ''}`, 'capture');
           } else if (event.joinedPieceIds.length) {
             showToast(`${event.name}님이 말을 업었어요`, 'throw');
+          }
+          if (event.bonusThrow) {
+            showToast(`${event.name}님이 한 번 더 던집니다`, 'throw');
           }
         } else if (event.kind === 'player_left') {
           showToast(`${event.name}님이 나갔어요`, 'info');

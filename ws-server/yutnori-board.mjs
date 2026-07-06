@@ -1,6 +1,7 @@
-/** 전략윷놀이 보드 토폴로지: 외곽 20칸(그중 4개는 코너) + 코너마다 중앙으로 꺾는 대각선 1칸(diag) + 중앙 1칸.
- * 코너에서만 "그대로 외곽으로" vs "대각선(지름길)으로" 분기가 생기고, 중앙은 들어온 대각선의 반대편
- * 대각선으로 자동으로 빠져나간다(중앙 자체는 플레이어가 고르는 분기가 아니다).
+/** 윷놀이 보드 토폴로지: 외곽 20칸 + 중앙/대각선 지름길.
+ * outer-0은 모든 플레이어가 공유하는 시작점이자 도착점이다. 시작점에서는 지름길을 고르지 않고
+ * 정해진 외곽 방향으로만 출발하며, 나머지 코너에서만 "그대로 외곽으로" vs "대각선(지름길)으로"
+ * 분기가 생긴다. 중앙은 들어온 대각선의 반대편 대각선으로 자동으로 빠져나간다.
  *
  * src/game/yutnori-board.ts와 로직이 동일해야 한다 — 그래프 규칙을 바꿀 때는 두 파일을 같이 고칠 것. */
 
@@ -20,8 +21,15 @@ export function diagonalNodeId(cornerIndex) {
   return `diag-${normalized}`;
 }
 
+export const YUT_START_NODE_ID = outerNodeId(0);
+
+export function cornerNodeId(cornerIndex) {
+  return outerNodeId(cornerIndex * CORNER_STRIDE);
+}
+
 export function entryNodeId(playerCornerIndex) {
-  return outerNodeId(playerCornerIndex * CORNER_STRIDE);
+  void playerCornerIndex;
+  return YUT_START_NODE_ID;
 }
 
 function cornerIndexOfOuter(outerIndex) {
@@ -50,7 +58,7 @@ export function buildYutBoardGraph() {
       kind: cornerIndex === null ? 'outer' : 'corner',
       gridPos: [Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius],
       next: outerNodeId(i + 1),
-      shortcutNext: cornerIndex === null ? undefined : diagonalNodeId(cornerIndex),
+      shortcutNext: cornerIndex === null || cornerIndex === 0 ? undefined : diagonalNodeId(cornerIndex),
     };
   }
 

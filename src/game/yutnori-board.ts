@@ -1,6 +1,7 @@
-/** 전략윷놀이 보드 토폴로지: 외곽 20칸(그중 4개는 코너) + 코너마다 중앙으로 꺾는 대각선 1칸(diag) + 중앙 1칸.
- * 코너에서만 "그대로 외곽으로" vs "대각선(지름길)으로" 분기가 생기고, 중앙은 들어온 대각선의 반대편
- * 대각선으로 자동으로 빠져나간다(중앙 자체는 플레이어가 고르는 분기가 아니다). */
+/** 윷놀이 보드 토폴로지: 외곽 20칸 + 중앙/대각선 지름길.
+ * outer-0은 모든 플레이어가 공유하는 시작점이자 도착점이다. 시작점에서는 지름길을 고르지 않고
+ * 정해진 외곽 방향으로만 출발하며, 나머지 코너에서만 "그대로 외곽으로" vs "대각선(지름길)으로"
+ * 분기가 생긴다. 중앙은 들어온 대각선의 반대편 대각선으로 자동으로 빠져나간다. */
 
 export type YutNodeKind = 'outer' | 'corner' | 'diagonal' | 'center';
 
@@ -19,6 +20,7 @@ export const OUTER_NODE_COUNT = 20;
 export const CORNER_COUNT = 4;
 export const CORNER_STRIDE = OUTER_NODE_COUNT / CORNER_COUNT; // 5
 export const MAX_PLAYERS = CORNER_COUNT;
+export const YUT_START_NODE_ID = outerNodeId(0);
 
 export function outerNodeId(index: number): string {
   const normalized = ((index % OUTER_NODE_COUNT) + OUTER_NODE_COUNT) % OUTER_NODE_COUNT;
@@ -32,9 +34,15 @@ export function diagonalNodeId(cornerIndex: number): string {
 
 export const CENTER_NODE_ID = 'center';
 
-/** 플레이어(진입 코너) 인덱스 0..3 → 그 플레이어의 입구 겸 완주 지점 칸 id. */
+/** 코너 인덱스 0..3 → 해당 외곽 코너 칸 id. */
+export function cornerNodeId(cornerIndex: number): string {
+  return outerNodeId(cornerIndex * CORNER_STRIDE);
+}
+
+/** 모든 플레이어가 공유하는 입구 겸 완주 지점 칸 id. 인자는 기존 호출부 호환용으로만 받는다. */
 export function entryNodeId(playerCornerIndex: number): string {
-  return outerNodeId(playerCornerIndex * CORNER_STRIDE);
+  void playerCornerIndex;
+  return YUT_START_NODE_ID;
 }
 
 function cornerIndexOfOuter(outerIndex: number): number | null {
@@ -67,7 +75,7 @@ export function buildYutBoardGraph(): YutBoardGraph {
       kind: cornerIndex === null ? 'outer' : 'corner',
       gridPos: [Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius],
       next: outerNodeId(i + 1),
-      shortcutNext: cornerIndex === null ? undefined : diagonalNodeId(cornerIndex),
+      shortcutNext: cornerIndex === null || cornerIndex === 0 ? undefined : diagonalNodeId(cornerIndex),
     };
   }
 

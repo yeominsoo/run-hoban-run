@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { entryNodeId } from '../src/game/yutnori-board';
+import { cornerNodeId } from '../src/game/yutnori-board';
 import {
   createStrategyYutGame,
   currentMover,
+  getAutoMoveRequest,
   partnerOf,
   resolveThrow,
   submitFace,
@@ -45,6 +46,9 @@ test('partner pairing groups (0,1) and (2,3), and partners can still capture eac
   expect(outcome.status).toBe('applied');
   if (outcome.status !== 'applied') throw new Error('unreachable');
   expect(outcome.capturedPieceIds).toContain('B-0'); // 파트너인데도 잡힘 — 배신 가능 확인
+  expect(outcome.bonusThrow).toBe(true);
+  expect(currentMover(state)).toBe('A'); // 잡으면 같은 플레이어가 한 번 더 던진다
+  expect(state.phase).toBe('collecting');
 });
 
 test('piggyback only merges pieces owned by the same individual, not a partner\'s pieces', () => {
@@ -62,30 +66,61 @@ test('piggyback only merges pieces owned by the same individual, not a partner\'
   const a0 = state.pieces.find((p) => p.id === 'A-0')!;
   const a1 = state.pieces.find((p) => p.id === 'A-1')!;
   expect(a0.leadId).toBe('A-1'); // 같은 개인 소유끼리는 업힘
+  expect(currentMover(state)).toBe('B');
 });
 
-test('a full round makes all 4 players move once in order, then a new round begins', () => {
+test('one resolved throw belongs to the current player only, then turn advances', () => {
   const state = createStrategyYutGame(TOKENS);
-  // 각자 서로 겹치지 않는 위치에 미리 놓아 이동끼리 업기/잡기가 섞이지 않게 한다(라운드 진행 자체만 검증).
   state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-1'];
   state.pieces.find((p) => p.id === 'B-0')!.path = ['outer-6'];
-  state.pieces.find((p) => p.id === 'C-0')!.path = ['outer-11'];
-  state.pieces.find((p) => p.id === 'D-0')!.path = ['outer-16'];
   submitRound(state, ['back', 'back', 'front', 'front']); // gae(2)
 
   expect(currentMover(state)).toBe('A');
+  const res = submitMove(state, 'A', { pieceId: 'A-0' });
+  expect(res.status).toBe('applied');
+  if (res.status !== 'applied') throw new Error('unreachable');
+  expect(res.bonusThrow).toBe(false);
+  expect(state.phase).toBe('collecting');
+  expect(currentMover(state)).toBe('B');
+  expect(() => submitMove(state, 'B', { pieceId: 'B-0' })).toThrow();
+  expect(state.round).toBe(2);
+});
+
+test('yut and mo give the same strategy player another throw', () => {
+  const state = createStrategyYutGame(TOKENS);
+  submitRound(state, ['back', 'back', 'back', 'back']); // yut(4)
+  expect(currentMover(state)).toBe('A');
   let res = submitMove(state, 'A', { pieceId: 'A-0' });
   expect(res.status).toBe('applied');
-  expect(currentMover(state)).toBe('B');
-  res = submitMove(state, 'B', { pieceId: 'B-0' });
-  expect(currentMover(state)).toBe('C');
-  res = submitMove(state, 'C', { pieceId: 'C-0' });
-  expect(currentMover(state)).toBe('D');
-  res = submitMove(state, 'D', { pieceId: 'D-0' });
   if (res.status !== 'applied') throw new Error('unreachable');
-  expect(res.roundOver).toBe(true);
+  expect(res.bonusThrow).toBe(true);
   expect(state.phase).toBe('collecting');
-  expect(state.round).toBe(2);
+  expect(currentMover(state)).toBe('A');
+
+  submitRound(state, ['front', 'front', 'front', 'front']); // mo(5)
+  res = submitMove(state, 'A', { pieceId: 'A-1' });
+  expect(res.status).toBe('applied');
+  if (res.status !== 'applied') throw new Error('unreachable');
+  expect(res.bonusThrow).toBe(true);
+  expect(currentMover(state)).toBe('A');
+});
+
+test('unmovable backdo immediately advances to the next strategy player', () => {
+  const state = createStrategyYutGame(TOKENS);
+  const result = submitRound(state, ['back', 'front', 'front', 'front']); // forced backdo
+  expect(result.kind).toBe('backdo');
+  expect(state.phase).toBe('collecting');
+  expect(currentMover(state)).toBe('B');
+});
+
+test('auto move launches a fresh piece first, otherwise moves the piece closest to start', () => {
+  const state = createStrategyYutGame(TOKENS);
+  state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-0', 'outer-1', 'outer-2'];
+  submitRound(state, ['back', 'back', 'front', 'front']); // gae(2)
+
+  expect(getAutoMoveRequest(state, 'A')).toEqual({ pieceId: 'A-1' });
+  state.pieces.find((p) => p.id === 'A-1')!.path = ['outer-0'];
+  expect(getAutoMoveRequest(state, 'A')).toEqual({ pieceId: 'A-1' });
 });
 
 test('a player wins individually once their own 2 pieces reach home, regardless of partner', () => {
@@ -106,17 +141,17 @@ test('a player wins individually once their own 2 pieces reach home, regardless 
 
 test('taking the shortcut at a corner still asks for a branch choice, same as base yutnori', () => {
   const state = createStrategyYutGame(TOKENS);
-  state.pieces.find((p) => p.id === 'A-0')!.path = [entryNodeId(0)];
+  state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1)];
   submitRound(state, ['back', 'back', 'front', 'front']); // gae(2)
   expect(currentMover(state)).toBe('A');
 
   const first = submitMove(state, 'A', { pieceId: 'A-0' });
   expect(first.status).toBe('awaiting-branch');
   if (first.status !== 'awaiting-branch') throw new Error('unreachable');
-  expect(first.cornerId).toBe(entryNodeId(0));
+  expect(first.cornerId).toBe(cornerNodeId(1));
 
   const resolved = submitMove(state, 'A', { pieceId: 'A-0', branch: 'shortcut' });
   expect(resolved.status).toBe('applied');
   if (resolved.status !== 'applied') throw new Error('unreachable');
-  expect(resolved.path).toEqual([entryNodeId(0), 'diag-0', 'center']);
+  expect(resolved.path).toEqual([cornerNodeId(1), 'diag-1', 'center']);
 });

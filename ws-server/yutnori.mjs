@@ -4,17 +4,17 @@ import {
   createYutGame,
   currentToken,
   buildBoardSnapshot,
+  getAutoMoveRequest,
   submitThrow,
   submitMove,
   removePlayer,
-  skipTurn,
   MAX_PLAYERS,
 } from './yutnori-rules.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000; // rps/liar/mafia/halligalli와 동일한 재접속 유예 시간
 const MIN_PLAYERS = 2;
-const TURN_TIMEOUT_MS = 20000; // 차례인 사람이 20초간 아무 것도 안 하면 다음 사람에게 순서를 넘긴다
+const TURN_TIMEOUT_MS = 20000; // 차례인 사람이 20초간 아무 것도 안 하면 서버가 자동 던지기/이동을 수행한다
 
 /**
  * Room:
@@ -77,10 +77,12 @@ export function registerYutnoriServer() {
     clearTurnTimer(room);
     room.turnTimer = setTimeout(() => {
       if (room.phase !== 'playing') return;
-      const skipped = currentToken(room.game);
-      skipTurn(room.game);
-      armTurnTimer(roomCode, room);
-      broadcastGameUpdate(room, { kind: 'turn_skipped', token: skipped, name: nameOf(room, skipped) });
+      const token = currentToken(room.game);
+      if (room.game.phase === 'throw') {
+        handleSubmitThrow(room, roomCode, token, true);
+      } else {
+        handleAutoMove(room, roomCode, token);
+      }
     }, TURN_TIMEOUT_MS);
   }
 
@@ -135,7 +137,7 @@ export function registerYutnoriServer() {
     broadcastGameUpdate(room, null);
   }
 
-  function handleSubmitThrow(room, roomCode, token) {
+  function handleSubmitThrow(room, roomCode, token, timedOut = false) {
     if (room.phase !== 'playing') return;
     if (currentToken(room.game) !== token) return;
     let result;
@@ -143,7 +145,60 @@ export function registerYutnoriServer() {
       result = submitThrow(room.game);
     } catch { return; }
     armTurnTimer(roomCode, room);
-    broadcastGameUpdate(room, { kind: 'throw', token, name: nameOf(room, token), result });
+    broadcastGameUpdate(room, { kind: 'throw', token, name: nameOf(room, token), result, timedOut });
+  }
+
+  function applyMoveOutcome(room, roomCode, token, outcome, timedOut = false) {
+    armTurnTimer(roomCode, room);
+    const event = {
+      kind: outcome.event.capturedPieceIds.length ? 'capture' : 'move',
+      token,
+      name: nameOf(room, token),
+      pieceId: outcome.event.pieceId,
+      path: outcome.event.path,
+      capturedPieceIds: outcome.event.capturedPieceIds,
+      joinedPieceIds: outcome.event.joinedPieceIds,
+      bonusThrow: outcome.bonusThrow,
+      timedOut,
+    };
+    broadcastGameUpdate(room, event);
+
+    if (outcome.gameOver) {
+      clearTurnTimer(room);
+      room.phase = 'game_over';
+      room.started = false;
+      broadcast(room, {
+        type: 'game_over',
+        winnerToken: room.game.winner,
+        winnerName: nameOf(room, room.game.winner),
+        board: buildBoardSnapshot(room.game),
+      });
+    }
+  }
+
+  function handleAutoMove(room, roomCode, token) {
+    if (room.phase !== 'playing') return;
+    if (currentToken(room.game) !== token) return;
+    const req = getAutoMoveRequest(room.game);
+    if (!req) {
+      armTurnTimer(roomCode, room);
+      broadcastGameUpdate(room, { kind: 'auto_no_move', token, name: nameOf(room, token), timedOut: true });
+      return;
+    }
+
+    let outcome;
+    try {
+      outcome = submitMove(room.game, req);
+      if (outcome.status === 'awaiting-branch') {
+        outcome = submitMove(room.game, {
+          pieceId: outcome.branch.pieceId,
+          pendingThrowId: outcome.branch.pendingThrowId,
+          branch: 'straight',
+        });
+      }
+    } catch { return; }
+    if (outcome.status !== 'applied') return;
+    applyMoveOutcome(room, roomCode, token, outcome, true);
   }
 
   function handleSubmitMove(room, roomCode, token, msg) {
@@ -163,33 +218,11 @@ export function registerYutnoriServer() {
     if (outcome.status === 'awaiting-branch') {
       const player = playerByToken(room, token);
       if (player?.ws) send(player.ws, { type: 'await_branch', ...outcome.branch });
+      armTurnTimer(roomCode, room);
       return;
     }
 
-    armTurnTimer(roomCode, room);
-    const event = {
-      kind: outcome.event.capturedPieceIds.length ? 'capture' : 'move',
-      token,
-      name: nameOf(room, token),
-      pieceId: outcome.event.pieceId,
-      path: outcome.event.path,
-      capturedPieceIds: outcome.event.capturedPieceIds,
-      joinedPieceIds: outcome.event.joinedPieceIds,
-      bonusThrow: outcome.bonusThrow,
-    };
-    broadcastGameUpdate(room, event);
-
-    if (outcome.gameOver) {
-      clearTurnTimer(room);
-      room.phase = 'game_over';
-      room.started = false;
-      broadcast(room, {
-        type: 'game_over',
-        winnerToken: room.game.winner,
-        winnerName: nameOf(room, room.game.winner),
-        board: buildBoardSnapshot(room.game),
-      });
-    }
+    applyMoveOutcome(room, roomCode, token, outcome);
   }
 
   // ── 이탈/재접속 처리 ─────────────────────────────────────────────
