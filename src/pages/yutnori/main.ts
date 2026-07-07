@@ -4,6 +4,7 @@ import { shareRoomLink } from '../../shared/share';
 import { buildYutBoardGraph, entryNodeId } from '../../game/yutnori-board';
 import { buildYutnoriBoardScene, nodeWorldPosition } from '../../render/yutnori-board';
 import { createYutPieceMesh, YUT_PLAYER_COLORS } from '../../render/yutnori-piece';
+import { YutnoriFx } from '../../render/yutnori-effects';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -429,7 +430,8 @@ function renderYutSticks() {
     const baekdo = flat && i === 0 && result.kind === 'backdo';
     el.className = `yut-stick landed ${flat ? 'flat' : 'round'}${baekdo ? ' baekdo' : ''}`;
   });
-  yutThrowValueEl.textContent = THROW_LABEL[result.kind] ?? result.kind;
+  const bonusMark = result.extraTurn ? ' ⭐ 한 번 더' : '';
+  yutThrowValueEl.textContent = (THROW_LABEL[result.kind] ?? result.kind) + bonusMark;
   yutThrowValueEl.className = `yut-throw-value${result.kind === 'backdo' ? ' backdo' : ''}`;
 }
 
@@ -464,6 +466,7 @@ let camera: THREE.PerspectiveCamera | null = null;
 let renderer: THREE.WebGLRenderer | null = null;
 let clock: THREE.Clock | null = null;
 let animating = false;
+let fx: YutnoriFx | null = null;
 const boardGraph = buildYutBoardGraph();
 const pieceMeshes = new Map<string, THREE.Group>();
 const pieceTargets = new Map<string, THREE.Vector3>();
@@ -504,6 +507,7 @@ function ensureScene() {
   scene!.add(dir);
 
   scene!.add(buildYutnoriBoardScene(boardGraph));
+  fx = new YutnoriFx(scene!);
 
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -541,6 +545,7 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.1);
   const lerpAlpha = 1 - Math.pow(0.001, delta);
   const t = clock.elapsedTime;
+  fx?.update(delta);
 
   pieceMeshes.forEach((mesh, id) => {
     const target = pieceTargets.get(id);
@@ -556,7 +561,12 @@ function animate() {
       }
     }
     const inner = mesh.getObjectByName('yut-piece-inner');
-    if (inner) inner.position.y = selectable ? Math.abs(Math.sin(t * 4)) * 0.16 : 0;
+    if (inner) {
+      const hopRemain = ((mesh.userData.hopUntil as number) ?? 0) - t;
+      if (selectable) inner.position.y = Math.abs(Math.sin(t * 4)) * 0.16;
+      else if (hopRemain > 0) inner.position.y = Math.sin((1 - hopRemain / 0.5) * Math.PI) * 0.45;
+      else inner.position.y = 0;
+    }
   });
 
   renderer.render(scene, camera);
@@ -584,6 +594,27 @@ function onCanvasPointer(e: PointerEvent) {
 
   // 보드 클릭은 스택 전체 이동만 담당한다. 갈라치기는 하단 텍스트 버튼으로 남겨둔다.
   send({ type: 'submit_move', pieceId, pendingThrowId: selectedThrowId, splitOff: false });
+}
+
+/** 잡히거나 업힌 말이 잠깐 통통 튀도록 표시한다(animate가 hopUntil을 읽는다). */
+function hopPiece(id: string) {
+  const mesh = pieceMeshes.get(id);
+  if (mesh && clock) mesh.userData.hopUntil = clock.elapsedTime + 0.5;
+}
+
+/** 분기 대기 중이면 코너의 외곽/지름길 후보 칸에 방향 화살표를 띄우고, 아니면 지운다. */
+function syncBranchFx() {
+  if (!fx) return;
+  if (pendingBranch && currentTurnToken === myToken) {
+    const corner = boardGraph[pendingBranch.cornerId];
+    if (corner) {
+      const straightPos = nodeWorldPosition(boardGraph[corner.next].gridPos);
+      const shortcutPos = corner.shortcutNext ? nodeWorldPosition(boardGraph[corner.shortcutNext].gridPos) : null;
+      fx.showBranch(pendingBranch.cornerId, straightPos, shortcutPos);
+      return;
+    }
+  }
+  fx.clearBranch();
 }
 
 function syncPieceMeshes() {
@@ -696,6 +727,7 @@ function renderPlaying() {
   syncPieceMeshes();
   renderControls();
   renderYutSticks();
+  syncBranchFx();
 
   if (pendingBranch && currentTurnToken === myToken) {
     turnStatus.textContent = `말이 코너에 도착했어요 — 남은 ${pendingBranch.remainingSteps}칸을 어떻게 갈까요?`;
@@ -806,11 +838,18 @@ function handleServerMessage(msg: any) {
           }
           showToast(`${event.name}님이 ${THROW_LABEL[event.result.kind] ?? event.result.kind}를 던졌어요${event.result.extraTurn ? ' — 한 번 더!' : ''}`, 'throw');
         } else if (event.kind === 'move' || event.kind === 'capture') {
+          const arrivePos = pieceTargets.get(event.pieceId);
+          const movedPiece = board.find((b) => b.id === event.pieceId);
           if (event.capturedPieceIds.length) {
             showToast(`${event.name}님이 상대 말을 잡았어요! 보너스 던지기 획득`, 'capture');
+            if (fx && arrivePos) fx.captureBurst(arrivePos);
+            event.capturedPieceIds.forEach(hopPiece);
           } else if (event.joinedPieceIds.length) {
             showToast(`${event.name}님이 말을 업었어요`, 'throw');
+            event.joinedPieceIds.forEach(hopPiece);
+            hopPiece(event.pieceId);
           }
+          if (movedPiece?.home && fx) fx.homeBurst(nodeWorldPosition(boardGraph[entryNodeId(0)].gridPos));
         } else if (event.kind === 'turn_skipped') {
           showToast(`${event.name}님이 시간 초과로 차례를 넘겼어요`, 'info');
         } else if (event.kind === 'player_left') {
