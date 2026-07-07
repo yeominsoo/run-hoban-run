@@ -1,6 +1,7 @@
 import './yutnori.css';
 import * as THREE from 'three';
 import { shareRoomLink } from '../../shared/share';
+import { showCenterToast } from '../../shared/center-toast';
 import { buildYutBoardGraph, entryNodeId } from '../../game/yutnori-board';
 import { buildYutnoriBoardScene, nodeWorldPosition } from '../../render/yutnori-board';
 import { createYutPieceMesh, YUT_PLAYER_COLORS } from '../../render/yutnori-piece';
@@ -27,6 +28,13 @@ const RECONNECT_MAX = 24;
 const THROW_LABEL: Record<string, string> = {
   backdo: '백도(-1)', do: '도(1)', gae: '개(2)', geol: '걸(3)', yut: '윷(4)', mo: '모(5)',
 };
+const REACTION_OPTIONS = [
+  { id: 'tease', emoji: '😜', label: '놀림' },
+  { id: 'sad', emoji: '😭', label: '슬픔' },
+  { id: 'smug', emoji: '😎', label: '의기양양' },
+  { id: 'cheer', emoji: '👏', label: '응원' },
+  { id: 'shock', emoji: '😱', label: '충격' },
+] as const;
 
 // 각 던지기 결과를 윷가락 4개의 "젖혀진(평평한 배가 위로 온)" 개수로 시각화한다.
 // 전통 윷놀이처럼 젖혀진 개수 = 값(도1·개2·걸3·윷4)이며, 모는 4개 모두 엎어진 상태(0개)다.
@@ -63,22 +71,26 @@ let pendingAction: PendingAction | null = null;
 let intentionalClose = false;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
+let reactionTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface BoardPieceEntry { id: string; ownerToken: string; leadId: string; home: boolean; nodeId: string | null; }
 interface PlayerEntry { token: string; name: string; connected: boolean; }
 interface ThrowResult { kind: string; steps: number; extraTurn: boolean; }
 interface PendingThrowEntry { id: string; result: ThrowResult; }
 interface BranchInfo { pieceId: string; cornerId: string; remainingSteps: number; pendingThrowId: string; }
+interface ChatMessage { token: string; name: string; text: string; sentAt?: number; }
+interface ReactionMessage { token: string; name: string; reaction: { id: string; emoji: string; label: string }; sentAt?: number; }
 
 let board: BoardPieceEntry[] = [];
 let players: PlayerEntry[] = [];
+let teams: string[][] = [];
+let chatMessages: ChatMessage[] = [];
+const playerColorSlots = new Map<string, number>();
 let currentTurnToken: string | null = null;
 let ynPhase: 'throw' | 'move' = 'throw';
 let pendingThrows: PendingThrowEntry[] = [];
 let pendingBranch: BranchInfo | null = null;
 let selectedThrowId: string | null = null;
-let lastThrowResult: ThrowResult | null = null;
 let isTossing = false;
 let tossTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -150,18 +162,8 @@ app.innerHTML = `
     <div class="yn-panel wide hidden" id="playing-panel">
       <div class="yn-players" id="yn-players"></div>
       <p class="status-text" id="yn-turn-status"></p>
-      <div class="yn-toast hidden" id="yn-toast"></div>
+      <div class="yn-reaction-pop hidden" id="yn-reaction-pop"></div>
       <div class="yn-canvas-wrap" id="yn-canvas-wrap"></div>
-
-      <div class="yn-yut-sticks hidden" id="yn-yut-sticks">
-        <div class="yut-stick-row">
-          <span class="yut-stick" data-stick="0"></span>
-          <span class="yut-stick" data-stick="1"></span>
-          <span class="yut-stick" data-stick="2"></span>
-          <span class="yut-stick" data-stick="3"></span>
-        </div>
-        <span class="yut-throw-value" id="yut-throw-value"></span>
-      </div>
 
       <div class="yn-controls">
         <button id="throw-btn" type="button" class="yn-btn primary throw-btn" aria-label="윷 던지기" disabled>
@@ -180,6 +182,18 @@ app.innerHTML = `
           <button type="button" class="yn-branch-btn" id="branch-shortcut-btn">↗️ 지름길(대각선)로</button>
         </div>
       </div>
+
+      <div class="yn-reactions" id="yn-reactions">
+        ${REACTION_OPTIONS.map((r) => `<button type="button" class="yn-reaction-btn" data-reaction-id="${r.id}" aria-label="${r.label}">${r.emoji}</button>`).join('')}
+      </div>
+
+      <section class="yn-chat" aria-label="채팅">
+        <div class="yn-chat-log" id="yn-chat-log"></div>
+        <div class="yn-chat-form">
+          <input id="yn-chat-input" class="yn-chat-input" type="text" maxlength="120" placeholder="메시지 입력" autocomplete="off" />
+          <button id="yn-chat-send-btn" class="yn-chat-send" type="button">전송</button>
+        </div>
+      </section>
     </div>
 
     <!-- Game over -->
@@ -235,17 +249,18 @@ const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButton
 
 const ynPlayersEl = document.getElementById('yn-players')!;
 const turnStatus = document.getElementById('yn-turn-status')!;
-const ynToast = document.getElementById('yn-toast')!;
+const reactionPop = document.getElementById('yn-reaction-pop')!;
 const canvasWrap = document.getElementById('yn-canvas-wrap')!;
 const throwBtn = document.getElementById('throw-btn') as HTMLButtonElement;
-const yutSticksEl = document.getElementById('yn-yut-sticks')!;
-const yutThrowValueEl = document.getElementById('yut-throw-value')!;
-const yutStickEls = Array.from(yutSticksEl.querySelectorAll('.yut-stick')) as HTMLElement[];
 const throwQueueEl = document.getElementById('yn-throw-queue')!;
 const piecePickerEl = document.getElementById('yn-piece-picker')!;
 const branchPickerEl = document.getElementById('yn-branch-picker')!;
 const branchStraightBtn = document.getElementById('branch-straight-btn') as HTMLButtonElement;
 const branchShortcutBtn = document.getElementById('branch-shortcut-btn') as HTMLButtonElement;
+const chatLogEl = document.getElementById('yn-chat-log')!;
+const chatInput = document.getElementById('yn-chat-input') as HTMLInputElement;
+const chatSendBtn = document.getElementById('yn-chat-send-btn') as HTMLButtonElement;
+const reactionRow = document.getElementById('yn-reactions')!;
 
 const gameOverBanner = document.getElementById('game-over-banner')!;
 const finalBoard = document.getElementById('final-board')!;
@@ -385,14 +400,19 @@ function leaveRoom() {
 function resetGameState() {
   board = [];
   players = [];
+  teams = [];
+  chatMessages = [];
+  playerColorSlots.clear();
   currentTurnToken = null;
   ynPhase = 'throw';
   pendingThrows = [];
   pendingBranch = null;
   selectedThrowId = null;
-  lastThrowResult = null;
   isTossing = false;
   if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
+  if (reactionTimer) { clearTimeout(reactionTimer); reactionTimer = null; }
+  reactionPop.classList.add('hidden');
+  renderChatLog();
 }
 
 // ── Lobby rendering ───────────────────────────────────────────────
@@ -407,65 +427,102 @@ function renderLobbyPlayers(list: { name: string; isHost: boolean; connected: bo
 }
 
 function showToast(text: string, kind: 'throw' | 'capture' | 'info') {
-  if (toastTimer) clearTimeout(toastTimer);
-  ynToast.textContent = text;
-  ynToast.className = `yn-toast ${kind}`;
-  ynToast.classList.remove('hidden');
-  toastTimer = setTimeout(() => { ynToast.classList.add('hidden'); }, kind === 'throw' ? 1800 : 3000);
+  showCenterToast(text, { kind, duration: kind === 'throw' ? 1800 : 3000 });
 }
 
-// ── 윷가락 그래픽 ──────────────────────────────────────────────────
-// 결과는 언제나 서버가 정한다(lastThrowResult). 여기서는 그 결과의 앞/뒤 배치와
-// 던지는 동안의 흔들림만 시각적으로 표현할 뿐, 결과 자체를 클라이언트가 만들지 않는다.
-function renderYutSticks() {
-  if (!lastThrowResult && !isTossing) {
-    yutSticksEl.classList.add('hidden');
+function showReaction(msg: ReactionMessage) {
+  if (reactionTimer) clearTimeout(reactionTimer);
+  reactionPop.innerHTML = `<span class="yn-reaction-emoji">${escapeHtml(msg.reaction.emoji)}</span><span class="yn-reaction-name">${escapeHtml(msg.name)}</span>`;
+  reactionPop.classList.remove('hidden');
+  reactionTimer = setTimeout(() => { reactionPop.classList.add('hidden'); }, 1600);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]!);
+}
+
+function renderChatLog() {
+  if (!chatLogEl) return;
+  if (chatMessages.length === 0) {
+    chatLogEl.innerHTML = '<div class="yn-chat-empty">아직 메시지가 없습니다.</div>';
     return;
   }
-  yutSticksEl.classList.remove('hidden');
+  chatLogEl.innerHTML = chatMessages.map((m) => {
+    const mine = m.token === myToken;
+    return `<div class="yn-chat-msg${mine ? ' mine' : ''}">
+      <span class="yn-chat-name">${escapeHtml(m.name)}</span>
+      <span class="yn-chat-text">${escapeHtml(m.text)}</span>
+    </div>`;
+  }).join('');
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
 
-  if (isTossing) {
-    yutStickEls.forEach((el) => { el.className = 'yut-stick tossing'; });
-    yutThrowValueEl.textContent = '';
-    yutThrowValueEl.className = 'yut-throw-value';
-    return;
-  }
+function submitChat() {
+  const text = chatInput.value.trim().slice(0, 120);
+  if (!text) return;
+  chatInput.value = '';
+  send({ type: 'submit_chat', text });
+}
 
-  const result = lastThrowResult!;
-  const flatCount = YUT_STICK_FLAT_COUNT[result.kind] ?? 0;
-  yutStickEls.forEach((el, i) => {
+function stablePlayerIndex(token: string): number {
+  const existing = playerColorSlots.get(token);
+  if (existing !== undefined) return existing;
+  const next = playerColorSlots.size;
+  playerColorSlots.set(token, next);
+  return next;
+}
+
+function syncPlayerSlots(list: PlayerEntry[]) {
+  list.forEach((p) => stablePlayerIndex(p.token));
+}
+
+// ── 윷가락 그래픽 (화면 중앙 토스트) ───────────────────────────────
+// 결과는 언제나 서버가 정한다. 여기서는 그 결과의 앞/뒤 배치와 던지는 동안의 흔들림만
+// 시각적으로 표현할 뿐, 결과 자체를 클라이언트가 만들지 않는다.
+function yutSticksHtml(result: ThrowResult | null, tossing: boolean): string {
+  const sticks = [0, 1, 2, 3].map((i) => {
+    if (tossing) return '<span class="ct-yut-stick tossing round"></span>';
+    const flatCount = result ? (YUT_STICK_FLAT_COUNT[result.kind] ?? 0) : 0;
     const flat = i < flatCount;
-    const baekdo = flat && i === 0 && result.kind === 'backdo';
-    el.className = `yut-stick landed ${flat ? 'flat' : 'round'}${baekdo ? ' baekdo' : ''}`;
-  });
-  const bonusMark = result.extraTurn ? ' ⭐ 한 번 더' : '';
-  yutThrowValueEl.textContent = (THROW_LABEL[result.kind] ?? result.kind) + bonusMark;
-  yutThrowValueEl.className = `yut-throw-value${result.kind === 'backdo' ? ' backdo' : ''}`;
+    const baekdo = flat && i === 0 && result?.kind === 'backdo';
+    return `<span class="ct-yut-stick ${flat ? 'flat' : 'round'}${baekdo ? ' baekdo' : ''}"></span>`;
+  }).join('');
+  if (tossing || !result) return `<div class="ct-yut-row">${sticks}</div>`;
+  const bonus = result.extraTurn ? '<span class="bonus">⭐ 한 번 더</span>' : '';
+  return `<div class="ct-yut-row">${sticks}</div><div class="ct-yut-value">${THROW_LABEL[result.kind] ?? result.kind}${bonus}</div>`;
 }
 
-/** throw-btn을 누른 직후, 서버 결과가 오기 전까지 보여줄 흔들림 연출을 시작한다. */
+/** throw-btn을 누른 직후, 서버 결과가 오기 전까지 보여줄 흔들림 연출을 중앙 토스트로 시작한다. */
 function startTossing() {
   if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
   isTossing = true;
-  lastThrowResult = null;
-  renderYutSticks();
+  showCenterToast(yutSticksHtml(null, true), { kind: 'throw', html: true, duration: 8000 });
 }
 
-/** 던지기 결과를 윷가락에 확정 반영한다. */
+/** 던지기 결과를 중앙 토스트의 윷가락에 확정 반영한다. */
 function settleThrow(result: ThrowResult) {
   if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
   isTossing = false;
-  lastThrowResult = result;
-  renderYutSticks();
+  showCenterToast(yutSticksHtml(result, false), { kind: 'throw', html: true, duration: 2600 });
 }
 
 function playerIndex(token: string): number {
-  return players.findIndex((p) => p.token === token);
+  return stablePlayerIndex(token);
 }
 
 function nameOfToken(token: string | null): string {
   if (!token) return '?';
   return players.find((p) => p.token === token)?.name ?? '?';
+}
+
+function playerByToken(token: string): PlayerEntry | undefined {
+  return players.find((p) => p.token === token);
 }
 
 function playerColor(token: string): string {
@@ -709,13 +766,23 @@ function syncPieceMeshes() {
 
 // ── Player pips + controls ────────────────────────────────────────
 function renderPlayerPips() {
-  ynPlayersEl.innerHTML = players.map((p, i) => {
-    const color = `#${YUT_PLAYER_COLORS[i % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
-    const isTurn = p.token === currentTurnToken;
-    const homeCount = board.filter((b) => b.ownerToken === p.token && b.home).length;
-    return `<div class="yn-player-pip${isTurn ? ' active-turn' : ''}${p.connected ? '' : ' disconnected'}">
-      <span class="yn-pip-dot" style="background:${color}"></span>
-      <span>${p.name}${p.token === myToken ? ' (나)' : ''} · ${homeCount}/4</span>
+  const teamList = teams.length ? teams : players.map((p) => [p.token]);
+  ynPlayersEl.innerHTML = teamList.map((team, teamIndex) => {
+    const teamHome = team.reduce((sum, token) => sum + board.filter((b) => b.ownerToken === token && b.home).length, 0);
+    const rows = team.map((token) => {
+      const p = playerByToken(token);
+      if (!p) return '';
+      const color = playerColor(token);
+      const isTurn = token === currentTurnToken;
+      const homeCount = board.filter((b) => b.ownerToken === token && b.home).length;
+      return `<div class="yn-player-pip${isTurn ? ' active-turn' : ''}${p.connected ? '' : ' disconnected'}">
+        <span class="yn-pip-dot" style="background:${color}"></span>
+        <span>${p.name}${token === myToken ? ' (나)' : ''} · ${homeCount}/4</span>
+      </div>`;
+    }).join('');
+    return `<div class="yn-team">
+      <div class="yn-team-label">팀 ${teamIndex + 1} · ${teamHome}/${team.length * 4}</div>
+      ${rows}
     </div>`;
   }).join('');
 }
@@ -771,7 +838,6 @@ function renderPlaying() {
   renderPlayerPips();
   syncPieceMeshes();
   renderControls();
-  renderYutSticks();
   syncBranchFx();
 
   if (pendingBranch && currentTurnToken === myToken) {
@@ -787,6 +853,8 @@ function renderPlaying() {
 function applyGamePayload(payload: any) {
   board = payload.board ?? [];
   players = payload.players ?? players;
+  syncPlayerSlots(players);
+  teams = payload.teams ?? teams;
   currentTurnToken = payload.currentTurnToken ?? null;
   ynPhase = payload.phase === 'move' ? 'move' : 'throw';
   pendingThrows = payload.pendingThrows ?? [];
@@ -904,6 +972,19 @@ function handleServerMessage(msg: any) {
       break;
     }
 
+    case 'chat_message':
+      chatMessages.push({ token: msg.token, name: msg.name, text: msg.text, sentAt: msg.sentAt });
+      if (chatMessages.length > 80) chatMessages = chatMessages.slice(-80);
+      renderChatLog();
+      break;
+
+    case 'reaction_message':
+      showReaction(msg);
+      chatMessages.push({ token: msg.token, name: msg.name, text: `${msg.reaction?.emoji ?? ''} ${msg.reaction?.label ?? ''}`.trim(), sentAt: msg.sentAt });
+      if (chatMessages.length > 80) chatMessages = chatMessages.slice(-80);
+      renderChatLog();
+      break;
+
     case 'await_branch':
       pendingBranch = { pieceId: msg.pieceId, cornerId: msg.cornerId, remainingSteps: msg.remainingSteps, pendingThrowId: msg.pendingThrowId };
       renderPlaying();
@@ -941,19 +1022,24 @@ function handleServerMessage(msg: any) {
 }
 
 function renderGameOver(msg: any) {
-  const iWon = msg.winnerToken === myToken;
-  gameOverBanner.textContent = msg.winnerName
-    ? (iWon ? `🏆 승리! 말 4개를 전부 완주시켰어요!` : `🏆 ${msg.winnerName}님 승리!`)
+  const winnerTeamTokens = (msg.winnerTeamTokens as string[] | undefined) ?? (msg.winnerToken ? [msg.winnerToken] : []);
+  const winnerTeamNames = (msg.winnerTeamNames as string[] | undefined) ?? (msg.winnerName ? [msg.winnerName] : []);
+  const iWon = !!myToken && winnerTeamTokens.includes(myToken);
+  const winnerLabel = winnerTeamNames.length > 1 ? `${winnerTeamNames.join(' · ')} 팀` : (msg.winnerName ?? '');
+  gameOverBanner.textContent = winnerLabel
+    ? (iWon ? `🏆 승리! ${winnerLabel}이 이겼어요!` : `🏆 ${winnerLabel} 승리!`)
     : '게임이 종료됐습니다.';
   gameOverBanner.className = 'set-over-result ' + (iWon ? 'win' : 'lose');
   const finalBoardData = (msg.board as BoardPieceEntry[]) ?? [];
   const byOwner = new Map<string, number>();
   finalBoardData.forEach((p) => { if (p.home) byOwner.set(p.ownerToken, (byOwner.get(p.ownerToken) ?? 0) + 1); });
-  finalBoard.innerHTML = players
-    .slice()
-    .sort((a, b) => (byOwner.get(b.token) ?? 0) - (byOwner.get(a.token) ?? 0))
-    .map((p) => `<div class="scores-row${p.token === myToken ? ' me' : ''}"><span>${p.name}</span><span>${byOwner.get(p.token) ?? 0}/4 완주</span></div>`)
-    .join('');
+  const teamList = teams.length ? teams : players.map((p) => [p.token]);
+  finalBoard.innerHTML = teamList.map((team, index) => {
+    const total = team.reduce((sum, token) => sum + (byOwner.get(token) ?? 0), 0);
+    const names = team.map((token) => nameOfToken(token)).join(' · ');
+    const me = !!myToken && team.includes(myToken);
+    return `<div class="scores-row${me ? ' me' : ''}"><span>팀 ${index + 1} · ${names}</span><span>${total}/${team.length * 4} 완주</span></div>`;
+  }).join('');
   resetGameState();
   setPhase('game_over');
 }
@@ -1037,6 +1123,20 @@ branchStraightBtn.addEventListener('click', () => {
 branchShortcutBtn.addEventListener('click', () => {
   if (!pendingBranch) return;
   send({ type: 'submit_move', pieceId: pendingBranch.pieceId, pendingThrowId: pendingBranch.pendingThrowId, branch: 'shortcut' });
+});
+
+chatSendBtn.addEventListener('click', submitChat);
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitChat();
+  }
+});
+
+reactionRow.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('[data-reaction-id]') as HTMLElement | null;
+  if (!btn) return;
+  send({ type: 'submit_reaction', reactionId: btn.dataset.reactionId });
 });
 
 retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAction); });

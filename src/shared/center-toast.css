@@ -1,0 +1,95 @@
+/* 모든 게임 공용 중앙 토스트. 각 게임 페이지가 center-toast.ts를 import하면 함께 로드된다. */
+.center-toast-host {
+  position: fixed;
+  top: 16%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  max-width: min(92vw, 440px);
+  pointer-events: none;
+}
+
+.center-toast {
+  pointer-events: none;
+  max-width: 100%;
+  padding: 14px 22px;
+  border-radius: 16px;
+  background: rgba(255, 252, 248, 0.97);
+  color: #3a2b34;
+  font-weight: 800;
+  font-size: 1.02rem;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 14px 36px rgba(60, 40, 55, 0.28);
+  border: 1.5px solid rgba(160, 130, 150, 0.25);
+  opacity: 0;
+  transform: translateY(-14px) scale(0.94);
+  transition: opacity 200ms ease, transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+.center-toast.show { opacity: 1; transform: translateY(0) scale(1); }
+.center-toast.leaving { opacity: 0; transform: translateY(-10px) scale(0.98); }
+
+/* kind별 강조 */
+.center-toast.capture,
+.center-toast.wrong { border-color: rgba(232, 93, 117, 0.55); color: #b3405a; }
+.center-toast.correct { border-color: rgba(94, 207, 188, 0.6); color: #1f7a5f; }
+.center-toast.warn { border-color: rgba(246, 196, 69, 0.6); color: #8a6208; }
+.center-toast.throw { background: rgba(255, 248, 236, 0.98); border-color: rgba(210, 170, 110, 0.5); }
+
+/* 던지기 윷가락 이미지 토스트 내부 레이아웃 */
+.center-toast .ct-yut-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: flex-end;
+  height: 66px;
+  margin-bottom: 6px;
+}
+.center-toast .ct-yut-stick {
+  width: 18px;
+  height: 56px;
+  border-radius: 10px / 12px;
+  box-shadow: 0 2px 4px rgba(75, 52, 71, 0.16);
+  position: relative;
+}
+.center-toast .ct-yut-stick.round {
+  background: linear-gradient(100deg, #8a5f3b 0%, #c79a6b 46%, #e3bd8e 52%, #b07f52 62%, #8a5f3b 100%);
+  border: 1px solid rgba(110, 74, 44, 0.5);
+}
+.center-toast .ct-yut-stick.flat {
+  background: linear-gradient(100deg, #d8b98a 0%, #f3e2c2 22%, #fff8ea 50%, #f0dcb8 78%, #d3b083 100%);
+  border: 1px solid rgba(150, 110, 70, 0.4);
+}
+.center-toast .ct-yut-stick.baekdo::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 8px; height: 8px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #e8543f;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+.center-toast .ct-yut-stick.tossing { animation: ct-yut-toss 360ms ease-in-out infinite; }
+.center-toast .ct-yut-stick.tossing:nth-child(2) { animation-delay: 70ms; }
+.center-toast .ct-yut-stick.tossing:nth-child(3) { animation-delay: 140ms; }
+.center-toast .ct-yut-stick.tossing:nth-child(4) { animation-delay: 210ms; }
+@keyframes ct-yut-toss {
+  0% { transform: translateY(0) rotate(-10deg); }
+  25% { transform: translateY(-15px) rotate(10deg); }
+  50% { transform: translateY(0) rotate(-8deg); }
+  75% { transform: translateY(-10px) rotate(9deg); }
+  100% { transform: translateY(0) rotate(-10deg); }
+}
+.center-toast .ct-yut-value { font-size: 1.15rem; font-weight: 900; }
+.center-toast .ct-yut-value .bonus { color: #d98a1f; margin-left: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .center-toast { transition: opacity 120ms ease; transform: none; }
+  .center-toast.show { transform: none; }
+  .center-toast .ct-yut-stick.tossing { animation: none; }
+}

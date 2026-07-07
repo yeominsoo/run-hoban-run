@@ -8,6 +8,8 @@ import {
   submitThrow,
   submitMove,
   removePlayer,
+  activeTeams,
+  teamOf,
   MAX_PLAYERS,
 } from './yutnori-rules.mjs';
 
@@ -15,6 +17,14 @@ const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000; // rps/liar/mafia/halligalli와 동일한 재접속 유예 시간
 const MIN_PLAYERS = 2;
 const TURN_TIMEOUT_MS = 20000; // 차례인 사람이 20초간 아무 것도 안 하면 서버가 자동 던지기/이동을 수행한다
+const MAX_CHAT_LEN = 120;
+const REACTIONS = {
+  tease: { id: 'tease', emoji: '😜', label: '놀림' },
+  sad: { id: 'sad', emoji: '😭', label: '슬픔' },
+  smug: { id: 'smug', emoji: '😎', label: '의기양양' },
+  cheer: { id: 'cheer', emoji: '👏', label: '응원' },
+  shock: { id: 'shock', emoji: '😱', label: '충격' },
+};
 
 /**
  * Room:
@@ -62,6 +72,9 @@ export function registerYutnoriServer() {
 
   function playerByToken(room, token) { return room.players.find(p => p.token === token); }
   function nameOf(room, token) { return playerByToken(room, token)?.name ?? '?'; }
+  function sanitizeChatText(text) {
+    return typeof text === 'string' ? text.trim().slice(0, MAX_CHAT_LEN) : '';
+  }
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
@@ -111,6 +124,7 @@ export function registerYutnoriServer() {
     return {
       board: buildBoardSnapshot(game),
       players: game.tokens.map(token => ({ token, name: nameOf(room, token), connected: !!playerByToken(room, token)?.ws })),
+      teams: game.teams,
       currentTurnToken: game.turnOrder[game.turnIndex] ?? null,
       phase: game.phase,
       pendingThrows: game.pendingThrows.map(pt => ({ id: pt.id, result: pt.result })),
@@ -120,6 +134,39 @@ export function registerYutnoriServer() {
 
   function broadcastGameUpdate(room, event) {
     broadcast(room, { type: 'game_update', ...buildGamePayload(room), event: event ?? null });
+  }
+
+  function handleSubmitChat(room, token, msg) {
+    const player = playerByToken(room, token);
+    if (!player) return;
+    const text = sanitizeChatText(msg.text);
+    if (!text) return;
+    broadcast(room, { type: 'chat_message', token, name: player.name, text, sentAt: Date.now() });
+  }
+
+  function handleSubmitReaction(room, token, msg) {
+    const player = playerByToken(room, token);
+    const reaction = REACTIONS[String(msg.reactionId ?? '')];
+    if (!player || !reaction) return;
+    broadcast(room, { type: 'reaction_message', token, name: player.name, reaction, sentAt: Date.now() });
+  }
+
+  function teamNames(room, team) {
+    return team.map(token => nameOf(room, token));
+  }
+
+  function gameOverPayload(room, extra = {}) {
+    const winnerToken = room.game.winner;
+    const winnerTeam = teamOf(room.game, winnerToken);
+    return {
+      type: 'game_over',
+      winnerToken,
+      winnerName: nameOf(room, winnerToken),
+      winnerTeamTokens: winnerTeam,
+      winnerTeamNames: teamNames(room, winnerTeam),
+      board: buildBoardSnapshot(room.game),
+      ...extra,
+    };
   }
 
   // ── 게임 진행 ────────────────────────────────────────────────────
@@ -167,12 +214,7 @@ export function registerYutnoriServer() {
       clearTurnTimer(room);
       room.phase = 'game_over';
       room.started = false;
-      broadcast(room, {
-        type: 'game_over',
-        winnerToken: room.game.winner,
-        winnerName: nameOf(room, room.game.winner),
-        board: buildBoardSnapshot(room.game),
-      });
+      broadcast(room, gameOverPayload(room));
     }
   }
 
@@ -249,18 +291,14 @@ export function registerYutnoriServer() {
 
     removePlayer(room.game, leavingToken);
 
-    if (room.game.turnOrder.length < MIN_PLAYERS) {
+    const remainingTeams = activeTeams(room.game);
+    if (remainingTeams.length < 2) {
       clearTurnTimer(room);
       room.phase = 'game_over';
       room.started = false;
-      const winnerToken = room.game.turnOrder[0] ?? null;
-      broadcast(room, {
-        type: 'game_over',
-        winnerToken,
-        winnerName: winnerToken ? nameOf(room, winnerToken) : null,
-        board: buildBoardSnapshot(room.game),
-        opponentLeft: true,
-      });
+      const winnerTeam = remainingTeams[0] ?? [];
+      room.game.winner = winnerTeam[0] ?? null;
+      broadcast(room, gameOverPayload(room, { opponentLeft: true }));
       return;
     }
 
@@ -392,6 +430,24 @@ export function registerYutnoriServer() {
         const room = identity && rooms.get(identity.roomCode);
         if (!room) return;
         handleSubmitMove(room, identity.roomCode, identity.token, msg);
+        return;
+      }
+
+      // ── submit_chat ───────────────────────────────────────────────
+      if (msg.type === 'submit_chat') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        handleSubmitChat(room, identity.token, msg);
+        return;
+      }
+
+      // ── submit_reaction ───────────────────────────────────────────
+      if (msg.type === 'submit_reaction') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        handleSubmitReaction(room, identity.token, msg);
         return;
       }
 

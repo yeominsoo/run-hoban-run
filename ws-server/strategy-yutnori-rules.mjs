@@ -5,12 +5,13 @@ import {
   buildYutBoardGraph,
   CENTER_NODE_ID,
   cornerIndexOfDiagonal,
-  cornerNodeId,
   entryNodeId,
   getCenterExit,
+  getDiagonalOuterNext,
+  diagonalStepOf,
 } from './yutnori-board.mjs';
 
-const KIND_BY_BACK_COUNT = {
+const KIND_BY_FRONT_COUNT = {
   0: { kind: 'mo', steps: 5 },
   1: { kind: 'do', steps: 1 },
   2: { kind: 'gae', steps: 2 },
@@ -21,10 +22,11 @@ const KIND_BY_BACK_COUNT = {
 export function resolveThrow(faces) {
   const values = Object.values(faces);
   if (values.length !== 4) throw new Error('strategy yutnori requires exactly 4 face submissions per round');
+  const frontCount = values.filter((f) => f === 'front').length;
   const backCount = values.filter((f) => f === 'back').length;
-  if (backCount === 1) return { kind: 'backdo', steps: 1, backCount, faces: { ...faces } };
-  const base = KIND_BY_BACK_COUNT[backCount];
-  return { kind: base.kind, steps: base.steps, backCount, faces: { ...faces } };
+  if (frontCount === 1) return { kind: 'backdo', steps: 1, frontCount, backCount, faces: { ...faces } };
+  const base = KIND_BY_FRONT_COUNT[frontCount];
+  return { kind: base.kind, steps: base.steps, frontCount, backCount, faces: { ...faces } };
 }
 
 export const PIECES_PER_PLAYER = 2;
@@ -124,16 +126,16 @@ function advanceTurn(state) {
 
 function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
   const path = [...startPath];
-  const justPlaced = startPath.length === 0;
   let remaining = steps;
-  let hopIndex = 0;
 
   while (remaining > 0) {
     const currentId = path.length === 0 ? 'start' : path[path.length - 1];
     let nextId;
 
     if (currentId === 'start') {
-      nextId = ownCornerId;
+      nextId = graph[ownCornerId].next;
+    } else if (currentId === ownCornerId) {
+      return { status: 'home', path };
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
@@ -146,8 +148,17 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
-      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
-        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
+      } else if (node.kind === 'diagonal') {
+        // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
+        // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
+        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
+        const returningFromCenter =
+          prevId === CENTER_NODE_ID ||
+          (prevId !== undefined &&
+            graph[prevId]?.kind === 'diagonal' &&
+            cornerIndexOfDiagonal(prevId) === cornerIndexOfDiagonal(currentId) &&
+            diagonalStepOf(prevId) > diagonalStepOf(currentId));
+        nextId = returningFromCenter ? getDiagonalOuterNext(currentId) : node.next;
       } else {
         nextId = node.next;
       }
@@ -155,16 +166,15 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
 
     path.push(nextId);
     remaining -= 1;
-
-    const isHome = nextId === ownCornerId && !(hopIndex === 0 && justPlaced);
-    if (isHome) return { status: 'home', path };
-    hopIndex += 1;
   }
 
   return { status: 'finished', path };
 }
 
-function walkBackward(startPath) {
+function walkBackward(graph, startPath, ownCornerId) {
+  if (startPath.length === 1 && startPath[0] === graph[ownCornerId].next) {
+    return { status: 'finished', path: [ownCornerId] };
+  }
   return { status: 'finished', path: startPath.slice(0, -1) };
 }
 
@@ -198,7 +208,7 @@ export function submitMove(state, token, req) {
 
   const outcome =
     state.lastThrow.kind === 'backdo'
-      ? walkBackward(movingLead.path)
+      ? walkBackward(state.graph, movingLead.path, ownCornerId)
       : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps, branchChoiceFor);
 
   if (outcome.status === 'awaiting-branch') {

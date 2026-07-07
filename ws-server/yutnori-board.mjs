@@ -1,13 +1,14 @@
-/** 윷놀이 보드 토폴로지: 외곽 20칸 + 중앙/대각선 지름길.
- * outer-0은 모든 플레이어가 공유하는 시작점이자 도착점이다. 시작점에서는 지름길을 고르지 않고
- * 정해진 외곽 방향으로만 출발하며, 나머지 코너에서만 "그대로 외곽으로" vs "대각선(지름길)으로"
- * 분기가 생긴다. 중앙은 들어온 대각선의 반대편 대각선으로 자동으로 빠져나간다.
+/** 윷놀이 보드 토폴로지: 외곽 20칸 + 대각선 8칸 + 중앙 1칸.
+ * outer-0은 모든 플레이어가 공유하는 시작/도착 모서리다. 출발 전 말은 이 모서리를 칸으로 세지
+ * 않고, 도(1칸)를 내면 outer-1에 놓인다. 나머지 코너에서만 "그대로 외곽으로" vs
+ * "대각선(지름길)으로" 분기가 생긴다. 중앙은 들어온 대각선의 반대편 대각선으로 자동으로 빠져나간다.
  *
  * src/game/yutnori-board.ts와 로직이 동일해야 한다 — 그래프 규칙을 바꿀 때는 두 파일을 같이 고칠 것. */
 
 export const OUTER_NODE_COUNT = 20;
 export const CORNER_COUNT = 4;
 export const CORNER_STRIDE = OUTER_NODE_COUNT / CORNER_COUNT; // 5
+export const DIAGONAL_NODES_PER_CORNER = 2;
 export const MAX_PLAYERS = CORNER_COUNT;
 export const CENTER_NODE_ID = 'center';
 
@@ -16,9 +17,10 @@ export function outerNodeId(index) {
   return `outer-${normalized}`;
 }
 
-export function diagonalNodeId(cornerIndex) {
+export function diagonalNodeId(cornerIndex, stepIndex = 0) {
   const normalized = ((cornerIndex % CORNER_COUNT) + CORNER_COUNT) % CORNER_COUNT;
-  return `diag-${normalized}`;
+  const step = Math.min(Math.max(Math.trunc(stepIndex), 0), DIAGONAL_NODES_PER_CORNER - 1);
+  return `diag-${normalized}-${step}`;
 }
 
 export const YUT_START_NODE_ID = outerNodeId(0);
@@ -37,47 +39,69 @@ function cornerIndexOfOuter(outerIndex) {
 }
 
 export function cornerIndexOfDiagonal(diagId) {
-  return Number(diagId.replace('diag-', ''));
+  return Number(diagId.match(/^diag-(\d+)-\d+$/)?.[1] ?? 0);
+}
+
+export function diagonalStepOf(diagId) {
+  return Number(diagId.match(/^diag-\d+-(\d+)$/)?.[1] ?? 0);
 }
 
 export function getCenterExit(arrivedFromCornerIndex) {
-  return diagonalNodeId(arrivedFromCornerIndex + 2);
+  return diagonalNodeId(arrivedFromCornerIndex + 2, 1);
+}
+
+export function getDiagonalOuterNext(diagId) {
+  const cornerIndex = cornerIndexOfDiagonal(diagId);
+  const step = diagonalStepOf(diagId);
+  return step <= 0 ? cornerNodeId(cornerIndex) : diagonalNodeId(cornerIndex, step - 1);
 }
 
 export function buildYutBoardGraph() {
   const graph = {};
-  const outerRadius = 5;
-  const diagonalRadius = outerRadius * 0.55;
+  const cornerPositions = [
+    [-5, -5],
+    [-5, 5],
+    [5, 5],
+    [5, -5],
+  ];
+  const interpolate = (from, to, t) => [
+    from[0] + (to[0] - from[0]) * t,
+    from[1] + (to[1] - from[1]) * t,
+  ];
 
   for (let i = 0; i < OUTER_NODE_COUNT; i += 1) {
-    const angle = (i / OUTER_NODE_COUNT) * Math.PI * 2;
+    const sideIndex = Math.floor(i / CORNER_STRIDE);
+    const stepOnSide = i % CORNER_STRIDE;
+    const from = cornerPositions[sideIndex];
+    const to = cornerPositions[(sideIndex + 1) % CORNER_COUNT];
     const cornerIndex = cornerIndexOfOuter(i);
     const id = outerNodeId(i);
     graph[id] = {
       id,
       kind: cornerIndex === null ? 'outer' : 'corner',
-      gridPos: [Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius],
+      gridPos: interpolate(from, to, stepOnSide / CORNER_STRIDE),
       next: outerNodeId(i + 1),
-      shortcutNext: cornerIndex === null || cornerIndex === 0 ? undefined : diagonalNodeId(cornerIndex),
+      shortcutNext: cornerIndex === null || cornerIndex === 0 ? undefined : diagonalNodeId(cornerIndex, 0),
     };
   }
 
   for (let c = 0; c < CORNER_COUNT; c += 1) {
-    const id = diagonalNodeId(c);
-    const cornerAngle = ((c * CORNER_STRIDE) / OUTER_NODE_COUNT) * Math.PI * 2;
-    graph[id] = {
-      id,
-      kind: 'diagonal',
-      gridPos: [Math.cos(cornerAngle) * diagonalRadius, Math.sin(cornerAngle) * diagonalRadius],
-      next: CENTER_NODE_ID,
-    };
+    for (let step = 0; step < DIAGONAL_NODES_PER_CORNER; step += 1) {
+      const id = diagonalNodeId(c, step);
+      graph[id] = {
+        id,
+        kind: 'diagonal',
+        gridPos: interpolate(cornerPositions[c], [0, 0], (step + 1) / (DIAGONAL_NODES_PER_CORNER + 1)),
+        next: step === DIAGONAL_NODES_PER_CORNER - 1 ? CENTER_NODE_ID : diagonalNodeId(c, step + 1),
+      };
+    }
   }
 
   graph[CENTER_NODE_ID] = {
     id: CENTER_NODE_ID,
     kind: 'center',
     gridPos: [0, 0],
-    next: diagonalNodeId(2), // 실사용 안 함 — walkForward가 직전 칸을 보고 getCenterExit()로 계산
+    next: diagonalNodeId(2, 1), // 실사용 안 함 — walkForward가 직전 칸을 보고 getCenterExit()로 계산
   };
 
   return graph;

@@ -272,26 +272,6 @@ button { border: 0; cursor: pointer; }
 /* ── Turn status + toast ─────────────────────── */
 #turn-status { font-weight: 700; }
 
-.hg-toast {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 10px;
-  text-align: center;
-  font-size: 0.86rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--color-border);
-  animation: hg-toast-in 180ms ease-out;
-}
-.hg-toast.flip { color: var(--color-page-text); }
-.hg-toast.correct { background: rgba(143,240,176,0.14); border-color: rgba(143,240,176,0.4); color: #8ff0b0; }
-.hg-toast.wrong { background: rgba(255,120,110,0.14); border-color: rgba(255,120,110,0.4); color: var(--color-danger); }
-.hg-toast.info { color: var(--color-page-muted); }
-@keyframes hg-toast-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 /* ── Board / piles ────────────────────────────── */
 .hg-board {
   width: 100%;

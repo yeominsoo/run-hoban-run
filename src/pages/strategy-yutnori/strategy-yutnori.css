@@ -268,23 +268,38 @@ button { border: 0; cursor: pointer; }
 /* ── Turn status + toast ─────────────────────── */
 #sy-turn-status { font-weight: 700; }
 
-.sy-toast {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 10px;
-  text-align: center;
-  font-size: 0.86rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--color-border);
-  animation: yn-toast-in 180ms ease-out;
+.yn-reaction-pop {
+  position: fixed;
+  top: 42%;
+  left: 50%;
+  z-index: 110;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: yn-reaction-pop 1.6s ease-out forwards;
 }
-.sy-toast.throw { color: var(--color-page-text); }
-.sy-toast.capture { background: rgba(255,120,110,0.14); border-color: rgba(255,120,110,0.4); color: var(--color-danger); }
-.sy-toast.info { color: var(--color-page-muted); }
-@keyframes yn-toast-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
+.yn-reaction-emoji {
+  font-size: 4rem;
+  line-height: 1;
+  filter: drop-shadow(0 12px 18px rgba(75, 52, 71, 0.24));
+}
+.yn-reaction-name {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: var(--color-page-text);
+}
+@keyframes yn-reaction-pop {
+  0% { opacity: 0; transform: translate(-50%, -38%) scale(0.72) rotate(-7deg); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) rotate(4deg); }
+  72% { opacity: 1; transform: translate(-50%, -57%) scale(1) rotate(0); }
+  100% { opacity: 0; transform: translate(-50%, -70%) scale(0.9); }
 }
 
 /* ── 3D board canvas ──────────────────────────── */
@@ -563,6 +578,102 @@ button { border: 0; cursor: pointer; }
   color: #6b4b12;
 }
 .yn-branch-btn:hover { background: rgba(246,196,69,0.22); }
+
+.yn-reactions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.yn-reaction-btn {
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-border);
+  font-size: 1.25rem;
+}
+.yn-reaction-btn:hover {
+  background: rgba(155, 135, 245, 0.14);
+  border-color: rgba(155, 135, 245, 0.35);
+}
+
+/* ── Room chat ────────────────────────────────── */
+.yn-chat {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.yn-chat-log {
+  width: 100%;
+  height: 132px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.58);
+}
+.yn-chat-empty {
+  margin: auto;
+  font-size: 0.78rem;
+  color: var(--color-page-faint);
+}
+.yn-chat-msg {
+  max-width: 88%;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--color-border);
+}
+.yn-chat-msg.mine {
+  align-self: flex-end;
+  background: rgba(155, 135, 245, 0.16);
+  border-color: rgba(155, 135, 245, 0.35);
+}
+.yn-chat-name {
+  font-size: 0.66rem;
+  font-weight: 900;
+  color: var(--color-page-muted);
+}
+.yn-chat-text {
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--color-page-text);
+}
+.yn-chat-form {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px;
+  gap: 8px;
+}
+.yn-chat-input {
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--color-page-text);
+}
+.yn-chat-input:focus { outline: none; border-color: rgba(155, 135, 245, 0.48); }
+.yn-chat-send {
+  height: 40px;
+  border-radius: 10px;
+  background: var(--color-lilac);
+  color: var(--color-primary-contrast);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+.yn-chat-send:hover { background: #8a73f3; }
 
 /* ── Game over ────────────────────────────────── */
 .set-over-result {

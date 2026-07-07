@@ -16,6 +16,14 @@ const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000;
 const FACE_TIMEOUT_MS = 20000; // 라운드마다 20초 안에 앞/뒷면을 제출하지 않으면 자동으로 '앞면' 제출 처리
 const MOVE_TIMEOUT_MS = 20000; // 자기 차례에 20초 안에 말을 고르지 않으면 자동 이동 정책으로 말을 이동
+const MAX_CHAT_LEN = 120;
+const REACTIONS = {
+  tease: { id: 'tease', emoji: '😜', label: '놀림' },
+  sad: { id: 'sad', emoji: '😭', label: '슬픔' },
+  smug: { id: 'smug', emoji: '😎', label: '의기양양' },
+  cheer: { id: 'cheer', emoji: '👏', label: '응원' },
+  shock: { id: 'shock', emoji: '😱', label: '충격' },
+};
 
 /**
  * Room:
@@ -61,6 +69,9 @@ export function registerStrategyYutnoriServer() {
 
   function playerByToken(room, token) { return room.players.find(p => p.token === token); }
   function nameOf(room, token) { return playerByToken(room, token)?.name ?? '?'; }
+  function sanitizeChatText(text) {
+    return typeof text === 'string' ? text.trim().slice(0, MAX_CHAT_LEN) : '';
+  }
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
@@ -113,6 +124,21 @@ export function registerStrategyYutnoriServer() {
 
   function broadcastGameUpdate(room, event) {
     broadcast(room, { type: 'game_update', ...buildGamePayload(room), event: event ?? null });
+  }
+
+  function handleSubmitChat(room, token, msg) {
+    const player = playerByToken(room, token);
+    if (!player) return;
+    const text = sanitizeChatText(msg.text);
+    if (!text) return;
+    broadcast(room, { type: 'chat_message', token, name: player.name, text, sentAt: Date.now() });
+  }
+
+  function handleSubmitReaction(room, token, msg) {
+    const player = playerByToken(room, token);
+    const reaction = REACTIONS[String(msg.reactionId ?? '')];
+    if (!player || !reaction) return;
+    broadcast(room, { type: 'reaction_message', token, name: player.name, reaction, sentAt: Date.now() });
   }
 
   function armFaceTimer(roomCode, room) {
@@ -419,6 +445,22 @@ export function registerStrategyYutnoriServer() {
         const room = identity && rooms.get(identity.roomCode);
         if (!room) return;
         handleSubmitMove(room, identity.roomCode, identity.token, msg);
+        return;
+      }
+
+      if (msg.type === 'submit_chat') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        handleSubmitChat(room, identity.token, msg);
+        return;
+      }
+
+      if (msg.type === 'submit_reaction') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        handleSubmitReaction(room, identity.token, msg);
         return;
       }
 
