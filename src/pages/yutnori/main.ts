@@ -164,7 +164,15 @@ app.innerHTML = `
       </div>
 
       <div class="yn-controls">
-        <button id="throw-btn" type="button" class="yn-btn primary throw-btn" disabled>🎲 윷 던지기</button>
+        <button id="throw-btn" type="button" class="yn-btn primary throw-btn" aria-label="윷 던지기" disabled>
+          <span class="throw-yut-set" aria-hidden="true">
+            <span class="mini-yut-stick round"></span>
+            <span class="mini-yut-stick flat"></span>
+            <span class="mini-yut-stick round"></span>
+            <span class="mini-yut-stick flat"></span>
+          </span>
+          <span class="throw-btn-text">던지기</span>
+        </button>
         <div class="yn-throw-queue hidden" id="yn-throw-queue"></div>
         <div class="yn-piece-picker hidden" id="yn-piece-picker"></div>
         <div class="yn-branch-picker hidden" id="yn-branch-picker">
@@ -460,6 +468,46 @@ function nameOfToken(token: string | null): string {
   return players.find((p) => p.token === token)?.name ?? '?';
 }
 
+function playerColor(token: string): string {
+  const idx = Math.max(0, playerIndex(token));
+  return `#${YUT_PLAYER_COLORS[idx % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+}
+
+function yutMiniPreview(kind: string): string {
+  const flatCount = YUT_STICK_FLAT_COUNT[kind] ?? 0;
+  const sticks = [0, 1, 2, 3].map((i) => {
+    const flat = i < flatCount;
+    const baekdo = flat && i === 0 && kind === 'backdo';
+    return `<span class="mini-yut-stick ${flat ? 'flat' : 'round'}${baekdo ? ' baekdo' : ''}"></span>`;
+  }).join('');
+  return `<span class="mini-yut-set" aria-hidden="true">${sticks}</span>`;
+}
+
+function renderThrowChip(t: PendingThrowEntry): string {
+  const selected = t.id === selectedThrowId;
+  return `<button type="button" class="yn-throw-chip${selected ? ' selected' : ''}" data-throw-id="${t.id}">
+    ${yutMiniPreview(t.result.kind)}
+    <span class="yn-throw-chip-label">${THROW_LABEL[t.result.kind] ?? t.result.kind}</span>
+  </button>`;
+}
+
+function renderPieceButton(piece: BoardPieceEntry, groupCount: number, split: boolean): string {
+  const label = split ? '분리' : groupCount > 1 ? `x${groupCount}` : (piece.nodeId ? '보드' : '출발');
+  const title = split ? '1개만' : groupCount > 1 ? '스택' : '말';
+  const aria = split
+    ? '업힌 말에서 1개만 갈라쳐서 이동'
+    : groupCount > 1
+      ? `업힌 말 ${groupCount}개 전체 이동`
+      : `${piece.nodeId ? '보드 위' : '출발 전'} 말 이동`;
+  return `<button type="button" class="yn-piece-btn${split ? ' split' : ''}" data-piece-id="${piece.id}" data-split="${split}" aria-label="${aria}">
+    <span class="yn-piece-icon" style="--piece-color: ${playerColor(piece.ownerToken)}" aria-hidden="true"></span>
+    <span class="yn-piece-copy">
+      <span class="yn-piece-title">${title}</span>
+      <span class="yn-piece-meta">${label}</span>
+    </span>
+  </button>`;
+}
+
 // ── Three.js scene ────────────────────────────────────────────────
 let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
@@ -690,9 +738,7 @@ function renderControls() {
     }
     const selectedThrow = pendingThrows.find((t) => t.id === selectedThrowId);
     const isBackdo = selectedThrow?.result.kind === 'backdo';
-    throwQueueEl.innerHTML = pendingThrows.map((t) =>
-      `<button type="button" class="yn-throw-chip" data-throw-id="${t.id}" style="${t.id === selectedThrowId ? 'outline:2px solid #f6c445;' : ''}">${THROW_LABEL[t.result.kind] ?? t.result.kind}</button>`
-    ).join('');
+    throwQueueEl.innerHTML = pendingThrows.map(renderThrowChip).join('');
 
     const myPieces = board.filter((b) => b.ownerToken === myToken && !b.home);
     // 보드 클릭으로 고를 수 있는 건 각 스택의 lead 피스(스택 전체 이동). 백도는 보드 위 말만 가능하다.
@@ -708,13 +754,12 @@ function renderControls() {
     const buttons: string[] = [];
     groups.forEach((group, leadId) => {
       const lead = group.find((g) => g.id === leadId) ?? group[0];
-      const label = lead.nodeId ? '보드 위' : '출발 전';
       if (group.length === 1) {
-        buttons.push(`<button type="button" class="yn-piece-btn" data-piece-id="${lead.id}" data-split="false">말 이동 (${label})</button>`);
+        buttons.push(renderPieceButton(lead, 1, false));
       } else {
-        buttons.push(`<button type="button" class="yn-piece-btn" data-piece-id="${leadId}" data-split="false">업힌 말 ${group.length}개 전체 이동</button>`);
+        buttons.push(renderPieceButton(lead, group.length, false));
         group.filter((g) => g.id !== leadId).forEach((g) => {
-          buttons.push(`<button type="button" class="yn-piece-btn split" data-piece-id="${g.id}" data-split="true">갈라쳐서 1개만 이동</button>`);
+          buttons.push(renderPieceButton(g, 1, true));
         });
       }
     });

@@ -147,11 +147,11 @@ app.innerHTML = `
       <div class="yn-controls">
         <div class="sy-face-picker hidden" id="sy-face-picker">
           <button type="button" class="sy-face-btn front" id="face-front-btn">
-            <span class="sy-face-emoji">🌕</span>
+            <span class="sy-face-stick flat" aria-hidden="true"></span>
             <span class="sy-face-text">앞면</span>
           </button>
           <button type="button" class="sy-face-btn back" id="face-back-btn">
-            <span class="sy-face-emoji">🌑</span>
+            <span class="sy-face-stick round" aria-hidden="true"></span>
             <span class="sy-face-text">뒷면</span>
           </button>
         </div>
@@ -413,6 +413,28 @@ function playerIndex(token: string): number {
   return players.findIndex((p) => p.token === token);
 }
 
+function playerColor(token: string): string {
+  const idx = Math.max(0, playerIndex(token));
+  return `#${YUT_PLAYER_COLORS[idx % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+}
+
+function renderPieceButton(piece: BoardPieceEntry, groupCount: number, split: boolean): string {
+  const label = split ? '분리' : groupCount > 1 ? `x${groupCount}` : (piece.nodeId ? '보드' : '출발');
+  const title = split ? '1개만' : groupCount > 1 ? '스택' : '말';
+  const aria = split
+    ? '업힌 말에서 1개만 갈라쳐서 이동'
+    : groupCount > 1
+      ? `업힌 말 ${groupCount}개 전체 이동`
+      : `${piece.nodeId ? '보드 위' : '출발 전'} 말 이동`;
+  return `<button type="button" class="yn-piece-btn${split ? ' split' : ''}" data-piece-id="${piece.id}" data-split="${split}" aria-label="${aria}">
+    <span class="yn-piece-icon" style="--piece-color: ${playerColor(piece.ownerToken)}" aria-hidden="true"></span>
+    <span class="yn-piece-copy">
+      <span class="yn-piece-title">${title}</span>
+      <span class="yn-piece-meta">${label}</span>
+    </span>
+  </button>`;
+}
+
 // ── Three.js scene (yutnori와 동일한 보드/말 렌더 모듈 재사용) ─────
 let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
@@ -672,13 +694,12 @@ function renderControls() {
     const buttons: string[] = [];
     groups.forEach((group, leadId) => {
       const lead = group.find((g) => g.id === leadId) ?? group[0];
-      const label = lead.nodeId ? '보드 위' : '출발 전';
       if (group.length === 1) {
-        buttons.push(`<button type="button" class="yn-piece-btn" data-piece-id="${lead.id}" data-split="false">말 이동 (${label})</button>`);
+        buttons.push(renderPieceButton(lead, 1, false));
       } else {
-        buttons.push(`<button type="button" class="yn-piece-btn" data-piece-id="${leadId}" data-split="false">업힌 말 ${group.length}개 전체 이동</button>`);
+        buttons.push(renderPieceButton(lead, group.length, false));
         group.filter((g) => g.id !== leadId).forEach((g) => {
-          buttons.push(`<button type="button" class="yn-piece-btn split" data-piece-id="${g.id}" data-split="true">갈라쳐서 1개만 이동</button>`);
+          buttons.push(renderPieceButton(g, 1, true));
         });
       }
     });
