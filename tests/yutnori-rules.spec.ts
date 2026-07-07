@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cornerNodeId, entryNodeId } from '../src/game/yutnori-board';
+import { buildYutBoardGraph, cornerNodeId, entryNodeId } from '../src/game/yutnori-board';
 import {
   createYutGame,
   currentToken,
@@ -45,13 +45,17 @@ test('throw distribution stays within the documented weight table over many roll
   expect(doGaeShare).toBeLessThan(0.8);
 });
 
-test('a basic forward move places a fresh piece exactly on its own entry corner', () => {
+test('the board uses the traditional 29 stations', () => {
+  expect(Object.keys(buildYutBoardGraph())).toHaveLength(29);
+});
+
+test('a basic forward move places a fresh piece on the first point after the start corner', () => {
   const state = createYutGame(['A', 'B'], 1);
   forceThrow(state, 'do');
   const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
   expect(outcome.status).toBe('applied');
   if (outcome.status !== 'applied') throw new Error('unreachable');
-  expect(outcome.event.path).toEqual([entryNodeId(0)]);
+  expect(outcome.event.path).toEqual(['outer-1']);
   expect(currentToken(state)).toBe('B'); // do는 추가 턴이 없으니 바로 다음 사람 차례로 넘어간다
 });
 
@@ -61,14 +65,25 @@ test('all players share the same start/home node and leave it in the fixed outer
   let outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
   expect(outcome.status).toBe('applied');
   if (outcome.status !== 'applied') throw new Error('unreachable');
-  expect(outcome.event.path).toEqual(['outer-0']);
+  expect(outcome.event.path).toEqual(['outer-1']);
 
   resetTurnTo(state, 'A');
   forceThrow(state, 'do');
   outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
   expect(outcome.status).toBe('applied');
   if (outcome.status !== 'applied') throw new Error('unreachable');
-  expect(outcome.event.path).toEqual(['outer-0', 'outer-1']);
+  expect(outcome.event.path).toEqual(['outer-1', 'outer-2']);
+});
+
+test('a fresh mo reaches the first corner, because the start corner is not counted as do', () => {
+  const state = createYutGame(['A', 'B'], 111);
+  forceThrow(state, 'mo');
+  forceThrow(state, 'do'); // mo는 추가 턴이라 이동 단계로 넘기기 위해 한 번 더 던진다
+  const moThrow = state.pendingThrows.find((pt) => pt.result.kind === 'mo')!;
+  const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: moThrow.id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual(['outer-1', 'outer-2', 'outer-3', 'outer-4', cornerNodeId(1)]);
 });
 
 test('yut and mo keep the player in throw phase for one more throw', () => {
@@ -163,7 +178,21 @@ test('backdo retreats a piece by exactly one step', () => {
   expect(a0.path).toEqual(['outer-2']);
 });
 
-test('taking the shortcut at a corner asks for a branch choice and cuts through the center', () => {
+test('backdo from the do point retreats to the start corner instead of creating another back move', () => {
+  const state = createYutGame(['A', 'B'], 55);
+  state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-1'];
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'backdo');
+  const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  const a0 = state.pieces.find((p) => p.id === 'A-0')!;
+  expect(a0.path).toEqual([entryNodeId(0)]);
+  expect(a0.home).toBe(false);
+});
+
+test('taking the shortcut at a corner asks for a branch choice and moves through two diagonal points', () => {
   const state = createYutGame(['A', 'B'], 6);
   state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1)]; // 지름길이 있는 코너에 이미 서 있음
   resetTurnTo(state, 'A');
@@ -178,10 +207,48 @@ test('taking the shortcut at a corner asks for a branch choice and cuts through 
   const resolved = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId, branch: 'shortcut' });
   expect(resolved.status).toBe('applied');
   if (resolved.status !== 'applied') throw new Error('unreachable');
-  expect(resolved.event.path).toEqual([cornerNodeId(1), 'diag-1', 'center']);
+  expect(resolved.event.path).toEqual([cornerNodeId(1), 'diag-1-0', 'diag-1-1']);
 });
 
-test('a player wins once all 4 pieces reach home', () => {
+test('the center exits through the opposite diagonal toward the opposite corner', () => {
+  const state = createYutGame(['A', 'B'], 66);
+  state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1), 'diag-1-0', 'diag-1-1', 'center'];
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'geol');
+  const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual([
+    cornerNodeId(1),
+    'diag-1-0',
+    'diag-1-1',
+    'center',
+    'diag-3-1',
+    'diag-3-0',
+    cornerNodeId(3),
+  ]);
+});
+
+test('a piece that already passed the center can take a shortcut again on a later lap', () => {
+  const state = createYutGame(['A', 'B'], 7);
+  // 이미 중앙을 한 번 지난 이력(path에 center 포함)이 있고, 지름길이 있는 코너(코너1)에 다시 서 있는 말.
+  const a0 = state.pieces.find((p) => p.id === 'A-0')!;
+  a0.path = ['center', cornerNodeId(1)];
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'geol'); // 3칸
+  const pendingId = state.pendingThrows[0].id;
+  let outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId });
+  expect(outcome.status).toBe('awaiting-branch');
+  outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId, branch: 'shortcut' });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  // 과거 center 이력 때문에 지름길이 코너로 튕겨선 안 되고, 대각선 2칸을 지나 다시 중앙으로 이어져야 한다.
+  expect(outcome.event.path).toEqual(['center', cornerNodeId(1), 'diag-1-0', 'diag-1-1', 'center']);
+});
+
+test('landing exactly on the start corner is not home; passing it completes the course', () => {
   const state = createYutGame(['A', 'B'], 7);
   state.pieces.forEach((p) => {
     if (p.ownerToken === 'A' && p.id !== 'A-3') {
@@ -190,11 +257,20 @@ test('a player wins once all 4 pieces reach home', () => {
     }
   });
   const lastPiece = state.pieces.find((p) => p.id === 'A-3')!;
-  lastPiece.path = ['outer-19']; // A 코너(outer-0) 바로 앞 칸
+  lastPiece.path = ['outer-19']; // 시작/도착 코너(outer-0) 바로 앞 칸
   resetTurnTo(state, 'A');
 
   forceThrow(state, 'do');
-  const outcome = submitMove(state, { pieceId: 'A-3', pendingThrowId: state.pendingThrows[0].id });
+  let outcome = submitMove(state, { pieceId: 'A-3', pendingThrowId: state.pendingThrows[0].id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.gameOver).toBe(false);
+  expect(lastPiece.path).toEqual(['outer-19', entryNodeId(0)]);
+  expect(lastPiece.home).toBe(false);
+
+  resetTurnTo(state, 'A');
+  forceThrow(state, 'do');
+  outcome = submitMove(state, { pieceId: 'A-3', pendingThrowId: state.pendingThrows[0].id });
   expect(outcome.status).toBe('applied');
   if (outcome.status !== 'applied') throw new Error('unreachable');
   expect(outcome.gameOver).toBe(true);

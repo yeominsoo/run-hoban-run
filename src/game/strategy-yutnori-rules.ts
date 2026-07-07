@@ -2,9 +2,10 @@ import {
   buildYutBoardGraph,
   CENTER_NODE_ID,
   cornerIndexOfDiagonal,
-  cornerNodeId,
   entryNodeId,
   getCenterExit,
+  getDiagonalOuterNext,
+  diagonalStepOf,
   type YutBoardGraph,
 } from './yutnori-board';
 
@@ -13,10 +14,9 @@ import {
  * 표준 윷놀이(yutnori-rules.ts)와 보드는 동일하지만, 던지기 방식과 승패 단위가 다르다:
  *
  *  - 무작위로 4개 막대를 던지는 대신, 4명이 각자 자기 몫의 막대 1개를 앞면/뒷면 중 골라
- *    "비공개로 동시 제출"한다. 전원 제출이 끝나면 뒷면 개수를 세어 도개걸윷모를 정한다.
- *  - 원 방송 규칙("도가 나오면 전부 뒷도로 간주") — 이 구현에서도 뒷면이 정확히 1개 나온
- *    경우는 항상 "백도"(후진 1칸)로 강제 치환한다. (원문을 직접 확인하지 못해 정확한 앞/뒤
- *    대응 방향은 최선 추정이다 — namu.wiki 접근이 막혀 검색 스니펫으로만 교차 확인함.)
+ *    "비공개로 동시 제출"한다. 전원 제출이 끝나면 일반 윷놀이처럼 앞면 개수를 세어 도개걸윷모를 정한다.
+ *  - 원 방송 규칙("도가 나오면 전부 뒷도로 간주") — 이 구현에서도 일반 윷셈의 도(앞면 1개)가
+ *    나오면 항상 "백도"(후진 1칸)로 강제 치환한다.
  *  - 4명이 제출한 값은 현재 순서 플레이어 한 명의 이동값이다. 이동이 끝나면 다음 플레이어 차례로
  *    넘어가며, 윷/모 또는 잡기에는 같은 플레이어가 한 번 더 던진다.
  *  - 4명은 서로 다른 개인(2명씩 팀을 이루지만 팀원끼리도 서로 잡을 수 있다 — 배신 가능).
@@ -31,11 +31,12 @@ export type ThrowKind = 'backdo' | 'do' | 'gae' | 'geol' | 'yut' | 'mo';
 export interface ThrowResult {
   kind: ThrowKind;
   steps: number;
+  frontCount: number;
   backCount: number;
   faces: Record<string, FaceChoice>;
 }
 
-const KIND_BY_BACK_COUNT: Record<number, { kind: ThrowKind; steps: number }> = {
+const KIND_BY_FRONT_COUNT: Record<number, { kind: ThrowKind; steps: number }> = {
   0: { kind: 'mo', steps: 5 },
   1: { kind: 'do', steps: 1 },
   2: { kind: 'gae', steps: 2 },
@@ -46,10 +47,11 @@ const KIND_BY_BACK_COUNT: Record<number, { kind: ThrowKind; steps: number }> = {
 export function resolveThrow(faces: Record<string, FaceChoice>): ThrowResult {
   const values = Object.values(faces);
   if (values.length !== 4) throw new Error('strategy yutnori requires exactly 4 face submissions per round');
+  const frontCount = values.filter((f) => f === 'front').length;
   const backCount = values.filter((f) => f === 'back').length;
-  if (backCount === 1) return { kind: 'backdo', steps: 1, backCount, faces: { ...faces } };
-  const base = KIND_BY_BACK_COUNT[backCount];
-  return { kind: base.kind, steps: base.steps, backCount, faces: { ...faces } };
+  if (frontCount === 1) return { kind: 'backdo', steps: 1, frontCount, backCount, faces: { ...faces } };
+  const base = KIND_BY_FRONT_COUNT[frontCount];
+  return { kind: base.kind, steps: base.steps, frontCount, backCount, faces: { ...faces } };
 }
 
 export const PIECES_PER_PLAYER = 2;
@@ -186,16 +188,16 @@ function walkForward(
   branchChoiceFor: (cornerId: string) => 'straight' | 'shortcut' | undefined,
 ): WalkOutcome {
   const path = [...startPath];
-  const justPlaced = startPath.length === 0;
   let remaining = steps;
-  let hopIndex = 0;
 
   while (remaining > 0) {
     const currentId = path.length === 0 ? 'start' : path[path.length - 1];
     let nextId: string;
 
     if (currentId === 'start') {
-      nextId = ownCornerId;
+      nextId = graph[ownCornerId].next;
+    } else if (currentId === ownCornerId) {
+      return { status: 'home', path };
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
@@ -208,8 +210,17 @@ function walkForward(
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
-      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
-        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
+      } else if (node.kind === 'diagonal') {
+        // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
+        // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
+        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
+        const returningFromCenter =
+          prevId === CENTER_NODE_ID ||
+          (prevId !== undefined &&
+            graph[prevId]?.kind === 'diagonal' &&
+            cornerIndexOfDiagonal(prevId) === cornerIndexOfDiagonal(currentId) &&
+            diagonalStepOf(prevId) > diagonalStepOf(currentId));
+        nextId = returningFromCenter ? getDiagonalOuterNext(currentId) : node.next;
       } else {
         nextId = node.next;
       }
@@ -217,16 +228,15 @@ function walkForward(
 
     path.push(nextId);
     remaining -= 1;
-
-    const isHome = nextId === ownCornerId && !(hopIndex === 0 && justPlaced);
-    if (isHome) return { status: 'home', path };
-    hopIndex += 1;
   }
 
   return { status: 'finished', path };
 }
 
-function walkBackward(startPath: string[]): WalkOutcome {
+function walkBackward(graph: YutBoardGraph, startPath: string[], ownCornerId: string): WalkOutcome {
+  if (startPath.length === 1 && startPath[0] === graph[ownCornerId].next) {
+    return { status: 'finished', path: [ownCornerId] };
+  }
   return { status: 'finished', path: startPath.slice(0, -1) };
 }
 
@@ -282,7 +292,7 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
 
   const outcome =
     state.lastThrow.kind === 'backdo'
-      ? walkBackward(movingLead.path)
+      ? walkBackward(state.graph, movingLead.path, ownCornerId)
       : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps, branchChoiceFor);
 
   if (outcome.status === 'awaiting-branch') {

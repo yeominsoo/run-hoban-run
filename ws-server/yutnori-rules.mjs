@@ -4,9 +4,10 @@ import {
   buildYutBoardGraph,
   CENTER_NODE_ID,
   cornerIndexOfDiagonal,
-  cornerNodeId,
   entryNodeId,
   getCenterExit,
+  getDiagonalOuterNext,
+  diagonalStepOf,
   MAX_PLAYERS,
 } from './yutnori-board.mjs';
 
@@ -37,6 +38,13 @@ export function rollYutThrow(rng) {
 
 export const PIECES_PER_PLAYER = 4;
 
+export function buildYutTeams(tokens) {
+  if (tokens.length === 2) return [[tokens[0]], [tokens[1]]];
+  if (tokens.length === 3) return [[tokens[0]], [tokens[1], tokens[2]]];
+  if (tokens.length === 4) return [[tokens[0], tokens[1]], [tokens[2], tokens[3]]];
+  return tokens.map((token) => [token]);
+}
+
 export function createYutGame(tokens, seedRng) {
   if (tokens.length < 2 || tokens.length > MAX_PLAYERS) {
     throw new Error(`yutnori supports 2-${MAX_PLAYERS} players, got ${tokens.length}`);
@@ -51,6 +59,7 @@ export function createYutGame(tokens, seedRng) {
   return {
     graph: buildYutBoardGraph(),
     tokens,
+    teams: buildYutTeams(tokens),
     pieces,
     turnOrder: [...tokens],
     turnIndex: 0,
@@ -65,6 +74,21 @@ export function createYutGame(tokens, seedRng) {
 
 export function currentToken(state) {
   return state.turnOrder[state.turnIndex];
+}
+
+export function teamOf(state, token) {
+  if (!token) return [];
+  return state.teams.find((team) => team.includes(token)) ?? [token];
+}
+
+export function isSameTeam(state, a, b) {
+  return teamOf(state, a).includes(b);
+}
+
+export function activeTeams(state) {
+  return state.teams
+    .map((team) => team.filter((token) => state.turnOrder.includes(token)))
+    .filter((team) => team.length > 0);
 }
 
 function findPiece(state, pieceId) {
@@ -120,16 +144,16 @@ export function discardDeadThrows(state) {
 
 function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
   const path = [...startPath];
-  const justPlaced = startPath.length === 0;
   let remaining = steps;
-  let hopIndex = 0;
 
   while (remaining > 0) {
     const currentId = path.length === 0 ? 'start' : path[path.length - 1];
     let nextId;
 
     if (currentId === 'start') {
-      nextId = ownCornerId;
+      nextId = graph[ownCornerId].next;
+    } else if (currentId === ownCornerId) {
+      return { status: 'home', path };
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
@@ -142,8 +166,17 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
         const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
         const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
         nextId = getCenterExit(fromCornerIndex);
-      } else if (node.kind === 'diagonal' && path[path.length - 2] === CENTER_NODE_ID) {
-        nextId = cornerNodeId(cornerIndexOfDiagonal(currentId));
+      } else if (node.kind === 'diagonal') {
+        // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
+        // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
+        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
+        const returningFromCenter =
+          prevId === CENTER_NODE_ID ||
+          (prevId !== undefined &&
+            graph[prevId]?.kind === 'diagonal' &&
+            cornerIndexOfDiagonal(prevId) === cornerIndexOfDiagonal(currentId) &&
+            diagonalStepOf(prevId) > diagonalStepOf(currentId));
+        nextId = returningFromCenter ? getDiagonalOuterNext(currentId) : node.next;
       } else {
         nextId = node.next;
       }
@@ -151,16 +184,15 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
 
     path.push(nextId);
     remaining -= 1;
-
-    const isHome = nextId === ownCornerId && !(hopIndex === 0 && justPlaced);
-    if (isHome) return { status: 'home', path };
-    hopIndex += 1;
   }
 
   return { status: 'finished', path };
 }
 
-function walkBackward(startPath) {
+function walkBackward(graph, startPath, ownCornerId) {
+  if (startPath.length === 1 && startPath[0] === graph[ownCornerId].next) {
+    return { status: 'finished', path: [ownCornerId] };
+  }
   return { status: 'finished', path: startPath.slice(0, -1) };
 }
 
@@ -199,7 +231,7 @@ export function submitMove(state, req) {
 
   const outcome =
     pendingThrow.result.kind === 'backdo'
-      ? walkBackward(movingLead.path)
+      ? walkBackward(state.graph, movingLead.path, ownCornerId)
       : walkForward(state.graph, movingLead.path, ownCornerId, pendingThrow.result.steps, branchChoiceFor);
 
   if (outcome.status === 'awaiting-branch') {
@@ -234,7 +266,7 @@ export function submitMove(state, req) {
       (p) => p.leadId === p.id && !movedIds.includes(p.id) && !p.home && currentPosition(p) === arrivalNodeId,
     );
     for (const other of others) {
-      if (other.ownerToken === token) {
+      if (isSameTeam(state, other.ownerToken, token)) {
         other.leadId = movingLead.id;
         joinedPieceIds.push(other.id);
       } else {
@@ -346,6 +378,9 @@ export function removePlayer(state, token) {
   });
   state.turnOrder = state.turnOrder.filter((t) => t !== token);
   state.tokens = state.tokens.filter((t) => t !== token);
+  state.teams = state.teams
+    .map((team) => team.filter((t) => t !== token))
+    .filter((team) => team.length > 0);
   if (leavingIndex !== -1 && leavingIndex < state.turnIndex) {
     state.turnIndex -= 1;
   }

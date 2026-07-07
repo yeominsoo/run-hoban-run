@@ -1,6 +1,7 @@
 import './strategy-yutnori.css';
 import * as THREE from 'three';
 import { shareRoomLink } from '../../shared/share';
+import { showCenterToast } from '../../shared/center-toast';
 import { buildYutBoardGraph, entryNodeId } from '../../game/yutnori-board';
 import { buildYutnoriBoardScene, nodeWorldPosition } from '../../render/yutnori-board';
 import { createYutPieceMesh, YUT_PLAYER_COLORS } from '../../render/yutnori-piece';
@@ -28,6 +29,13 @@ const THROW_LABEL: Record<string, string> = {
   backdo: '백도(-1)', do: '도(1)', gae: '개(2)', geol: '걸(3)', yut: '윷(4)', mo: '모(5)',
 };
 const SIGNAL_LABEL: Record<string, string> = { front: '앞면 내줘', back: '뒷면 내줘', free: '자유롭게' };
+const REACTION_OPTIONS = [
+  { id: 'tease', emoji: '😜', label: '놀림' },
+  { id: 'sad', emoji: '😭', label: '슬픔' },
+  { id: 'smug', emoji: '😎', label: '의기양양' },
+  { id: 'cheer', emoji: '👏', label: '응원' },
+  { id: 'shock', emoji: '😱', label: '충격' },
+] as const;
 
 interface SavedSession { roomCode: string; token: string; name: string; }
 
@@ -52,17 +60,21 @@ let pendingAction: PendingAction | null = null;
 let intentionalClose = false;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let signalTimer: ReturnType<typeof setTimeout> | null = null;
+let reactionTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface BoardPieceEntry { id: string; ownerToken: string; leadId: string; home: boolean; nodeId: string | null; }
 interface PlayerEntry { token: string; name: string; connected: boolean; }
-interface ThrowResult { kind: string; steps: number; backCount: number; faces: Record<string, string> }
+interface ThrowResult { kind: string; steps: number; frontCount?: number; backCount: number; faces: Record<string, string> }
 interface BranchInfo { pieceId: string; cornerId: string; remainingSteps: number; }
+interface ChatMessage { token: string; name: string; text: string; sentAt?: number; }
+interface ReactionMessage { token: string; name: string; reaction: { id: string; emoji: string; label: string }; sentAt?: number; }
 
 let board: BoardPieceEntry[] = [];
 let players: PlayerEntry[] = [];
 let teams: [string, string][] = [];
+let chatMessages: ChatMessage[] = [];
+const playerColorSlots = new Map<string, number>();
 let moveOrder: string[] = [];
 let currentMoverToken: string | null = null;
 let syPhase: 'collecting' | 'moving' = 'collecting';
@@ -140,7 +152,7 @@ app.innerHTML = `
     <div class="yn-panel wide hidden" id="playing-panel">
       <div class="sy-teams" id="sy-teams"></div>
       <p class="status-text" id="sy-turn-status"></p>
-      <div class="sy-toast hidden" id="sy-toast"></div>
+      <div class="yn-reaction-pop hidden" id="yn-reaction-pop"></div>
       <div class="sy-revealed-faces hidden" id="sy-revealed-faces"></div>
       <div class="yn-canvas-wrap" id="yn-canvas-wrap"></div>
 
@@ -171,6 +183,18 @@ app.innerHTML = `
           <button type="button" class="yn-branch-btn" id="branch-shortcut-btn">↗️ 지름길(대각선)로</button>
         </div>
       </div>
+
+      <div class="yn-reactions" id="yn-reactions">
+        ${REACTION_OPTIONS.map((r) => `<button type="button" class="yn-reaction-btn" data-reaction-id="${r.id}" aria-label="${r.label}">${r.emoji}</button>`).join('')}
+      </div>
+
+      <section class="yn-chat" aria-label="채팅">
+        <div class="yn-chat-log" id="yn-chat-log"></div>
+        <div class="yn-chat-form">
+          <input id="yn-chat-input" class="yn-chat-input" type="text" maxlength="120" placeholder="메시지 입력" autocomplete="off" />
+          <button id="yn-chat-send-btn" class="yn-chat-send" type="button">전송</button>
+        </div>
+      </section>
     </div>
 
     <!-- Game over -->
@@ -225,7 +249,7 @@ const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButton
 
 const syTeamsEl = document.getElementById('sy-teams')!;
 const turnStatus = document.getElementById('sy-turn-status')!;
-const syToast = document.getElementById('sy-toast')!;
+const reactionPop = document.getElementById('yn-reaction-pop')!;
 const revealedFacesEl = document.getElementById('sy-revealed-faces')!;
 const canvasWrap = document.getElementById('yn-canvas-wrap')!;
 const facePickerEl = document.getElementById('sy-face-picker')!;
@@ -237,6 +261,10 @@ const piecePickerEl = document.getElementById('yn-piece-picker')!;
 const branchPickerEl = document.getElementById('yn-branch-picker')!;
 const branchStraightBtn = document.getElementById('branch-straight-btn') as HTMLButtonElement;
 const branchShortcutBtn = document.getElementById('branch-shortcut-btn') as HTMLButtonElement;
+const chatLogEl = document.getElementById('yn-chat-log')!;
+const chatInput = document.getElementById('yn-chat-input') as HTMLInputElement;
+const chatSendBtn = document.getElementById('yn-chat-send-btn') as HTMLButtonElement;
+const reactionRow = document.getElementById('yn-reactions')!;
 
 const gameOverBanner = document.getElementById('game-over-banner')!;
 const finalBoard = document.getElementById('final-board')!;
@@ -376,6 +404,8 @@ function resetGameState() {
   board = [];
   players = [];
   teams = [];
+  chatMessages = [];
+  playerColorSlots.clear();
   moveOrder = [];
   currentMoverToken = null;
   syPhase = 'collecting';
@@ -385,6 +415,9 @@ function resetGameState() {
   pendingBranch = null;
   mySubmittedThisRound = false;
   lastSignal = null;
+  if (reactionTimer) { clearTimeout(reactionTimer); reactionTimer = null; }
+  reactionPop.classList.add('hidden');
+  renderChatLog();
 }
 
 function renderLobbyPlayers(list: { name: string; isHost: boolean; connected: boolean }[]) {
@@ -398,11 +431,68 @@ function renderLobbyPlayers(list: { name: string; isHost: boolean; connected: bo
 }
 
 function showToast(text: string, kind: 'throw' | 'capture' | 'info') {
-  if (toastTimer) clearTimeout(toastTimer);
-  syToast.textContent = text;
-  syToast.className = `sy-toast ${kind}`;
-  syToast.classList.remove('hidden');
-  toastTimer = setTimeout(() => { syToast.classList.add('hidden'); }, kind === 'throw' ? 1800 : 3000);
+  showCenterToast(text, { kind, duration: kind === 'throw' ? 1800 : 3000 });
+}
+
+/** 라운드 확정 시 4명이 제출한 앞/뒤를 윷가락으로 그려 중앙 토스트에 띄운다. */
+function throwToastHtml(result: ThrowResult): string {
+  const sticks = Object.values(result.faces).map((face) =>
+    `<span class="ct-yut-stick ${face === 'back' ? 'round' : 'flat'}"></span>`,
+  ).join('');
+  const bonus = (result.kind === 'yut' || result.kind === 'mo') ? '<span class="bonus">⭐ 한 번 더</span>' : '';
+  return `<div class="ct-yut-row">${sticks}</div><div class="ct-yut-value">${THROW_LABEL[result.kind] ?? result.kind}${bonus}</div>`;
+}
+
+function showReaction(msg: ReactionMessage) {
+  if (reactionTimer) clearTimeout(reactionTimer);
+  reactionPop.innerHTML = `<span class="yn-reaction-emoji">${escapeHtml(msg.reaction.emoji)}</span><span class="yn-reaction-name">${escapeHtml(msg.name)}</span>`;
+  reactionPop.classList.remove('hidden');
+  reactionTimer = setTimeout(() => { reactionPop.classList.add('hidden'); }, 1600);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]!);
+}
+
+function renderChatLog() {
+  if (!chatLogEl) return;
+  if (chatMessages.length === 0) {
+    chatLogEl.innerHTML = '<div class="yn-chat-empty">아직 메시지가 없습니다.</div>';
+    return;
+  }
+  chatLogEl.innerHTML = chatMessages.map((m) => {
+    const mine = m.token === myToken;
+    return `<div class="yn-chat-msg${mine ? ' mine' : ''}">
+      <span class="yn-chat-name">${escapeHtml(m.name)}</span>
+      <span class="yn-chat-text">${escapeHtml(m.text)}</span>
+    </div>`;
+  }).join('');
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+function submitChat() {
+  const text = chatInput.value.trim().slice(0, 120);
+  if (!text) return;
+  chatInput.value = '';
+  send({ type: 'submit_chat', text });
+}
+
+function stablePlayerIndex(token: string): number {
+  const existing = playerColorSlots.get(token);
+  if (existing !== undefined) return existing;
+  const next = playerColorSlots.size;
+  playerColorSlots.set(token, next);
+  return next;
+}
+
+function syncPlayerSlots(list: PlayerEntry[]) {
+  list.forEach((p) => stablePlayerIndex(p.token));
 }
 
 function nameOfToken(token: string | null): string {
@@ -414,7 +504,7 @@ function playerIndex(token: string): number {
 }
 
 function playerColor(token: string): string {
-  const idx = Math.max(0, playerIndex(token));
+  const idx = Math.max(0, stablePlayerIndex(token));
   return `#${YUT_PLAYER_COLORS[idx % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
 }
 
@@ -594,13 +684,13 @@ function syncPieceMeshes() {
     seen.add(entry.id);
     let mesh = pieceMeshes.get(entry.id);
     if (!mesh) {
-      mesh = createYutPieceMesh(playerIndex(entry.ownerToken));
+      mesh = createYutPieceMesh(stablePlayerIndex(entry.ownerToken));
       mesh.userData.pieceId = entry.id;
       pieceMeshes.set(entry.id, mesh);
       scene.add(mesh);
     }
     const idx = Number(entry.id.split('-').pop());
-    const cornerIndex = Math.max(0, playerIndex(entry.ownerToken));
+    const cornerIndex = Math.max(0, stablePlayerIndex(entry.ownerToken));
     let target: THREE.Vector3;
     if (entry.home) {
       target = stagingPosition(cornerIndex, 2.4, idx);
@@ -633,7 +723,7 @@ function renderTeams() {
       const idx = playerIndex(token);
       const p = players[idx];
       if (!p) return '';
-      const color = `#${YUT_PLAYER_COLORS[idx % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+      const color = playerColor(token);
       const homeCount = board.filter((b) => b.ownerToken === token && b.home).length;
       const isTurn = token === currentMoverToken;
       const hasSubmitted = submittedTokens.includes(token);
@@ -652,8 +742,7 @@ function renderRevealedFaces() {
   // 4명이 비공개 제출한 앞/뒤를 윷가락 4개로 시각화한다. front=젖혀짐(밝은 배), back=엎어짐(어두운 등).
   // 각 가락에 제출자 색/이름을 붙여 "누가 앞/뒤를 냈는지"(배신 요소)를 드러낸다.
   const sticks = Object.entries(lastThrow.faces).map(([token, face]) => {
-    const idx = playerIndex(token);
-    const color = `#${YUT_PLAYER_COLORS[(idx >= 0 ? idx : 0) % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+    const color = playerColor(token);
     return `<div class="sy-yut-stick ${face === 'back' ? 'round' : 'flat'}">
       <span class="sy-stick-bar"></span>
       <span class="sy-stick-tag"><span class="sy-stick-owner" style="background:${color}"></span>${nameOfToken(token)}</span>
@@ -732,6 +821,7 @@ function renderPlaying() {
 function applyGamePayload(payload: any) {
   board = payload.board ?? [];
   players = payload.players ?? players;
+  syncPlayerSlots(players);
   teams = payload.teams ?? teams;
   moveOrder = payload.moveOrder ?? moveOrder;
   currentMoverToken = payload.currentMoverToken ?? null;
@@ -824,7 +914,8 @@ function handleServerMessage(msg: any) {
         if (event.kind === 'face_submitted') {
           showToast(`${event.name}님이 제출을 마쳤어요`, 'info');
         } else if (event.kind === 'round_resolved') {
-          showToast(`이번 라운드: ${THROW_LABEL[event.throw.kind] ?? event.throw.kind}${event.timedOut ? ' (시간초과로 일부 자동제출)' : ''}`, 'throw');
+          showCenterToast(throwToastHtml(event.throw), { kind: 'throw', html: true, duration: 2600 });
+          if (event.timedOut) showToast('시간초과로 일부 자동제출됐어요', 'info');
         } else if (event.kind === 'move' || event.kind === 'capture') {
           if (event.capturedPieceIds.length) {
             const captureNames = event.capturedPieceIds.map((id) => nameOfToken(board.find((b) => b.id === id)?.ownerToken ?? null));
@@ -854,6 +945,19 @@ function handleServerMessage(msg: any) {
       }
       break;
     }
+
+    case 'chat_message':
+      chatMessages.push({ token: msg.token, name: msg.name, text: msg.text, sentAt: msg.sentAt });
+      if (chatMessages.length > 80) chatMessages = chatMessages.slice(-80);
+      renderChatLog();
+      break;
+
+    case 'reaction_message':
+      showReaction(msg);
+      chatMessages.push({ token: msg.token, name: msg.name, text: `${msg.reaction?.emoji ?? ''} ${msg.reaction?.label ?? ''}`.trim(), sentAt: msg.sentAt });
+      if (chatMessages.length > 80) chatMessages = chatMessages.slice(-80);
+      renderChatLog();
+      break;
 
     case 'await_branch':
       pendingBranch = { pieceId: msg.pieceId, cornerId: msg.cornerId, remainingSteps: msg.remainingSteps };
@@ -984,6 +1088,20 @@ branchStraightBtn.addEventListener('click', () => {
 branchShortcutBtn.addEventListener('click', () => {
   if (!pendingBranch) return;
   send({ type: 'submit_move', pieceId: pendingBranch.pieceId, branch: 'shortcut' });
+});
+
+chatSendBtn.addEventListener('click', submitChat);
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitChat();
+  }
+});
+
+reactionRow.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement).closest('[data-reaction-id]') as HTMLElement | null;
+  if (!btn) return;
+  send({ type: 'submit_reaction', reactionId: btn.dataset.reactionId });
 });
 
 retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAction); });

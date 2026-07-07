@@ -1,5 +1,6 @@
 import './halligalli.css';
 import { shareRoomLink } from '../../shared/share';
+import { showCenterToast, clearCenterToast } from '../../shared/center-toast';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -59,7 +60,6 @@ type BoardEntry = {
 let board: BoardEntry[] = [];
 let currentTurnToken: string | null = null;
 let totalCards = 0;
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
@@ -128,7 +128,6 @@ app.innerHTML = `
     <!-- Playing -->
     <div class="hg-panel wide hidden" id="playing-panel">
       <p class="status-text" id="turn-status"></p>
-      <div class="hg-toast hidden" id="hg-toast"></div>
       <div class="hg-board" id="hg-board"></div>
       <div class="hg-controls">
         <button id="flip-btn" type="button" class="hg-btn primary flip-btn" disabled>🂠 뒤집기</button>
@@ -188,7 +187,6 @@ const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButtonElement;
 
 const turnStatus = document.getElementById('turn-status')!;
-const hgToast = document.getElementById('hg-toast')!;
 const hgBoard = document.getElementById('hg-board')!;
 const flipBtn = document.getElementById('flip-btn') as HTMLButtonElement;
 const ringBtn = document.getElementById('ring-btn') as HTMLButtonElement;
@@ -369,10 +367,7 @@ function renderBoard(justFlippedToken?: string) {
 }
 
 function showToast(text: string, kind: 'flip' | 'correct' | 'wrong' | 'info') {
-  if (toastTimer) clearTimeout(toastTimer);
-  hgToast.textContent = text;
-  hgToast.className = `hg-toast ${kind}`;
-  toastTimer = setTimeout(() => { hgToast.classList.add('hidden'); }, kind === 'flip' ? 1800 : 3000);
+  showCenterToast(text, { kind, duration: kind === 'flip' ? 1800 : 3000 });
 }
 
 function updateControls() {
@@ -442,7 +437,7 @@ function handleServerMessage(msg: any) {
       renderBoard();
       updateControls();
       turnStatus.textContent = currentTurnToken === myToken ? '당신의 차례입니다! 카드를 뒤집으세요' : '';
-      hgToast.classList.add('hidden');
+      clearCenterToast();
       setPhase('playing');
       break;
     }
