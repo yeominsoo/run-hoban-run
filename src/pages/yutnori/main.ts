@@ -4,6 +4,7 @@ import { shareRoomLink } from '../../shared/share';
 import { buildYutBoardGraph, entryNodeId } from '../../game/yutnori-board';
 import { buildYutnoriBoardScene, nodeWorldPosition } from '../../render/yutnori-board';
 import { createYutPieceMesh, YUT_PLAYER_COLORS } from '../../render/yutnori-piece';
+import { YutnoriFx } from '../../render/yutnori-effects';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -25,6 +26,13 @@ const RECONNECT_MAX = 24;
 
 const THROW_LABEL: Record<string, string> = {
   backdo: '백도(-1)', do: '도(1)', gae: '개(2)', geol: '걸(3)', yut: '윷(4)', mo: '모(5)',
+};
+
+// 각 던지기 결과를 윷가락 4개의 "젖혀진(평평한 배가 위로 온)" 개수로 시각화한다.
+// 전통 윷놀이처럼 젖혀진 개수 = 값(도1·개2·걸3·윷4)이며, 모는 4개 모두 엎어진 상태(0개)다.
+// 백도는 도와 같이 1개만 젖혀지되 그 가락에 뒷도 표식이 있다.
+const YUT_STICK_FLAT_COUNT: Record<string, number> = {
+  backdo: 1, do: 1, gae: 2, geol: 3, yut: 4, mo: 0,
 };
 
 interface SavedSession { roomCode: string; token: string; name: string; }
@@ -70,6 +78,9 @@ let ynPhase: 'throw' | 'move' = 'throw';
 let pendingThrows: PendingThrowEntry[] = [];
 let pendingBranch: BranchInfo | null = null;
 let selectedThrowId: string | null = null;
+let lastThrowResult: ThrowResult | null = null;
+let isTossing = false;
+let tossTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
@@ -142,6 +153,16 @@ app.innerHTML = `
       <div class="yn-toast hidden" id="yn-toast"></div>
       <div class="yn-canvas-wrap" id="yn-canvas-wrap"></div>
 
+      <div class="yn-yut-sticks hidden" id="yn-yut-sticks">
+        <div class="yut-stick-row">
+          <span class="yut-stick" data-stick="0"></span>
+          <span class="yut-stick" data-stick="1"></span>
+          <span class="yut-stick" data-stick="2"></span>
+          <span class="yut-stick" data-stick="3"></span>
+        </div>
+        <span class="yut-throw-value" id="yut-throw-value"></span>
+      </div>
+
       <div class="yn-controls">
         <button id="throw-btn" type="button" class="yn-btn primary throw-btn" disabled>🎲 윷 던지기</button>
         <div class="yn-throw-queue hidden" id="yn-throw-queue"></div>
@@ -209,6 +230,9 @@ const turnStatus = document.getElementById('yn-turn-status')!;
 const ynToast = document.getElementById('yn-toast')!;
 const canvasWrap = document.getElementById('yn-canvas-wrap')!;
 const throwBtn = document.getElementById('throw-btn') as HTMLButtonElement;
+const yutSticksEl = document.getElementById('yn-yut-sticks')!;
+const yutThrowValueEl = document.getElementById('yut-throw-value')!;
+const yutStickEls = Array.from(yutSticksEl.querySelectorAll('.yut-stick')) as HTMLElement[];
 const throwQueueEl = document.getElementById('yn-throw-queue')!;
 const piecePickerEl = document.getElementById('yn-piece-picker')!;
 const branchPickerEl = document.getElementById('yn-branch-picker')!;
@@ -358,6 +382,9 @@ function resetGameState() {
   pendingThrows = [];
   pendingBranch = null;
   selectedThrowId = null;
+  lastThrowResult = null;
+  isTossing = false;
+  if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
 }
 
 // ── Lobby rendering ───────────────────────────────────────────────
@@ -379,6 +406,51 @@ function showToast(text: string, kind: 'throw' | 'capture' | 'info') {
   toastTimer = setTimeout(() => { ynToast.classList.add('hidden'); }, kind === 'throw' ? 1800 : 3000);
 }
 
+// ── 윷가락 그래픽 ──────────────────────────────────────────────────
+// 결과는 언제나 서버가 정한다(lastThrowResult). 여기서는 그 결과의 앞/뒤 배치와
+// 던지는 동안의 흔들림만 시각적으로 표현할 뿐, 결과 자체를 클라이언트가 만들지 않는다.
+function renderYutSticks() {
+  if (!lastThrowResult && !isTossing) {
+    yutSticksEl.classList.add('hidden');
+    return;
+  }
+  yutSticksEl.classList.remove('hidden');
+
+  if (isTossing) {
+    yutStickEls.forEach((el) => { el.className = 'yut-stick tossing'; });
+    yutThrowValueEl.textContent = '';
+    yutThrowValueEl.className = 'yut-throw-value';
+    return;
+  }
+
+  const result = lastThrowResult!;
+  const flatCount = YUT_STICK_FLAT_COUNT[result.kind] ?? 0;
+  yutStickEls.forEach((el, i) => {
+    const flat = i < flatCount;
+    const baekdo = flat && i === 0 && result.kind === 'backdo';
+    el.className = `yut-stick landed ${flat ? 'flat' : 'round'}${baekdo ? ' baekdo' : ''}`;
+  });
+  const bonusMark = result.extraTurn ? ' ⭐ 한 번 더' : '';
+  yutThrowValueEl.textContent = (THROW_LABEL[result.kind] ?? result.kind) + bonusMark;
+  yutThrowValueEl.className = `yut-throw-value${result.kind === 'backdo' ? ' backdo' : ''}`;
+}
+
+/** throw-btn을 누른 직후, 서버 결과가 오기 전까지 보여줄 흔들림 연출을 시작한다. */
+function startTossing() {
+  if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
+  isTossing = true;
+  lastThrowResult = null;
+  renderYutSticks();
+}
+
+/** 던지기 결과를 윷가락에 확정 반영한다. */
+function settleThrow(result: ThrowResult) {
+  if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
+  isTossing = false;
+  lastThrowResult = result;
+  renderYutSticks();
+}
+
 function playerIndex(token: string): number {
   return players.findIndex((p) => p.token === token);
 }
@@ -394,9 +466,14 @@ let camera: THREE.PerspectiveCamera | null = null;
 let renderer: THREE.WebGLRenderer | null = null;
 let clock: THREE.Clock | null = null;
 let animating = false;
+let fx: YutnoriFx | null = null;
 const boardGraph = buildYutBoardGraph();
 const pieceMeshes = new Map<string, THREE.Group>();
 const pieceTargets = new Map<string, THREE.Vector3>();
+// 이번 이동 단계에서 보드 클릭으로 고를 수 있는 lead 피스들. animate()가 매 프레임 halo/bounce에 사용한다.
+const selectablePieceIds = new Set<string>();
+let raycaster: THREE.Raycaster | null = null;
+const pointer = new THREE.Vector2();
 
 function stagingPosition(cornerIndex: number, outward: number, stackIndex: number): THREE.Vector3 {
   const startNode = boardGraph[entryNodeId(0)];
@@ -430,6 +507,7 @@ function ensureScene() {
   scene!.add(dir);
 
   scene!.add(buildYutnoriBoardScene(boardGraph));
+  fx = new YutnoriFx(scene!);
 
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -440,6 +518,8 @@ function ensureScene() {
   renderer.shadowMap.enabled = true;
   canvasWrap.innerHTML = '';
   canvasWrap.appendChild(renderer.domElement);
+  raycaster = new THREE.Raycaster();
+  renderer.domElement.addEventListener('pointerdown', onCanvasPointer);
   clock = new THREE.Clock();
   onResize();
   window.addEventListener('resize', onResize);
@@ -464,13 +544,77 @@ function animate() {
   if (!renderer || !scene || !camera || !clock) return;
   const delta = Math.min(clock.getDelta(), 0.1);
   const lerpAlpha = 1 - Math.pow(0.001, delta);
+  const t = clock.elapsedTime;
+  fx?.update(delta);
 
   pieceMeshes.forEach((mesh, id) => {
     const target = pieceTargets.get(id);
     if (target) mesh.position.lerp(target, lerpAlpha);
+
+    const selectable = selectablePieceIds.has(id);
+    const halo = mesh.getObjectByName('yut-piece-halo');
+    if (halo) {
+      halo.visible = selectable;
+      if (selectable) {
+        const pulse = 1 + Math.sin(t * 5) * 0.12;
+        halo.scale.set(pulse, pulse, 1);
+      }
+    }
+    const inner = mesh.getObjectByName('yut-piece-inner');
+    if (inner) {
+      const hopRemain = ((mesh.userData.hopUntil as number) ?? 0) - t;
+      if (selectable) inner.position.y = Math.abs(Math.sin(t * 4)) * 0.16;
+      else if (hopRemain > 0) inner.position.y = Math.sin((1 - hopRemain / 0.5) * Math.PI) * 0.45;
+      else inner.position.y = 0;
+    }
   });
 
   renderer.render(scene, camera);
+}
+
+/** 보드 캔버스 클릭 → 레이캐스트로 내 말을 집어 이동 요청. 텍스트 버튼과 동일한 submit_move를 보낸다. */
+function onCanvasPointer(e: PointerEvent) {
+  if (!renderer || !camera || !raycaster) return;
+  if (currentTurnToken !== myToken || ynPhase !== 'move' || pendingBranch) return;
+  if (!selectedThrowId) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  const hits = raycaster.intersectObjects([...pieceMeshes.values()], true);
+  let obj: THREE.Object3D | null = hits[0]?.object ?? null;
+  let pieceId: string | undefined;
+  while (obj) {
+    if (typeof obj.userData?.pieceId === 'string') { pieceId = obj.userData.pieceId; break; }
+    obj = obj.parent;
+  }
+  if (!pieceId || !selectablePieceIds.has(pieceId)) return;
+
+  // 보드 클릭은 스택 전체 이동만 담당한다. 갈라치기는 하단 텍스트 버튼으로 남겨둔다.
+  send({ type: 'submit_move', pieceId, pendingThrowId: selectedThrowId, splitOff: false });
+}
+
+/** 잡히거나 업힌 말이 잠깐 통통 튀도록 표시한다(animate가 hopUntil을 읽는다). */
+function hopPiece(id: string) {
+  const mesh = pieceMeshes.get(id);
+  if (mesh && clock) mesh.userData.hopUntil = clock.elapsedTime + 0.5;
+}
+
+/** 분기 대기 중이면 코너의 외곽/지름길 후보 칸에 방향 화살표를 띄우고, 아니면 지운다. */
+function syncBranchFx() {
+  if (!fx) return;
+  if (pendingBranch && currentTurnToken === myToken) {
+    const corner = boardGraph[pendingBranch.cornerId];
+    if (corner) {
+      const straightPos = nodeWorldPosition(boardGraph[corner.next].gridPos);
+      const shortcutPos = corner.shortcutNext ? nodeWorldPosition(boardGraph[corner.shortcutNext].gridPos) : null;
+      fx.showBranch(pendingBranch.cornerId, straightPos, shortcutPos);
+      return;
+    }
+  }
+  fx.clearBranch();
 }
 
 function syncPieceMeshes() {
@@ -482,6 +626,7 @@ function syncPieceMeshes() {
     let mesh = pieceMeshes.get(entry.id);
     if (!mesh) {
       mesh = createYutPieceMesh(playerIndex(entry.ownerToken));
+      mesh.userData.pieceId = entry.id;
       pieceMeshes.set(entry.id, mesh);
       scene.add(mesh);
     }
@@ -538,15 +683,22 @@ function renderControls() {
   throwQueueEl.classList.toggle('hidden', !showMoveUi);
   piecePickerEl.classList.toggle('hidden', !showMoveUi);
 
+  selectablePieceIds.clear();
   if (showMoveUi) {
     if (!selectedThrowId || !pendingThrows.some((t) => t.id === selectedThrowId)) {
       selectedThrowId = pendingThrows[0]?.id ?? null;
     }
+    const selectedThrow = pendingThrows.find((t) => t.id === selectedThrowId);
+    const isBackdo = selectedThrow?.result.kind === 'backdo';
     throwQueueEl.innerHTML = pendingThrows.map((t) =>
       `<button type="button" class="yn-throw-chip" data-throw-id="${t.id}" style="${t.id === selectedThrowId ? 'outline:2px solid #f6c445;' : ''}">${THROW_LABEL[t.result.kind] ?? t.result.kind}</button>`
     ).join('');
 
     const myPieces = board.filter((b) => b.ownerToken === myToken && !b.home);
+    // 보드 클릭으로 고를 수 있는 건 각 스택의 lead 피스(스택 전체 이동). 백도는 보드 위 말만 가능하다.
+    for (const p of myPieces) {
+      if (p.leadId === p.id && !(isBackdo && !p.nodeId)) selectablePieceIds.add(p.id);
+    }
     const groups = new Map<string, BoardPieceEntry[]>();
     for (const piece of myPieces) {
       const arr = groups.get(piece.leadId) ?? [];
@@ -574,11 +726,13 @@ function renderPlaying() {
   renderPlayerPips();
   syncPieceMeshes();
   renderControls();
+  renderYutSticks();
+  syncBranchFx();
 
   if (pendingBranch && currentTurnToken === myToken) {
     turnStatus.textContent = `말이 코너에 도착했어요 — 남은 ${pendingBranch.remainingSteps}칸을 어떻게 갈까요?`;
   } else if (currentTurnToken === myToken) {
-    turnStatus.textContent = ynPhase === 'throw' ? '당신의 차례입니다! 윷을 던지세요' : '이동할 말을 골라주세요';
+    turnStatus.textContent = ynPhase === 'throw' ? '당신의 차례입니다! 윷을 던지세요' : '보드에서 움직일 말을 클릭하세요';
   } else {
     turnStatus.textContent = currentTurnToken ? `${nameOfToken(currentTurnToken)}님의 차례입니다` : '';
   }
@@ -674,13 +828,28 @@ function handleServerMessage(msg: any) {
 
       if (event) {
         if (event.kind === 'throw') {
+          if (event.token === myToken && (isTossing || tossTimer)) {
+            // 내가 방금 던졌으면 흔들림을 잠깐 더 보여준 뒤 결과를 확정한다.
+            const settled = event.result;
+            tossTimer = setTimeout(() => settleThrow(settled), 650);
+          } else {
+            // 상대의 던지기(또는 연출을 놓친 경우)는 결과를 바로 보여준다.
+            settleThrow(event.result);
+          }
           showToast(`${event.name}님이 ${THROW_LABEL[event.result.kind] ?? event.result.kind}를 던졌어요${event.result.extraTurn ? ' — 한 번 더!' : ''}`, 'throw');
         } else if (event.kind === 'move' || event.kind === 'capture') {
+          const arrivePos = pieceTargets.get(event.pieceId);
+          const movedPiece = board.find((b) => b.id === event.pieceId);
           if (event.capturedPieceIds.length) {
             showToast(`${event.name}님이 상대 말을 잡았어요! 보너스 던지기 획득`, 'capture');
+            if (fx && arrivePos) fx.captureBurst(arrivePos);
+            event.capturedPieceIds.forEach(hopPiece);
           } else if (event.joinedPieceIds.length) {
             showToast(`${event.name}님이 말을 업었어요`, 'throw');
+            event.joinedPieceIds.forEach(hopPiece);
+            hopPiece(event.pieceId);
           }
+          if (movedPiece?.home && fx) fx.homeBurst(nodeWorldPosition(boardGraph[entryNodeId(0)].gridPos));
         } else if (event.kind === 'turn_skipped') {
           showToast(`${event.name}님이 시간 초과로 차례를 넘겼어요`, 'info');
         } else if (event.kind === 'player_left') {
@@ -794,6 +963,8 @@ startBtn.addEventListener('click', () => { send({ type: 'start' }); });
 throwBtn.addEventListener('click', () => {
   if (throwBtn.disabled) return;
   send({ type: 'submit_throw' });
+  // 결과는 서버가 정한다. 도착 전까지 흔들림 연출만 시작한다(장식).
+  startTossing();
 });
 
 throwQueueEl.addEventListener('click', (e) => {

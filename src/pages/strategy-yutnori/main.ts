@@ -4,6 +4,7 @@ import { shareRoomLink } from '../../shared/share';
 import { buildYutBoardGraph, entryNodeId } from '../../game/yutnori-board';
 import { buildYutnoriBoardScene, nodeWorldPosition } from '../../render/yutnori-board';
 import { createYutPieceMesh, YUT_PLAYER_COLORS } from '../../render/yutnori-piece';
+import { YutnoriFx } from '../../render/yutnori-effects';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -145,8 +146,14 @@ app.innerHTML = `
 
       <div class="yn-controls">
         <div class="sy-face-picker hidden" id="sy-face-picker">
-          <button type="button" class="sy-face-btn" id="face-front-btn">🌕 앞면</button>
-          <button type="button" class="sy-face-btn" id="face-back-btn">🌑 뒷면</button>
+          <button type="button" class="sy-face-btn front" id="face-front-btn">
+            <span class="sy-face-emoji">🌕</span>
+            <span class="sy-face-text">앞면</span>
+          </button>
+          <button type="button" class="sy-face-btn back" id="face-back-btn">
+            <span class="sy-face-emoji">🌑</span>
+            <span class="sy-face-text">뒷면</span>
+          </button>
         </div>
         <div class="sy-signal-row hidden" id="sy-signal-row">
           <span class="sy-signal-label">파트너에게 신호 보내기</span>
@@ -412,9 +419,14 @@ let camera: THREE.PerspectiveCamera | null = null;
 let renderer: THREE.WebGLRenderer | null = null;
 let clock: THREE.Clock | null = null;
 let animating = false;
+let fx: YutnoriFx | null = null;
 const boardGraph = buildYutBoardGraph();
 const pieceMeshes = new Map<string, THREE.Group>();
 const pieceTargets = new Map<string, THREE.Vector3>();
+// 이번 이동 단계에서 보드 클릭으로 고를 수 있는 lead 피스들. animate()가 매 프레임 halo/bounce에 사용한다.
+const selectablePieceIds = new Set<string>();
+let raycaster: THREE.Raycaster | null = null;
+const pointer = new THREE.Vector2();
 
 function stagingPosition(cornerIndex: number, outward: number, stackIndex: number): THREE.Vector3 {
   const startNode = boardGraph[entryNodeId(0)];
@@ -446,6 +458,7 @@ function ensureScene() {
   scene.add(dir);
 
   scene.add(buildYutnoriBoardScene(boardGraph));
+  fx = new YutnoriFx(scene);
 
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -456,6 +469,8 @@ function ensureScene() {
   renderer.shadowMap.enabled = true;
   canvasWrap.innerHTML = '';
   canvasWrap.appendChild(renderer.domElement);
+  raycaster = new THREE.Raycaster();
+  renderer.domElement.addEventListener('pointerdown', onCanvasPointer);
   clock = new THREE.Clock();
   onResize();
   window.addEventListener('resize', onResize);
@@ -480,11 +495,74 @@ function animate() {
   if (!renderer || !scene || !camera || !clock) return;
   const delta = Math.min(clock.getDelta(), 0.1);
   const lerpAlpha = 1 - Math.pow(0.001, delta);
+  const t = clock.elapsedTime;
+  fx?.update(delta);
   pieceMeshes.forEach((mesh, id) => {
     const target = pieceTargets.get(id);
     if (target) mesh.position.lerp(target, lerpAlpha);
+
+    const selectable = selectablePieceIds.has(id);
+    const halo = mesh.getObjectByName('yut-piece-halo');
+    if (halo) {
+      halo.visible = selectable;
+      if (selectable) {
+        const pulse = 1 + Math.sin(t * 5) * 0.12;
+        halo.scale.set(pulse, pulse, 1);
+      }
+    }
+    const inner = mesh.getObjectByName('yut-piece-inner');
+    if (inner) {
+      const hopRemain = ((mesh.userData.hopUntil as number) ?? 0) - t;
+      if (selectable) inner.position.y = Math.abs(Math.sin(t * 4)) * 0.16;
+      else if (hopRemain > 0) inner.position.y = Math.sin((1 - hopRemain / 0.5) * Math.PI) * 0.45;
+      else inner.position.y = 0;
+    }
   });
   renderer.render(scene, camera);
+}
+
+/** 보드 캔버스 클릭 → 레이캐스트로 내 말을 집어 이동 요청. 텍스트 버튼과 동일한 submit_move를 보낸다. */
+function onCanvasPointer(e: PointerEvent) {
+  if (!renderer || !camera || !raycaster) return;
+  if (currentMoverToken !== myToken || syPhase !== 'moving' || pendingBranch) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  const hits = raycaster.intersectObjects([...pieceMeshes.values()], true);
+  let obj: THREE.Object3D | null = hits[0]?.object ?? null;
+  let pieceId: string | undefined;
+  while (obj) {
+    if (typeof obj.userData?.pieceId === 'string') { pieceId = obj.userData.pieceId; break; }
+    obj = obj.parent;
+  }
+  if (!pieceId || !selectablePieceIds.has(pieceId)) return;
+
+  // 보드 클릭은 스택 전체 이동만 담당한다. 갈라치기는 하단 텍스트 버튼으로 남겨둔다.
+  send({ type: 'submit_move', pieceId, splitOff: false });
+}
+
+/** 잡히거나 업힌 말이 잠깐 통통 튀도록 표시한다(animate가 hopUntil을 읽는다). */
+function hopPiece(id: string) {
+  const mesh = pieceMeshes.get(id);
+  if (mesh && clock) mesh.userData.hopUntil = clock.elapsedTime + 0.5;
+}
+
+/** 분기 대기 중이면 코너의 외곽/지름길 후보 칸에 방향 화살표를 띄우고, 아니면 지운다. */
+function syncBranchFx() {
+  if (!fx) return;
+  if (pendingBranch && currentMoverToken === myToken) {
+    const corner = boardGraph[pendingBranch.cornerId];
+    if (corner) {
+      const straightPos = nodeWorldPosition(boardGraph[corner.next].gridPos);
+      const shortcutPos = corner.shortcutNext ? nodeWorldPosition(boardGraph[corner.shortcutNext].gridPos) : null;
+      fx.showBranch(pendingBranch.cornerId, straightPos, shortcutPos);
+      return;
+    }
+  }
+  fx.clearBranch();
 }
 
 function syncPieceMeshes() {
@@ -495,6 +573,7 @@ function syncPieceMeshes() {
     let mesh = pieceMeshes.get(entry.id);
     if (!mesh) {
       mesh = createYutPieceMesh(playerIndex(entry.ownerToken));
+      mesh.userData.pieceId = entry.id;
       pieceMeshes.set(entry.id, mesh);
       scene.add(mesh);
     }
@@ -548,9 +627,19 @@ function renderTeams() {
 function renderRevealedFaces() {
   if (!lastThrow) { revealedFacesEl.classList.add('hidden'); return; }
   revealedFacesEl.classList.remove('hidden');
-  revealedFacesEl.innerHTML = Object.entries(lastThrow.faces).map(([token, face]) =>
-    `<span class="sy-face-chip ${face}">${nameOfToken(token)}: ${face === 'back' ? '뒷면' : '앞면'}</span>`
-  ).join('') + `<span class="sy-face-chip">→ ${THROW_LABEL[lastThrow.kind] ?? lastThrow.kind}</span>`;
+  // 4명이 비공개 제출한 앞/뒤를 윷가락 4개로 시각화한다. front=젖혀짐(밝은 배), back=엎어짐(어두운 등).
+  // 각 가락에 제출자 색/이름을 붙여 "누가 앞/뒤를 냈는지"(배신 요소)를 드러낸다.
+  const sticks = Object.entries(lastThrow.faces).map(([token, face]) => {
+    const idx = playerIndex(token);
+    const color = `#${YUT_PLAYER_COLORS[(idx >= 0 ? idx : 0) % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+    return `<div class="sy-yut-stick ${face === 'back' ? 'round' : 'flat'}">
+      <span class="sy-stick-bar"></span>
+      <span class="sy-stick-tag"><span class="sy-stick-owner" style="background:${color}"></span>${nameOfToken(token)}</span>
+    </div>`;
+  }).join('');
+  revealedFacesEl.innerHTML =
+    `<div class="sy-stick-row">${sticks}</div>` +
+    `<div class="sy-throw-value${lastThrow.kind === 'backdo' ? ' backdo' : ''}">${THROW_LABEL[lastThrow.kind] ?? lastThrow.kind}${(lastThrow.kind === 'yut' || lastThrow.kind === 'mo') ? ' ⭐ 한 번 더' : ''}</div>`;
 }
 
 function renderControls() {
@@ -566,8 +655,14 @@ function renderControls() {
   const showMoveUi = myTurn && syPhase === 'moving' && !pendingBranch;
   piecePickerEl.classList.toggle('hidden', !showMoveUi);
 
+  selectablePieceIds.clear();
   if (showMoveUi) {
+    const isBackdo = lastThrow?.kind === 'backdo';
     const myPieces = board.filter((b) => b.ownerToken === myToken && !b.home);
+    // 보드 클릭으로 고를 수 있는 건 각 스택의 lead 피스(스택 전체 이동). 백도는 보드 위 말만 가능하다.
+    for (const p of myPieces) {
+      if (p.leadId === p.id && !(isBackdo && !p.nodeId)) selectablePieceIds.add(p.id);
+    }
     const groups = new Map<string, BoardPieceEntry[]>();
     for (const piece of myPieces) {
       const arr = groups.get(piece.leadId) ?? [];
@@ -596,6 +691,7 @@ function renderPlaying() {
   syncPieceMeshes();
   renderRevealedFaces();
   renderControls();
+  syncBranchFx();
 
   if (pendingBranch && currentMoverToken === myToken) {
     turnStatus.textContent = `말이 코너에 도착했어요 — 남은 ${pendingBranch.remainingSteps}칸을 어떻게 갈까요?`;
@@ -605,7 +701,7 @@ function renderPlaying() {
       ? `${activeName}님의 던지기 — 제출 완료 (${submittedTokens.length}/4)`
       : `${activeName}님의 던지기 — 앞면/뒷면 중 하나를 비공개로 제출하세요`;
   } else if (currentMoverToken === myToken) {
-    turnStatus.textContent = `${THROW_LABEL[lastThrow?.kind ?? ''] ?? ''} — 이동할 말을 골라주세요`;
+    turnStatus.textContent = `${THROW_LABEL[lastThrow?.kind ?? ''] ?? ''} — 보드에서 움직일 말을 클릭하세요`;
   } else {
     turnStatus.textContent = currentMoverToken ? `${nameOfToken(currentMoverToken)}님이 이동 중…` : '';
   }
@@ -723,6 +819,18 @@ function handleServerMessage(msg: any) {
         }
       }
       renderPlaying();
+      if (event && (event.kind === 'move' || event.kind === 'capture')) {
+        const arrivePos = pieceTargets.get(event.pieceId);
+        const movedPiece = board.find((b) => b.id === event.pieceId);
+        if (event.capturedPieceIds.length) {
+          if (fx && arrivePos) fx.captureBurst(arrivePos);
+          event.capturedPieceIds.forEach(hopPiece);
+        } else if (event.joinedPieceIds.length) {
+          event.joinedPieceIds.forEach(hopPiece);
+          hopPiece(event.pieceId);
+        }
+        if (movedPiece?.home && fx) fx.homeBurst(nodeWorldPosition(boardGraph[entryNodeId(0)].gridPos));
+      }
       break;
     }
 

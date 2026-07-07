@@ -301,7 +301,94 @@ button { border: 0; cursor: pointer; }
     #fff9ef;
   border: 1px solid var(--color-border);
 }
-.yn-canvas-wrap canvas { width: 100%; height: 100%; display: block; }
+.yn-canvas-wrap canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
+
+/* ── 윷가락(던지기 그래픽) ────────────────────── */
+.yn-yut-sticks {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px 2px;
+}
+.yut-stick-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: flex-end;
+  height: 74px;
+}
+.yut-stick {
+  width: 20px;
+  height: 62px;
+  border-radius: 11px / 13px;
+  box-shadow: 0 3px 5px rgba(75, 52, 71, 0.16);
+  transform-origin: center bottom;
+}
+/* 엎어진 면(둥근 등)이 위로 — 어두운 나무 */
+.yut-stick.round {
+  background: linear-gradient(100deg, #8a5f3b 0%, #c79a6b 44%, #e3bd8e 52%, #b07f52 62%, #8a5f3b 100%);
+  border: 1px solid rgba(110, 74, 44, 0.5);
+}
+/* 젖혀진 면(평평한 배)이 위로 — 밝은 크림, 가운데 눈금 */
+.yut-stick.flat {
+  position: relative;
+  background: linear-gradient(100deg, #d8b98a 0%, #f3e2c2 22%, #fff8ea 50%, #f0dcb8 78%, #d3b083 100%);
+  border: 1px solid rgba(150, 110, 70, 0.4);
+}
+.yut-stick.flat::before {
+  content: "";
+  position: absolute;
+  top: 12%; bottom: 12%; left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(150, 110, 70, 0.3);
+  border-radius: 2px;
+}
+/* 뒷도 표식: 젖혀진 가락 하나에 붉은 점 */
+.yut-stick.baekdo::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 8px; height: 8px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--color-primary, #e8543f);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+.yut-stick.tossing {
+  background: linear-gradient(100deg, #b98a5e, #e3bd8e, #a9754a);
+  border: 1px solid rgba(110, 74, 44, 0.5);
+  animation: yut-toss 360ms ease-in-out infinite;
+}
+.yut-stick.tossing:nth-child(2) { animation-delay: 70ms; }
+.yut-stick.tossing:nth-child(3) { animation-delay: 140ms; }
+.yut-stick.tossing:nth-child(4) { animation-delay: 210ms; }
+.yut-stick.landed { animation: yut-land 340ms ease-out; }
+
+@keyframes yut-toss {
+  0%   { transform: translateY(0) rotate(-10deg); }
+  25%  { transform: translateY(-16px) rotate(10deg); }
+  50%  { transform: translateY(0) rotate(-8deg); }
+  75%  { transform: translateY(-11px) rotate(9deg); }
+  100% { transform: translateY(0) rotate(-10deg); }
+}
+@keyframes yut-land {
+  0%   { transform: translateY(-18px) scale(1.05); }
+  55%  { transform: translateY(0) scale(1); }
+  78%  { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+.yut-throw-value {
+  min-height: 1.4em;
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: var(--color-page-text);
+  letter-spacing: 0.02em;
+}
+.yut-throw-value.backdo { color: var(--color-danger); }
 
 /* ── Player pips ──────────────────────────────── */
 .yn-players {
@@ -363,16 +450,17 @@ button { border: 0; cursor: pointer; }
   gap: 8px;
   justify-content: center;
 }
+/* 보드 클릭이 1차 조작이므로 텍스트 버튼은 접근성/대체 조작으로 시각 우선순위를 낮춘다. */
 .yn-piece-btn {
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.78);
+  padding: 6px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.62);
   border: 1px solid var(--color-border);
-  font-weight: 700;
-  font-size: 0.82rem;
-  color: var(--color-page-text);
+  font-weight: 600;
+  font-size: 0.76rem;
+  color: var(--color-page-muted);
 }
-.yn-piece-btn:hover { background: rgba(255, 255, 255, 0.92); }
+.yn-piece-btn:hover { background: rgba(255, 255, 255, 0.9); color: var(--color-page-text); }
 .yn-piece-btn.split { border-color: rgba(246,196,69,0.5); }
 
 .yn-branch-picker {
