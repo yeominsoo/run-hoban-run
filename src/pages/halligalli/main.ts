@@ -366,8 +366,23 @@ function renderBoard(justFlippedToken?: string) {
   }).join('');
 }
 
+const FLIP_ANIM_MS = 420; // matches .hg-top-card.flip-in animation duration in halligalli.css
+let pendingFlipToastTimer: ReturnType<typeof setTimeout> | null = null;
+
 function showToast(text: string, kind: 'flip' | 'correct' | 'wrong' | 'info') {
+  if (pendingFlipToastTimer !== null) {
+    clearTimeout(pendingFlipToastTimer);
+    pendingFlipToastTimer = null;
+  }
   showCenterToast(text, { kind, duration: kind === 'flip' ? 1800 : 3000 });
+}
+
+function showToastAfterFlipAnim(text: string, kind: 'flip' | 'correct' | 'wrong' | 'info') {
+  if (pendingFlipToastTimer !== null) clearTimeout(pendingFlipToastTimer);
+  pendingFlipToastTimer = setTimeout(() => {
+    pendingFlipToastTimer = null;
+    showCenterToast(text, { kind, duration: kind === 'flip' ? 1800 : 3000 });
+  }, FLIP_ANIM_MS);
 }
 
 function updateControls() {
@@ -437,6 +452,10 @@ function handleServerMessage(msg: any) {
       renderBoard();
       updateControls();
       turnStatus.textContent = currentTurnToken === myToken ? '당신의 차례입니다! 카드를 뒤집으세요' : '';
+      if (pendingFlipToastTimer !== null) {
+        clearTimeout(pendingFlipToastTimer);
+        pendingFlipToastTimer = null;
+      }
       clearCenterToast();
       setPhase('playing');
       break;
@@ -466,7 +485,7 @@ function handleServerMessage(msg: any) {
 
       if (event) {
         if (event.kind === 'flip') {
-          showToast(`${event.name}님이 ${FRUIT_EMOJI[event.fruit] ?? ''}${event.count}장 카드를 뒤집었어요`, 'flip');
+          showToastAfterFlipAnim(`${event.name}님이 ${FRUIT_EMOJI[event.fruit] ?? ''}${event.count}장 카드를 뒤집었어요`, 'flip');
         } else if (event.kind === 'ring_correct') {
           showToast(`🔔 ${event.name}님 정답! 카드 ${event.cardsWon}장 획득!`, 'correct');
         } else if (event.kind === 'ring_wrong') {
