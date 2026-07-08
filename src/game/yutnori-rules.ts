@@ -93,6 +93,9 @@ export interface GameState {
   turnIndex: number;
   pendingThrows: PendingThrow[];
   phase: 'throw' | 'move';
+  /** 잡기로 번 보너스 던지기 중 아직 못 받은 개수. 잡은 시점에 다른 던지기가 큐에 남아있어도
+   *  잃어버리지 않고, 큐가 다 빌 때 하나씩 지급한다(모+개처럼 이미 여러 번 던진 뒤 잡아도 보장). */
+  captureBonusOwed: number;
   winner: string | null;
   rng: () => number;
   throwSeq: number;
@@ -118,6 +121,7 @@ export function createYutGame(tokens: string[], seed: number): GameState {
     turnIndex: 0,
     pendingThrows: [],
     phase: 'throw',
+    captureBonusOwed: 0,
     winner: null,
     rng: mulberry32(seed),
     throwSeq: 0,
@@ -316,6 +320,9 @@ export function submitMove(state: GameState, req: MoveRequest): MoveOutcome {
     joinedPieceIds.push(...followers.map((f) => f.id));
   } else {
     movingLead.path = outcome.path;
+    // 업혀서 함께 움직이는 말들(followers)도 리더와 같은 칸으로 위치를 갱신해야
+    // 스택 전체가 같이 이동한다 — 리더만 갱신하면 업힌 말은 화면에서 그 자리에 남는다.
+    followersOf(state, movingLead.id).forEach((f) => { f.path = [...outcome.path]; });
     const arrivalNodeId = outcome.path[outcome.path.length - 1];
     const others = state.pieces.filter(
       (p) => p.leadId === p.id && !movedIds.includes(p.id) && !p.home && currentPosition(p) === arrivalNodeId,
@@ -344,16 +351,21 @@ export function submitMove(state: GameState, req: MoveRequest): MoveOutcome {
   if (gameOver) state.winner = token;
 
   const bonusFromCapture = capturedPieceIds.length > 0;
+  if (bonusFromCapture) state.captureBonusOwed += 1;
 
+  let grantedBonusThrow = false;
   if (!gameOver) {
     if (state.pendingThrows.length === 0) {
-      if (bonusFromCapture) {
+      if (state.captureBonusOwed > 0) {
+        state.captureBonusOwed -= 1;
         state.phase = 'throw';
+        grantedBonusThrow = true;
       } else {
         advanceTurn(state);
       }
     }
     // pendingThrows에 남은 게 있으면 phase는 'move'로 유지 — 이어서 다음 말/던지기를 소비해야 한다.
+    // 그 사이에도 captureBonusOwed는 남아있다가 큐가 다 빌 때 지급된다(모+개처럼 이미 던진 뒤 잡아도 보너스를 잃지 않음).
   }
 
   return {
@@ -366,7 +378,7 @@ export function submitMove(state: GameState, req: MoveRequest): MoveOutcome {
       capturedPieceIds,
       joinedPieceIds,
     },
-    bonusThrow: !gameOver && bonusFromCapture && state.pendingThrows.length === 0,
+    bonusThrow: grantedBonusThrow,
     gameOver,
   };
 }
@@ -375,6 +387,7 @@ function advanceTurn(state: GameState): void {
   state.turnIndex = (state.turnIndex + 1) % state.turnOrder.length;
   state.phase = 'throw';
   state.pendingThrows = [];
+  state.captureBonusOwed = 0;
 }
 
 export function skipTurn(state: GameState): void {
@@ -436,4 +449,5 @@ export function removePlayer(state: GameState, token: string): void {
   }
   state.phase = 'throw';
   state.pendingThrows = [];
+  state.captureBonusOwed = 0;
 }

@@ -67,6 +67,7 @@ export function createYutGame(tokens, seedRng) {
     turnIndex: 0,
     pendingThrows: [],
     phase: 'throw',
+    captureBonusOwed: 0,
     winner: null,
     rng: seedRng,
     throwSeq: 0,
@@ -241,6 +242,9 @@ export function submitMove(state, req) {
     joinedPieceIds.push(...followers.map((f) => f.id));
   } else {
     movingLead.path = outcome.path;
+    // 업혀서 함께 움직이는 말들(followers)도 리더와 같은 칸으로 위치를 갱신해야
+    // 스택 전체가 같이 이동한다 — 리더만 갱신하면 업힌 말은 화면에서 그 자리에 남는다.
+    followersOf(state, movingLead.id).forEach((f) => { f.path = [...outcome.path]; });
     const arrivalNodeId = outcome.path[outcome.path.length - 1];
     const others = state.pieces.filter(
       (p) => p.leadId === p.id && !movedIds.includes(p.id) && !p.home && currentPosition(p) === arrivalNodeId,
@@ -269,15 +273,21 @@ export function submitMove(state, req) {
   if (gameOver) state.winner = token;
 
   const bonusFromCapture = capturedPieceIds.length > 0;
+  if (bonusFromCapture) state.captureBonusOwed += 1;
 
+  let grantedBonusThrow = false;
   if (!gameOver) {
     if (state.pendingThrows.length === 0) {
-      if (bonusFromCapture) {
+      if (state.captureBonusOwed > 0) {
+        state.captureBonusOwed -= 1;
         state.phase = 'throw';
+        grantedBonusThrow = true;
       } else {
         advanceTurn(state);
       }
     }
+    // pendingThrows에 남은 게 있으면 phase는 'move'로 유지 — 이어서 다음 말/던지기를 소비해야 한다.
+    // 그 사이에도 captureBonusOwed는 남아있다가 큐가 다 빌 때 지급된다(모+개처럼 이미 던진 뒤 잡아도 보너스를 잃지 않음).
   }
 
   return {
@@ -290,7 +300,7 @@ export function submitMove(state, req) {
       capturedPieceIds,
       joinedPieceIds,
     },
-    bonusThrow: !gameOver && bonusFromCapture && state.pendingThrows.length === 0,
+    bonusThrow: grantedBonusThrow,
     gameOver,
   };
 }
@@ -299,6 +309,7 @@ function advanceTurn(state) {
   state.turnIndex = (state.turnIndex + 1) % state.turnOrder.length;
   state.phase = 'throw';
   state.pendingThrows = [];
+  state.captureBonusOwed = 0;
 }
 
 /** 시간 초과로 차례를 강제로 넘길 때 서버(ws-server)가 호출한다. */
@@ -360,6 +371,7 @@ export function removePlayer(state, token) {
   }
   state.phase = 'throw';
   state.pendingThrows = [];
+  state.captureBonusOwed = 0;
 }
 
 export function buildBoardSnapshot(state) {

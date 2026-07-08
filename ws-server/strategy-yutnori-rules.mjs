@@ -219,6 +219,9 @@ export function submitMove(state, token, req) {
     joinedPieceIds.push(...followers.map((f) => f.id));
   } else {
     movingLead.path = outcome.path;
+    // 업혀서 함께 움직이는 말들(followers)도 리더와 같은 칸으로 위치를 갱신해야
+    // 스택 전체가 같이 이동한다 — 리더만 갱신하면 업힌 말은 화면에서 그 자리에 남는다.
+    followersOf(state, movingLead.id).forEach((f) => { f.path = [...outcome.path]; });
     const arrivalNodeId = outcome.path[outcome.path.length - 1];
     const others = state.pieces.filter(
       (p) => p.leadId === p.id && !movedIds.includes(p.id) && !p.home && currentPosition(p) === arrivalNodeId,

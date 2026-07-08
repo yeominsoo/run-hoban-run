@@ -2,7 +2,7 @@ import './yutnori.css';
 import { shareRoomLink } from '../../shared/share';
 import { showCenterToast } from '../../shared/center-toast';
 import { buildYutBoardGraph, YUT_START_NODE_ID } from '../../game/yutnori-board';
-import { nodeScreenPos, stackOffsetPct, stagingLaneOffset, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
+import { nodeScreenPos, stackOffsetPct, stagingSlotPos, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -615,7 +615,9 @@ function buildBoardSvg() {
   }).join('');
   const start = nodeScreenPos(boardGraph[YUT_START_NODE_ID]);
   const startLabel = `<text x="${start.xPct - 7}" y="${start.yPct - 6}" class="yn-board-start-label" text-anchor="end">출발</text>`;
-  boardSvgEl.innerHTML = `${lines.join('')}${dots}${startLabel}`;
+  // 코너 0(출발점)은 지름길 대각선이 없어 비어 있는 안쪽 공간 — 대기 중인 말을 모아 두는 구역임을 표시.
+  const waitingZoneBg = `<rect x="54" y="54" width="32" height="32" rx="6" class="yn-waiting-zone" />`;
+  boardSvgEl.innerHTML = `${waitingZoneBg}${lines.join('')}${dots}${startLabel}`;
 }
 buildBoardSvg();
 
@@ -660,11 +662,7 @@ function syncPieceTokens() {
     if (!group) {
       const base = entry.nodeId
         ? nodeScreenPos(boardGraph[entry.nodeId])
-        : (() => {
-            const start = nodeScreenPos(boardGraph[YUT_START_NODE_ID]);
-            const lane = stagingLaneOffset(stablePlayerIndex(entry.ownerToken));
-            return { xPct: start.xPct + lane.dx, yPct: start.yPct + lane.dy };
-          })();
+        : stagingSlotPos(stablePlayerIndex(entry.ownerToken));
       group = { base, entries: [] };
       groups.set(groupKey, group);
     }

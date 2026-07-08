@@ -145,6 +145,34 @@ test('landing on your own piece piggybacks it, and 갈라치기 splits it back o
   expect(a0.path).toEqual(['outer-2', 'outer-3', 'outer-4', 'outer-5']);
 });
 
+test('moving a piggybacked stack (without splitting off) carries every follower along, not just the lead', () => {
+  const state = createYutGame(['A', 'B'], 8);
+  state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-4'];
+  state.pieces.find((p) => p.id === 'A-1')!.path = ['outer-2'];
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'gae'); // outer-2 -> outer-3 -> outer-4, A-1이 A-0을 업음(리더가 됨)
+  const merge = submitMove(state, { pieceId: 'A-1', pendingThrowId: state.pendingThrows[0].id });
+  expect(merge.status).toBe('applied');
+  if (merge.status !== 'applied') throw new Error('unreachable');
+
+  const a0 = state.pieces.find((p) => p.id === 'A-0')!;
+  const a1 = state.pieces.find((p) => p.id === 'A-1')!;
+  expect(a1.leadId).toBe('A-1');
+  expect(a0.leadId).toBe('A-1');
+
+  resetTurnTo(state, 'A');
+  forceThrow(state, 'do'); // 업힌 스택 전체를 그대로(분리 없이) 한 칸 더 이동
+  const moved = submitMove(state, { pieceId: 'A-1', pendingThrowId: state.pendingThrows[0].id });
+  expect(moved.status).toBe('applied');
+  if (moved.status !== 'applied') throw new Error('unreachable');
+
+  // 리더(A-1)뿐 아니라 업혀 있던 A-0도 같은 칸으로 함께 이동해야 한다 — 리더만 갱신되면
+  // 화면에서 업힌 말이 그 자리에 남아 "한 놈만 움직이는" 버그가 된다.
+  expect(a1.path).toEqual(['outer-2', 'outer-3', 'outer-4', cornerNodeId(1)]);
+  expect(a0.path).toEqual(a1.path);
+});
+
 test('capturing an opponent piece sends it back to start and grants a bonus throw', () => {
   const state = createYutGame(['A', 'B'], 4);
   state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-2'];
@@ -161,6 +189,36 @@ test('capturing an opponent piece sends it back to start and grants a bonus thro
   const b0 = state.pieces.find((p) => p.id === 'B-0')!;
   expect(b0.path).toEqual([]);
   expect(currentToken(state)).toBe('A'); // 보너스 턴이라 턴이 안 넘어가야 한다
+  expect(state.phase).toBe('throw');
+});
+
+test('capturing with a throw while another throw is still queued (e.g. yut+do) does not lose the bonus', () => {
+  const state = createYutGame(['A', 'B'], 44);
+  state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-2'];
+  state.pieces.find((p) => p.id === 'B-0')!.path = ['outer-6']; // outer-2 + yut(4) = outer-6
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'yut'); // 추가 턴 -> 이어서 한 번 더 던짐
+  forceThrow(state, 'do'); // 이동 단계로 넘어가고, yut/do 두 개가 큐에 쌓임
+  expect(state.pendingThrows).toHaveLength(2);
+  const yutThrow = state.pendingThrows.find((pt) => pt.result.kind === 'yut')!;
+  const doThrow = state.pendingThrows.find((pt) => pt.result.kind === 'do')!;
+
+  // yut으로 이동해서 B-0을 잡는다 — 이 시점엔 do가 아직 큐에 남아 있어 턴이 안 끝난다.
+  const yutOutcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: yutThrow.id });
+  expect(yutOutcome.status).toBe('applied');
+  if (yutOutcome.status !== 'applied') throw new Error('unreachable');
+  expect(yutOutcome.event.capturedPieceIds).toContain('B-0');
+  expect(state.phase).toBe('move'); // do가 남아있어 이동 단계 유지
+  expect(state.pendingThrows).toHaveLength(1);
+
+  // 남은 do로 다른 말(A-1)을 움직인다 — 잡기는 안 하지만, 아까 번 보너스가 여기서 지급돼야 한다.
+  const doOutcome = submitMove(state, { pieceId: 'A-1', pendingThrowId: doThrow.id });
+  expect(doOutcome.status).toBe('applied');
+  if (doOutcome.status !== 'applied') throw new Error('unreachable');
+  expect(doOutcome.event.capturedPieceIds).toEqual([]);
+  expect(doOutcome.bonusThrow).toBe(true); // yut으로 잡은 보너스가 여기서 지급됨
+  expect(currentToken(state)).toBe('A');
   expect(state.phase).toBe('throw');
 });
 

@@ -9,12 +9,15 @@ export const YUT_PLAYER_COLORS = ['#e8543f', '#3d6fd6', '#f6c445', '#4a8f4f'];
 
 /** 코너 인덱스(0=공유 출발/도착점) → 보드 컨테이너 기준 퍼센트 좌표.
  *  0번을 우측 하단에 두고, 외곽 진행 순서(0→1→2→3)가 우측 변을 타고 올라가는
- *  반시계 방향이 되도록 배치한다(전통 윷판 진행 방향과 동일). */
+ *  반시계 방향이 되도록 배치한다(전통 윷판 진행 방향과 동일).
+ *  정확히 0/100에 두면 코너/외곽 점의 원이 SVG 뷰포트 경계에서 반씩 잘리므로,
+ *  점 반지름(최대 4.2)만큼 안쪽으로 들여서(INSET) 배치한다. */
+const INSET = 6;
 const CORNER_SCREEN_PCT: [number, number][] = [
-  [100, 100], // corner 0: 출발/도착 — 우측 하단
-  [100, 0],   // corner 1: 우측 상단
-  [0, 0],     // corner 2: 좌측 상단
-  [0, 100],   // corner 3: 좌측 하단
+  [100 - INSET, 100 - INSET], // corner 0: 출발/도착 — 우측 하단
+  [100 - INSET, INSET],       // corner 1: 우측 상단
+  [INSET, INSET],             // corner 2: 좌측 상단
+  [INSET, 100 - INSET],       // corner 3: 좌측 하단
 ];
 const CENTER_SCREEN_PCT: [number, number] = [50, 50];
 
@@ -57,18 +60,19 @@ export function stackOffsetPct(stackIndex: number): { dx: number; dy: number } {
   return { dx, dy };
 }
 
-/** 출발 전(nodeId=null) 말들이 전부 시작 코너 한 점에 겹치지 않도록, 플레이어 슬롯별로
- *  출발 코너 안쪽에 서로 다른 대기 위치를 배정한다(0~3번 슬롯, 최대 4인).
- *  각 위치는 STACK_OFFSETS(최대 ±4.2)를 더해도 보드 밖(0~100%)으로 나가지 않도록 여유를 둔다. */
-const START_LANE_OFFSETS: [number, number][] = [
-  [-18, -11],
-  [-11, -18],
-  [-26, -18],
-  [-18, -26],
+/** 출발 전(nodeId=null) 말들을 트랙/출발 코너 위에 겹쳐 두지 않고, 코너 0(출발점)에는
+ *  지름길 대각선이 없어서 비어 있는 우측 하단 안쪽 공간에 플레이어 슬롯별로 모아 둔다.
+ *  각 위치는 STACK_OFFSETS(최대 ±4.2)를 더해도 서로 겹치거나 보드 밖으로 나가지 않도록
+ *  충분한 간격(14pt)을 둔다. */
+const WAITING_ZONE_SLOTS: [number, number][] = [
+  [63, 63],
+  [77, 63],
+  [63, 77],
+  [77, 77],
 ];
-export function stagingLaneOffset(playerSlot: number): { dx: number; dy: number } {
-  const [dx, dy] = START_LANE_OFFSETS[playerSlot % START_LANE_OFFSETS.length];
-  return { dx, dy };
+export function stagingSlotPos(playerSlot: number): ScreenPos {
+  const [xPct, yPct] = WAITING_ZONE_SLOTS[playerSlot % WAITING_ZONE_SLOTS.length];
+  return { xPct, yPct };
 }
 
 /** 화면상 플레이어 좌석 배치: 1p=11시(좌상단), 2p=1시(우상단), 3p=5시(우하단), 4p=7시(좌하단), 시계방향.
