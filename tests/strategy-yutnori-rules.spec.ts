@@ -138,19 +138,14 @@ test('a player wins individually once their own 2 pieces reach home, regardless 
   expect(state.winner).toBe('A');
 });
 
-test('taking the shortcut at a corner still asks for a branch choice, same as base yutnori', () => {
+test('a piece already resting exactly on a corner is forced through the shortcut, no choice asked (same as base yutnori)', () => {
   const state = createStrategyYutGame(TOKENS);
   state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1)];
   submitRound(state, ['back', 'back', 'front', 'front']); // gae(2)
   expect(currentMover(state)).toBe('A');
 
-  const first = submitMove(state, 'A', { pieceId: 'A-0' });
-  expect(first.status).toBe('awaiting-branch');
-  if (first.status !== 'awaiting-branch') throw new Error('unreachable');
-  expect(first.cornerId).toBe(cornerNodeId(1));
-
-  const resolved = submitMove(state, 'A', { pieceId: 'A-0', branch: 'shortcut' });
-  expect(resolved.status).toBe('applied');
-  if (resolved.status !== 'applied') throw new Error('unreachable');
-  expect(resolved.path).toEqual([cornerNodeId(1), 'diag-1-0', 'diag-1-1']);
+  const outcome = submitMove(state, 'A', { pieceId: 'A-0' });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.path).toEqual([cornerNodeId(1), 'diag-1-0', 'diag-1-1']);
 });

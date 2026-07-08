@@ -11,6 +11,8 @@ import {
   diagonalStepOf,
 } from './yutnori-board.mjs';
 
+const CENTER_EXIT_ID = getCenterExit();
+
 const KIND_BY_FRONT_COUNT = {
   0: { kind: 'mo', steps: 5 },
   1: { kind: 'do', steps: 1 },
@@ -53,7 +55,6 @@ export function createStrategyYutGame(tokens) {
     phase: 'collecting',
     faces: {},
     lastThrow: null,
-    awaitingBranch: null,
     round: 1,
     winner: null,
   };
@@ -115,7 +116,6 @@ function startNextThrow(state) {
   state.phase = 'collecting';
   state.faces = {};
   state.lastThrow = null;
-  state.awaitingBranch = null;
   state.round += 1;
 }
 
@@ -124,7 +124,7 @@ function advanceTurn(state) {
   startNextThrow(state);
 }
 
-function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
+function walkForward(graph, startPath, ownCornerId, steps) {
   const path = [...startPath];
   let remaining = steps;
 
@@ -139,15 +139,13 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
-        const choice = branchChoiceFor(currentId);
-        if (choice === undefined) {
-          return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
-        }
-        nextId = choice === 'shortcut' ? node.shortcutNext : node.next;
+        // 이번 이동을 시작하기 전부터 이미 이 코너에 서 있었다면 선택 없이 무조건 지름길로 들어간다.
+        // 이번 던지기 도중 지나가는 중이라면 무조건 외곽으로 계속 간다.
+        const restingHere = path.length === startPath.length;
+        nextId = restingHere ? node.shortcutNext : node.next;
       } else if (node.kind === 'center') {
-        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
-        const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
-        nextId = getCenterExit(fromCornerIndex);
+        // 중앙에서는 항상 공유 출발점 방향 대각선으로 빠져나간다(선택 없음).
+        nextId = CENTER_EXIT_ID;
       } else if (node.kind === 'diagonal') {
         // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
         // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
@@ -201,21 +199,10 @@ export function submitMove(state, token, req) {
   }
 
   const ownCornerId = entryNodeId(0);
-  const branchChoiceFor = (cornerId) => {
-    if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
-    return undefined;
-  };
-
   const outcome =
     state.lastThrow.kind === 'backdo'
       ? walkBackward(state.graph, movingLead.path, ownCornerId)
-      : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps, branchChoiceFor);
-
-  if (outcome.status === 'awaiting-branch') {
-    state.awaitingBranch = { pieceId: movingLead.id, cornerId: outcome.cornerId, remainingSteps: outcome.remainingSteps };
-    return { status: 'awaiting-branch', cornerId: outcome.cornerId, remainingSteps: outcome.remainingSteps };
-  }
-  state.awaitingBranch = null;
+      : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps);
 
   const capturedPieceIds = [];
   const joinedPieceIds = [];
@@ -290,10 +277,6 @@ export function abandonGame(state, leavingToken) {
 
 export function getAutoMoveRequest(state, token) {
   if (state.winner || state.phase !== 'moving' || currentMover(state) !== token || !state.lastThrow) return null;
-
-  if (state.awaitingBranch) {
-    return { pieceId: state.awaitingBranch.pieceId, branch: 'straight' };
-  }
 
   const leadPieces = state.pieces
     .filter((p) => p.ownerToken === token && !p.home && p.leadId === p.id)

@@ -45,16 +45,29 @@ export function nodeScreenPos(node: YutBoardNode): ScreenPos {
   return { xPct: x, yPct: y };
 }
 
-/** 같은 칸에 여러 말이 겹칠 때(업기/출발 대기) 작게 벌려서 각각 보이게 하는 오프셋(퍼센트 포인트). */
+/** 같은 칸에 여러 말이 겹칠 때(업기/출발 대기) 작게 벌려서 각각 클릭 가능하도록 벌리는 오프셋(퍼센트 포인트). */
 const STACK_OFFSETS: [number, number][] = [
   [0, 0],
-  [2.8, -2.8],
-  [-2.8, 2.8],
-  [2.8, 2.8],
-  [-2.8, -2.8],
+  [4.2, -4.2],
+  [-4.2, 4.2],
+  [4.2, 4.2],
 ];
 export function stackOffsetPct(stackIndex: number): { dx: number; dy: number } {
   const [dx, dy] = STACK_OFFSETS[stackIndex % STACK_OFFSETS.length];
+  return { dx, dy };
+}
+
+/** 출발 전(nodeId=null) 말들이 전부 시작 코너 한 점에 겹치지 않도록, 플레이어 슬롯별로
+ *  출발 코너 안쪽에 서로 다른 대기 위치를 배정한다(0~3번 슬롯, 최대 4인).
+ *  각 위치는 STACK_OFFSETS(최대 ±4.2)를 더해도 보드 밖(0~100%)으로 나가지 않도록 여유를 둔다. */
+const START_LANE_OFFSETS: [number, number][] = [
+  [-18, -11],
+  [-11, -18],
+  [-26, -18],
+  [-18, -26],
+];
+export function stagingLaneOffset(playerSlot: number): { dx: number; dy: number } {
+  const [dx, dy] = START_LANE_OFFSETS[playerSlot % START_LANE_OFFSETS.length];
   return { dx, dy };
 }
 

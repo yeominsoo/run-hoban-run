@@ -28,7 +28,6 @@ function resetTurnTo(state: GameState, token: string) {
   state.turnIndex = state.turnOrder.indexOf(token);
   state.phase = 'throw';
   state.pendingThrows = [];
-  state.awaitingBranch = null;
 }
 
 test('throw distribution stays within the documented weight table over many rolls', () => {
@@ -192,25 +191,34 @@ test('backdo from the do point retreats to the start corner instead of creating 
   expect(a0.home).toBe(false);
 });
 
-test('taking the shortcut at a corner asks for a branch choice and moves through two diagonal points', () => {
+test('a piece already resting exactly on a corner is forced through the shortcut, no choice asked', () => {
   const state = createYutGame(['A', 'B'], 6);
   state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1)]; // 지름길이 있는 코너에 이미 서 있음
   resetTurnTo(state, 'A');
 
-  forceThrow(state, 'gae'); // 코너에서 2칸 더 가려면 반드시 분기를 골라야 한다
+  forceThrow(state, 'gae');
   const pendingId = state.pendingThrows[0].id;
-  const first = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId });
-  expect(first.status).toBe('awaiting-branch');
-  if (first.status !== 'awaiting-branch') throw new Error('unreachable');
-  expect(first.branch.cornerId).toBe(cornerNodeId(1));
-
-  const resolved = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId, branch: 'shortcut' });
-  expect(resolved.status).toBe('applied');
-  if (resolved.status !== 'applied') throw new Error('unreachable');
-  expect(resolved.event.path).toEqual([cornerNodeId(1), 'diag-1-0', 'diag-1-1']);
+  const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual([cornerNodeId(1), 'diag-1-0', 'diag-1-1']);
 });
 
-test('the center exits through the opposite diagonal toward the opposite corner', () => {
+test('passing through a corner mid-throw (not resting there) is forced onto the outer track, no shortcut', () => {
+  const state = createYutGame(['A', 'B'], 61);
+  state.pieces.find((p) => p.id === 'A-0')!.path = ['outer-3']; // 코너1(outer-5) 2칸 앞
+  resetTurnTo(state, 'A');
+
+  forceThrow(state, 'yut'); // 4칸 — 코너를 지나서까지 이어진다
+  forceThrow(state, 'do'); // yut은 추가 턴이라 이동 단계로 넘기기 위해 한 번 더 던진다
+  const yutThrow = state.pendingThrows.find((pt) => pt.result.kind === 'yut')!;
+  const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: yutThrow.id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual(['outer-3', 'outer-4', cornerNodeId(1), 'outer-6', 'outer-7']);
+});
+
+test('the center always exits toward the shared start corner, regardless of which side it entered from', () => {
   const state = createYutGame(['A', 'B'], 66);
   state.pieces.find((p) => p.id === 'A-0')!.path = [cornerNodeId(1), 'diag-1-0', 'diag-1-1', 'center'];
   resetTurnTo(state, 'A');
@@ -224,13 +232,13 @@ test('the center exits through the opposite diagonal toward the opposite corner'
     'diag-1-0',
     'diag-1-1',
     'center',
-    'diag-3-1',
-    'diag-3-0',
-    cornerNodeId(3),
+    'diag-0-1',
+    'diag-0-0',
+    cornerNodeId(0),
   ]);
 });
 
-test('a piece that already passed the center can take a shortcut again on a later lap', () => {
+test('a piece that already passed the center can take the mandatory shortcut again on a later lap', () => {
   const state = createYutGame(['A', 'B'], 7);
   // 이미 중앙을 한 번 지난 이력(path에 center 포함)이 있고, 지름길이 있는 코너(코너1)에 다시 서 있는 말.
   const a0 = state.pieces.find((p) => p.id === 'A-0')!;
@@ -238,10 +246,7 @@ test('a piece that already passed the center can take a shortcut again on a late
   resetTurnTo(state, 'A');
 
   forceThrow(state, 'geol'); // 3칸
-  const pendingId = state.pendingThrows[0].id;
-  let outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId });
-  expect(outcome.status).toBe('awaiting-branch');
-  outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: pendingId, branch: 'shortcut' });
+  const outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: state.pendingThrows[0].id });
   expect(outcome.status).toBe('applied');
   if (outcome.status !== 'applied') throw new Error('unreachable');
   // 과거 center 이력 때문에 지름길이 코너로 튕겨선 안 되고, 대각선 2칸을 지나 다시 중앙으로 이어져야 한다.

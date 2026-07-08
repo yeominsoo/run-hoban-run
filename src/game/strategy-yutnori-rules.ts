@@ -9,6 +9,8 @@ import {
   type YutBoardGraph,
 } from './yutnori-board';
 
+const CENTER_EXIT_ID = getCenterExit();
+
 /**
  * "전략윷놀이" — tvN <더 지니어스> 데스매치에서 쓰인 2:2 윷놀이 변형.
  * 표준 윷놀이(yutnori-rules.ts)와 보드는 동일하지만, 던지기 방식과 승패 단위가 다르다:
@@ -75,7 +77,6 @@ export interface GameState {
   phase: 'collecting' | 'moving';
   faces: Record<string, FaceChoice>;
   lastThrow: ThrowResult | null;
-  awaitingBranch: { pieceId: string; cornerId: string; remainingSteps: number } | null;
   round: number;
   winner: string | null;
 }
@@ -101,7 +102,6 @@ export function createStrategyYutGame(tokens: string[]): GameState {
     phase: 'collecting',
     faces: {},
     lastThrow: null,
-    awaitingBranch: null,
     round: 1,
     winner: null,
   };
@@ -164,7 +164,6 @@ function startNextThrow(state: GameState) {
   state.phase = 'collecting';
   state.faces = {};
   state.lastThrow = null;
-  state.awaitingBranch = null;
   state.round += 1;
 }
 
@@ -174,10 +173,8 @@ function advanceTurn(state: GameState) {
 }
 
 interface WalkOutcome {
-  status: 'finished' | 'home' | 'awaiting-branch';
+  status: 'finished' | 'home';
   path: string[];
-  cornerId?: string;
-  remainingSteps?: number;
 }
 
 function walkForward(
@@ -185,7 +182,6 @@ function walkForward(
   startPath: string[],
   ownCornerId: string,
   steps: number,
-  branchChoiceFor: (cornerId: string) => 'straight' | 'shortcut' | undefined,
 ): WalkOutcome {
   const path = [...startPath];
   let remaining = steps;
@@ -201,15 +197,13 @@ function walkForward(
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
-        const choice = branchChoiceFor(currentId);
-        if (choice === undefined) {
-          return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
-        }
-        nextId = choice === 'shortcut' ? node.shortcutNext! : node.next;
+        // 이번 이동을 시작하기 전부터 이미 이 코너에 서 있었다면 선택 없이 무조건 지름길로 들어간다.
+        // 이번 던지기 도중 지나가는 중이라면 무조건 외곽으로 계속 간다.
+        const restingHere = path.length === startPath.length;
+        nextId = restingHere ? node.shortcutNext : node.next;
       } else if (node.kind === 'center') {
-        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
-        const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
-        nextId = getCenterExit(fromCornerIndex);
+        // 중앙에서는 항상 공유 출발점 방향 대각선으로 빠져나간다(선택 없음).
+        nextId = CENTER_EXIT_ID;
       } else if (node.kind === 'diagonal') {
         // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
         // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
@@ -243,22 +237,20 @@ function walkBackward(graph: YutBoardGraph, startPath: string[], ownCornerId: st
 export interface MoveRequest {
   pieceId: string;
   splitOff?: boolean;
-  branch?: 'straight' | 'shortcut';
 }
 
 export type MoveOutcome =
-  | { status: 'awaiting-branch'; cornerId: string; remainingSteps: number }
-  | {
-      status: 'applied';
-      token: string;
-      pieceId: string;
-      path: string[];
-      capturedPieceIds: string[];
-      joinedPieceIds: string[];
-      bonusThrow: boolean;
-      gameOver: boolean;
-      roundOver: boolean;
-    };
+  {
+    status: 'applied';
+    token: string;
+    pieceId: string;
+    path: string[];
+    capturedPieceIds: string[];
+    joinedPieceIds: string[];
+    bonusThrow: boolean;
+    gameOver: boolean;
+    roundOver: boolean;
+  };
 
 /** submit_move: 이번 라운드 이동 순서상 현재 차례인 사람만 호출할 수 있다. */
 export function submitMove(state: GameState, token: string, req: MoveRequest): MoveOutcome {
@@ -284,22 +276,10 @@ export function submitMove(state: GameState, token: string, req: MoveRequest): M
   }
 
   const ownCornerId = entryNodeId(0);
-  // awaiting-branch 상태에서 재호출될 때만 branch가 채워져 있고, 그 외엔 아직 결정 전이다.
-  const branchChoiceFor = (cornerId: string) => {
-    if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
-    return undefined;
-  };
-
   const outcome =
     state.lastThrow.kind === 'backdo'
       ? walkBackward(state.graph, movingLead.path, ownCornerId)
-      : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps, branchChoiceFor);
-
-  if (outcome.status === 'awaiting-branch') {
-    state.awaitingBranch = { pieceId: movingLead.id, cornerId: outcome.cornerId!, remainingSteps: outcome.remainingSteps! };
-    return { status: 'awaiting-branch', cornerId: outcome.cornerId!, remainingSteps: outcome.remainingSteps! };
-  }
-  state.awaitingBranch = null;
+      : walkForward(state.graph, movingLead.path, ownCornerId, state.lastThrow.steps);
 
   const capturedPieceIds: string[] = [];
   const joinedPieceIds: string[] = [];
@@ -376,10 +356,6 @@ export function abandonGame(state: GameState, leavingToken: string): void {
 
 export function getAutoMoveRequest(state: GameState, token: string): MoveRequest | null {
   if (state.winner || state.phase !== 'moving' || currentMover(state) !== token || !state.lastThrow) return null;
-
-  if (state.awaitingBranch) {
-    return { pieceId: state.awaitingBranch.pieceId, branch: 'straight' };
-  }
 
   const leadPieces = state.pieces
     .filter((p) => p.ownerToken === token && !p.home && p.leadId === p.id)

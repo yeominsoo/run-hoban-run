@@ -46,8 +46,9 @@ export function diagonalStepOf(diagId) {
   return Number(diagId.match(/^diag-\d+-(\d+)$/)?.[1] ?? 0);
 }
 
-export function getCenterExit(arrivedFromCornerIndex) {
-  return diagonalNodeId(arrivedFromCornerIndex + 2, 1);
+/** 중앙에서 계속 전진할 때는 어느 대각선으로 들어왔든 항상 공유 출발점(코너 0) 방향 대각선으로 빠져나간다. */
+export function getCenterExit() {
+  return diagonalNodeId(0, 1);
 }
 
 export function getDiagonalOuterNext(diagId) {

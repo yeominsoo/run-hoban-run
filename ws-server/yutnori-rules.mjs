@@ -13,6 +13,8 @@ import {
 
 export { MAX_PLAYERS };
 
+const CENTER_EXIT_ID = getCenterExit();
+
 // 실제 윷가락 확률의 단순화 근사치. 백도는 특수 표시된 가락 조합에서만 드물게 나온다는 점만 반영.
 const THROW_TABLE = [
   { kind: 'backdo', steps: 1, weight: 3 },
@@ -65,7 +67,6 @@ export function createYutGame(tokens, seedRng) {
     turnIndex: 0,
     pendingThrows: [],
     phase: 'throw',
-    awaitingBranch: null,
     winner: null,
     rng: seedRng,
     throwSeq: 0,
@@ -116,7 +117,6 @@ function progressFromStart(piece) {
 export function submitThrow(state) {
   if (state.winner) throw new Error('game already over');
   if (state.phase !== 'throw') throw new Error('not in throw phase');
-  if (state.awaitingBranch) throw new Error('awaiting branch choice');
 
   const result = rollYutThrow(state.rng);
   state.throwSeq += 1;
@@ -142,7 +142,7 @@ export function discardDeadThrows(state) {
   state.pendingThrows = state.pendingThrows.filter((pt) => hasLegalMove(state, token, pt));
 }
 
-function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
+function walkForward(graph, startPath, ownCornerId, steps) {
   const path = [...startPath];
   let remaining = steps;
 
@@ -157,15 +157,13 @@ function walkForward(graph, startPath, ownCornerId, steps, branchChoiceFor) {
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
-        const choice = branchChoiceFor(currentId);
-        if (choice === undefined) {
-          return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
-        }
-        nextId = choice === 'shortcut' ? node.shortcutNext : node.next;
+        // 이번 이동을 시작하기 전부터 이미 이 코너에 서 있었다면 선택 없이 무조건 지름길로 들어간다.
+        // 이번 던지기 도중 지나가는 중이라면 무조건 외곽으로 계속 간다.
+        const restingHere = path.length === startPath.length;
+        nextId = restingHere ? node.shortcutNext : node.next;
       } else if (node.kind === 'center') {
-        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
-        const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
-        nextId = getCenterExit(fromCornerIndex);
+        // 중앙에서는 항상 공유 출발점 방향 대각선으로 빠져나간다(선택 없음).
+        nextId = CENTER_EXIT_ID;
       } else if (node.kind === 'diagonal') {
         // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
         // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
@@ -196,8 +194,7 @@ function walkBackward(graph, startPath, ownCornerId) {
   return { status: 'finished', path: startPath.slice(0, -1) };
 }
 
-/** submit_move: 대기 중인 던지기 하나를 소비해 말을 옮긴다. 지름길 분기가 필요하면 상태를 바꾸지 않고
- * 'awaiting-branch'를 반환하며, 호출자는 branch를 채워 다시 호출해야 한다. */
+/** submit_move: 대기 중인 던지기 하나를 소비해 말을 옮긴다. */
 export function submitMove(state, req) {
   if (state.winner) throw new Error('game already over');
   if (state.phase !== 'move') throw new Error('not in move phase');
@@ -224,27 +221,10 @@ export function submitMove(state, req) {
   }
 
   const ownCornerId = entryNodeId(0);
-  const branchChoiceFor = (cornerId) => {
-    if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
-    return undefined;
-  };
-
   const outcome =
     pendingThrow.result.kind === 'backdo'
       ? walkBackward(state.graph, movingLead.path, ownCornerId)
-      : walkForward(state.graph, movingLead.path, ownCornerId, pendingThrow.result.steps, branchChoiceFor);
-
-  if (outcome.status === 'awaiting-branch') {
-    const branch = {
-      pieceId: movingLead.id,
-      cornerId: outcome.cornerId,
-      remainingSteps: outcome.remainingSteps,
-      pendingThrowId: pendingThrow.id,
-    };
-    state.awaitingBranch = branch;
-    return { status: 'awaiting-branch', branch };
-  }
-  state.awaitingBranch = null;
+      : walkForward(state.graph, movingLead.path, ownCornerId, pendingThrow.result.steps);
 
   const capturedPieceIds = [];
   const joinedPieceIds = [];
@@ -319,7 +299,6 @@ function advanceTurn(state) {
   state.turnIndex = (state.turnIndex + 1) % state.turnOrder.length;
   state.phase = 'throw';
   state.pendingThrows = [];
-  state.awaitingBranch = null;
 }
 
 /** 시간 초과로 차례를 강제로 넘길 때 서버(ws-server)가 호출한다. */
@@ -329,14 +308,6 @@ export function skipTurn(state) {
 
 export function getAutoMoveRequest(state) {
   if (state.winner || state.phase !== 'move') return null;
-
-  if (state.awaitingBranch) {
-    return {
-      pieceId: state.awaitingBranch.pieceId,
-      pendingThrowId: state.awaitingBranch.pendingThrowId,
-      branch: 'straight',
-    };
-  }
 
   discardDeadThrows(state);
   if (state.pendingThrows.length === 0) {
@@ -389,7 +360,6 @@ export function removePlayer(state, token) {
   }
   state.phase = 'throw';
   state.pendingThrows = [];
-  state.awaitingBranch = null;
 }
 
 export function buildBoardSnapshot(state) {

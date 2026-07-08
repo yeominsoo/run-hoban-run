@@ -128,7 +128,6 @@ export function registerYutnoriServer() {
       currentTurnToken: game.turnOrder[game.turnIndex] ?? null,
       phase: game.phase,
       pendingThrows: game.pendingThrows.map(pt => ({ id: pt.id, result: pt.result })),
-      awaitingBranch: game.awaitingBranch,
     };
   }
 
@@ -231,13 +230,6 @@ export function registerYutnoriServer() {
     let outcome;
     try {
       outcome = submitMove(room.game, req);
-      if (outcome.status === 'awaiting-branch') {
-        outcome = submitMove(room.game, {
-          pieceId: outcome.branch.pieceId,
-          pendingThrowId: outcome.branch.pendingThrowId,
-          branch: 'straight',
-        });
-      }
     } catch { return; }
     if (outcome.status !== 'applied') return;
     applyMoveOutcome(room, roomCode, token, outcome, true);
@@ -250,19 +242,11 @@ export function registerYutnoriServer() {
       pieceId: String(msg.pieceId ?? ''),
       pendingThrowId: String(msg.pendingThrowId ?? ''),
       splitOff: !!msg.splitOff,
-      branch: msg.branch === 'straight' || msg.branch === 'shortcut' ? msg.branch : undefined,
     };
     let outcome;
     try {
       outcome = submitMove(room.game, req);
     } catch { return; }
-
-    if (outcome.status === 'awaiting-branch') {
-      const player = playerByToken(room, token);
-      if (player?.ws) send(player.ws, { type: 'await_branch', ...outcome.branch });
-      armTurnTimer(roomCode, room);
-      return;
-    }
 
     applyMoveOutcome(room, roomCode, token, outcome);
   }

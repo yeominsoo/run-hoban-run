@@ -173,9 +173,6 @@ export function registerStrategyYutnoriServer() {
       }
       let outcome;
       try { outcome = submitMove(game, token, req); } catch { return; }
-      if (outcome.status === 'awaiting-branch') {
-        try { outcome = submitMove(game, token, { pieceId: req.pieceId, branch: 'straight' }); } catch { return; }
-      }
       if (outcome.status !== 'applied') return;
       handleMoveApplied(room, roomCode, { ...outcome, name: nameOf(room, token), timedOut: true });
     }, MOVE_TIMEOUT_MS);
@@ -268,19 +265,11 @@ export function registerStrategyYutnoriServer() {
     const req = {
       pieceId: String(msg.pieceId ?? ''),
       splitOff: !!msg.splitOff,
-      branch: msg.branch === 'straight' || msg.branch === 'shortcut' ? msg.branch : undefined,
     };
     let outcome;
     try {
       outcome = submitMove(room.game, token, req);
     } catch { return; }
-
-    if (outcome.status === 'awaiting-branch') {
-      const player = playerByToken(room, token);
-      if (player?.ws) send(player.ws, { type: 'await_branch', pieceId: req.pieceId, cornerId: outcome.cornerId, remainingSteps: outcome.remainingSteps });
-      armMoveTimer(roomCode, room);
-      return;
-    }
 
     handleMoveApplied(room, roomCode, { ...outcome, name: nameOf(room, token) });
   }

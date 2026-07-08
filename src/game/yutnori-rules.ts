@@ -10,6 +10,8 @@ import {
   type YutBoardGraph,
 } from './yutnori-board';
 
+const CENTER_EXIT_ID = getCenterExit();
+
 export type ThrowKind = 'backdo' | 'do' | 'gae' | 'geol' | 'yut' | 'mo';
 
 export interface ThrowResult {
@@ -75,13 +77,6 @@ export interface PendingThrow {
   result: ThrowResult;
 }
 
-export interface BranchChoice {
-  pieceId: string;
-  cornerId: string;
-  remainingSteps: number;
-  pendingThrowId: string;
-}
-
 export type YutEvent =
   | { kind: 'throw'; token: string; result: ThrowResult }
   | { kind: 'move'; token: string; pieceId: string; path: string[]; capturedPieceIds: string[]; joinedPieceIds: string[] }
@@ -98,7 +93,6 @@ export interface GameState {
   turnIndex: number;
   pendingThrows: PendingThrow[];
   phase: 'throw' | 'move';
-  awaitingBranch: BranchChoice | null;
   winner: string | null;
   rng: () => number;
   throwSeq: number;
@@ -124,7 +118,6 @@ export function createYutGame(tokens: string[], seed: number): GameState {
     turnIndex: 0,
     pendingThrows: [],
     phase: 'throw',
-    awaitingBranch: null,
     winner: null,
     rng: mulberry32(seed),
     throwSeq: 0,
@@ -176,7 +169,6 @@ function progressFromStart(piece: Piece): number {
 export function submitThrow(state: GameState): ThrowResult {
   if (state.winner) throw new Error('game already over');
   if (state.phase !== 'throw') throw new Error('not in throw phase');
-  if (state.awaitingBranch) throw new Error('awaiting branch choice');
 
   const result = rollYutThrow(state.rng);
   state.throwSeq += 1;
@@ -205,10 +197,8 @@ export function discardDeadThrows(state: GameState): void {
 }
 
 interface WalkOutcome {
-  status: 'finished' | 'home' | 'awaiting-branch';
+  status: 'finished' | 'home';
   path: string[];
-  cornerId?: string;
-  remainingSteps?: number;
 }
 
 function walkForward(
@@ -216,7 +206,6 @@ function walkForward(
   startPath: string[],
   ownCornerId: string,
   steps: number,
-  branchChoiceFor: (cornerId: string) => 'straight' | 'shortcut' | undefined,
 ): WalkOutcome {
   const path = [...startPath];
   let remaining = steps;
@@ -232,15 +221,13 @@ function walkForward(
     } else {
       const node = graph[currentId];
       if (node.kind === 'corner' && node.shortcutNext) {
-        const choice = branchChoiceFor(currentId);
-        if (choice === undefined) {
-          return { status: 'awaiting-branch', path, cornerId: currentId, remainingSteps: remaining };
-        }
-        nextId = choice === 'shortcut' ? node.shortcutNext! : node.next;
+        // 이번 이동을 시작하기 전부터 이미 이 코너에 서 있었다면(직전 턴에 정확히 여기서 멈췄다면)
+        // 선택 없이 무조건 지름길로 들어간다. 이번 던지기 도중 지나가는 중이라면 무조건 외곽으로 계속 간다.
+        const restingHere = path.length === startPath.length;
+        nextId = restingHere ? node.shortcutNext : node.next;
       } else if (node.kind === 'center') {
-        const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
-        const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
-        nextId = getCenterExit(fromCornerIndex);
+        // 중앙에서는 항상 공유 출발점 방향 대각선으로 빠져나간다(선택 없음).
+        nextId = CENTER_EXIT_ID;
       } else if (node.kind === 'diagonal') {
         // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
         // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.
@@ -276,15 +263,12 @@ export interface MoveRequest {
   pendingThrowId: string;
   /** 스택에 업혀있는 말을 갈라쳐서 이 말 하나만 움직이고 싶을 때 true. */
   splitOff?: boolean;
-  branch?: 'straight' | 'shortcut';
 }
 
 export type MoveOutcome =
-  | { status: 'awaiting-branch'; branch: BranchChoice }
-  | { status: 'applied'; event: Extract<YutEvent, { kind: 'move' }>; bonusThrow: boolean; gameOver: boolean };
+  { status: 'applied'; event: Extract<YutEvent, { kind: 'move' }>; bonusThrow: boolean; gameOver: boolean };
 
-/** submit_move: 대기 중인 던지기 하나를 소비해 말을 옮긴다. 지름길 분기가 필요하면 상태를 바꾸지 않고
- * 'awaiting-branch'를 반환하며, 호출자는 branch를 채워 다시 호출해야 한다. */
+/** submit_move: 대기 중인 던지기 하나를 소비해 말을 옮긴다. */
 export function submitMove(state: GameState, req: MoveRequest): MoveOutcome {
   if (state.winner) throw new Error('game already over');
   if (state.phase !== 'move') throw new Error('not in move phase');
@@ -312,27 +296,10 @@ export function submitMove(state: GameState, req: MoveRequest): MoveOutcome {
   }
 
   const ownCornerId = entryNodeId(0);
-  const branchChoiceFor = (cornerId: string) => {
-    if (state.awaitingBranch && state.awaitingBranch.cornerId === cornerId && req.branch) return req.branch;
-    return undefined;
-  };
-
   const outcome =
     pendingThrow.result.kind === 'backdo'
       ? walkBackward(state.graph, movingLead.path, ownCornerId)
-      : walkForward(state.graph, movingLead.path, ownCornerId, pendingThrow.result.steps, branchChoiceFor);
-
-  if (outcome.status === 'awaiting-branch') {
-    const branch: BranchChoice = {
-      pieceId: movingLead.id,
-      cornerId: outcome.cornerId!,
-      remainingSteps: outcome.remainingSteps!,
-      pendingThrowId: pendingThrow.id,
-    };
-    state.awaitingBranch = branch;
-    return { status: 'awaiting-branch', branch };
-  }
-  state.awaitingBranch = null;
+      : walkForward(state.graph, movingLead.path, ownCornerId, pendingThrow.result.steps);
 
   const capturedPieceIds: string[] = [];
   const joinedPieceIds: string[] = [];
@@ -408,7 +375,6 @@ function advanceTurn(state: GameState): void {
   state.turnIndex = (state.turnIndex + 1) % state.turnOrder.length;
   state.phase = 'throw';
   state.pendingThrows = [];
-  state.awaitingBranch = null;
 }
 
 export function skipTurn(state: GameState): void {
@@ -417,14 +383,6 @@ export function skipTurn(state: GameState): void {
 
 export function getAutoMoveRequest(state: GameState): MoveRequest | null {
   if (state.winner || state.phase !== 'move') return null;
-
-  if (state.awaitingBranch) {
-    return {
-      pieceId: state.awaitingBranch.pieceId,
-      pendingThrowId: state.awaitingBranch.pendingThrowId,
-      branch: 'straight',
-    };
-  }
 
   discardDeadThrows(state);
   if (state.pendingThrows.length === 0) {
@@ -478,5 +436,4 @@ export function removePlayer(state: GameState, token: string): void {
   }
   state.phase = 'throw';
   state.pendingThrows = [];
-  state.awaitingBranch = null;
 }

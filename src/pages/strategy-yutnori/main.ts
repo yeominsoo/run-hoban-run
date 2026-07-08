@@ -2,7 +2,7 @@ import './strategy-yutnori.css';
 import { shareRoomLink } from '../../shared/share';
 import { showCenterToast } from '../../shared/center-toast';
 import { buildYutBoardGraph, YUT_START_NODE_ID } from '../../game/yutnori-board';
-import { nodeScreenPos, stackOffsetPct, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
+import { nodeScreenPos, stackOffsetPct, stagingLaneOffset, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -62,7 +62,6 @@ let signalTimer: ReturnType<typeof setTimeout> | null = null;
 interface BoardPieceEntry { id: string; ownerToken: string; leadId: string; home: boolean; nodeId: string | null; }
 interface PlayerEntry { token: string; name: string; connected: boolean; }
 interface ThrowResult { kind: string; steps: number; frontCount?: number; backCount: number; faces: Record<string, string> }
-interface BranchInfo { pieceId: string; cornerId: string; remainingSteps: number; }
 interface ChatMessage { token: string; name: string; text: string; sentAt?: number; }
 interface ReactionMessage { token: string; name: string; reaction: { id: string; emoji: string; label: string }; sentAt?: number; }
 
@@ -77,7 +76,6 @@ let syPhase: 'collecting' | 'moving' = 'collecting';
 let submittedTokens: string[] = [];
 let lastThrow: ThrowResult | null = null;
 let round = 1;
-let pendingBranch: BranchInfo | null = null;
 let mySubmittedThisRound = false;
 let lastSignal: { fromName: string; suggestion: string } | null = null;
 
@@ -168,8 +166,6 @@ app.innerHTML = `
         <div class="yn-board-2d" id="yn-board-2d">
           <svg class="yn-board-svg" viewBox="0 0 100 100" id="yn-board-svg" aria-hidden="true"></svg>
           <div class="yn-board-tokens" id="yn-board-tokens"></div>
-          <div class="yn-branch-hint straight hidden" id="yn-branch-hint-straight"></div>
-          <div class="yn-branch-hint shortcut hidden" id="yn-branch-hint-shortcut"></div>
         </div>
       </div>
 
@@ -195,10 +191,6 @@ app.innerHTML = `
         <div class="sy-signal-received hidden" id="sy-signal-received"></div>
 
         <div class="yn-piece-picker hidden" id="yn-piece-picker"></div>
-        <div class="yn-branch-picker hidden" id="yn-branch-picker">
-          <button type="button" class="yn-branch-btn" id="branch-straight-btn">➡️ 그대로 외곽으로</button>
-          <button type="button" class="yn-branch-btn" id="branch-shortcut-btn">↗️ 지름길(대각선)로</button>
-        </div>
       </div>
 
       <div class="yn-reactions" id="yn-reactions">
@@ -268,8 +260,6 @@ const turnStatus = document.getElementById('sy-turn-status')!;
 const revealedFacesEl = document.getElementById('sy-revealed-faces')!;
 const boardSvgEl = document.getElementById('yn-board-svg') as unknown as SVGSVGElement;
 const boardTokensEl = document.getElementById('yn-board-tokens')!;
-const branchHintStraightEl = document.getElementById('yn-branch-hint-straight')!;
-const branchHintShortcutEl = document.getElementById('yn-branch-hint-shortcut')!;
 const seatBadgeEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-badge-${i}`)!);
 const seatReactionEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-reaction-${i}`)!);
 const seatEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-${i}`)!);
@@ -280,9 +270,6 @@ const faceBackBtn = document.getElementById('face-back-btn') as HTMLButtonElemen
 const signalRowEl = document.getElementById('sy-signal-row')!;
 const signalReceivedEl = document.getElementById('sy-signal-received')!;
 const piecePickerEl = document.getElementById('yn-piece-picker')!;
-const branchPickerEl = document.getElementById('yn-branch-picker')!;
-const branchStraightBtn = document.getElementById('branch-straight-btn') as HTMLButtonElement;
-const branchShortcutBtn = document.getElementById('branch-shortcut-btn') as HTMLButtonElement;
 const chatLogEl = document.getElementById('yn-chat-log')!;
 const chatInput = document.getElementById('yn-chat-input') as HTMLInputElement;
 const chatSendBtn = document.getElementById('yn-chat-send-btn') as HTMLButtonElement;
@@ -433,7 +420,6 @@ function resetGameState() {
   submittedTokens = [];
   lastThrow = null;
   round = 1;
-  pendingBranch = null;
   mySubmittedThisRound = false;
   lastSignal = null;
   clearAllReactions();
@@ -544,12 +530,17 @@ function renderPieceButton(piece: BoardPieceEntry, groupCount: number, split: bo
       ? `업힌 말 ${groupCount}개 전체 이동`
       : `${piece.nodeId ? '보드 위' : '출발 전'} 말 이동`;
   return `<button type="button" class="yn-piece-btn${split ? ' split' : ''}" data-piece-id="${piece.id}" data-split="${split}" aria-label="${aria}">
-    <span class="yn-piece-icon" style="--piece-color: ${playerColor(piece.ownerToken)}" aria-hidden="true"></span>
+    <span class="yn-piece-icon" style="--piece-color: ${playerColor(piece.ownerToken)}" aria-hidden="true">${pieceNumber(piece)}</span>
     <span class="yn-piece-copy">
       <span class="yn-piece-title">${title}</span>
       <span class="yn-piece-meta">${label}</span>
     </span>
   </button>`;
+}
+
+/** 자기 말 몇 번인지(1~2) — id가 `${ownerToken}-${index}` 형식인 걸 이용한다. */
+function pieceNumber(entry: BoardPieceEntry): number {
+  return Number(entry.id.split('-').pop()) + 1;
 }
 
 // ── 2D 보드 렌더링 (yutnori와 동일한 공용 좌표 모듈 재사용) ────────
@@ -585,7 +576,7 @@ function buildBoardSvg() {
 buildBoardSvg();
 
 boardTokensEl.addEventListener('click', (e) => {
-  if (currentMoverToken !== myToken || syPhase !== 'moving' || pendingBranch) return;
+  if (currentMoverToken !== myToken || syPhase !== 'moving') return;
   const el = (e.target as HTMLElement).closest('.yn-piece-token') as HTMLElement | null;
   const pieceId = el?.dataset.pieceId;
   if (!pieceId || !selectablePieceIds.has(pieceId)) return;
@@ -613,49 +604,30 @@ function flashHome(token: string) {
   setTimeout(() => badge.classList.remove('home-flash'), 750);
 }
 
-/** 분기 대기 중이면 코너의 외곽/지름길 후보 칸을 하이라이트하고, 아니면 지운다. */
-function syncBranchHints() {
-  if (pendingBranch && currentMoverToken === myToken) {
-    const corner = boardGraph[pendingBranch.cornerId];
-    if (corner) {
-      const straight = nodeScreenPos(boardGraph[corner.next]);
-      branchHintStraightEl.style.left = `${straight.xPct}%`;
-      branchHintStraightEl.style.top = `${straight.yPct}%`;
-      branchHintStraightEl.classList.remove('hidden');
-      if (corner.shortcutNext) {
-        const shortcut = nodeScreenPos(boardGraph[corner.shortcutNext]);
-        branchHintShortcutEl.style.left = `${shortcut.xPct}%`;
-        branchHintShortcutEl.style.top = `${shortcut.yPct}%`;
-        branchHintShortcutEl.classList.remove('hidden');
-      } else {
-        branchHintShortcutEl.classList.add('hidden');
-      }
-      return;
-    }
-  }
-  branchHintStraightEl.classList.add('hidden');
-  branchHintShortcutEl.classList.add('hidden');
-}
-
 /** 완주(home)한 말은 배지 점수에만 반영하고 보드에는 그리지 않는다.
- *  출발 전(nodeId=null) 말은 출발 칸 위에 대기 중인 것처럼 표시한다. */
-function effectiveNodeId(entry: BoardPieceEntry): string {
-  return entry.nodeId ?? YUT_START_NODE_ID;
-}
-
+ *  출발 전(nodeId=null) 말은 같은 칸에 여러 명이 몰리지 않도록 플레이어별로 다른 위치에 대기시킨다. */
 function syncPieceTokens() {
   const active = board.filter((b) => !b.home);
-  const byNode = new Map<string, BoardPieceEntry[]>();
+  const groups = new Map<string, { base: { xPct: number; yPct: number }; entries: BoardPieceEntry[] }>();
   for (const entry of active) {
-    const nid = effectiveNodeId(entry);
-    const arr = byNode.get(nid) ?? [];
-    arr.push(entry);
-    byNode.set(nid, arr);
+    const groupKey = entry.nodeId ?? `start:${entry.ownerToken}`;
+    let group = groups.get(groupKey);
+    if (!group) {
+      const base = entry.nodeId
+        ? nodeScreenPos(boardGraph[entry.nodeId])
+        : (() => {
+            const start = nodeScreenPos(boardGraph[YUT_START_NODE_ID]);
+            const lane = stagingLaneOffset(stablePlayerIndex(entry.ownerToken));
+            return { xPct: start.xPct + lane.dx, yPct: start.yPct + lane.dy };
+          })();
+      group = { base, entries: [] };
+      groups.set(groupKey, group);
+    }
+    group.entries.push(entry);
   }
 
   const seen = new Set<string>();
-  byNode.forEach((entries, nodeId) => {
-    const base = nodeScreenPos(boardGraph[nodeId]);
+  groups.forEach(({ base, entries }) => {
     entries.forEach((entry, i) => {
       seen.add(entry.id);
       const { dx, dy } = stackOffsetPct(i);
@@ -664,6 +636,7 @@ function syncPieceTokens() {
         el = document.createElement('div');
         el.className = 'yn-piece-token';
         el.dataset.pieceId = entry.id;
+        el.innerHTML = '<span class="yn-piece-token-num"></span>';
         boardTokensEl.appendChild(el);
         pieceTokenEls.set(entry.id, el);
       }
@@ -671,6 +644,8 @@ function syncPieceTokens() {
       el.style.left = `${base.xPct + dx}%`;
       el.style.top = `${base.yPct + dy}%`;
       el.classList.toggle('selectable', selectablePieceIds.has(entry.id));
+      const numEl = el.querySelector('.yn-piece-token-num');
+      if (numEl) numEl.textContent = String(pieceNumber(entry));
     });
   });
 
@@ -738,9 +713,8 @@ function renderControls() {
   if (lastSignal) signalReceivedEl.textContent = `${lastSignal.fromName}님의 신호: "${SIGNAL_LABEL[lastSignal.suggestion] ?? lastSignal.suggestion}"`;
 
   const myTurn = currentMoverToken === myToken;
-  branchPickerEl.classList.toggle('hidden', !pendingBranch || !myTurn);
 
-  const showMoveUi = myTurn && syPhase === 'moving' && !pendingBranch;
+  const showMoveUi = myTurn && syPhase === 'moving';
   piecePickerEl.classList.toggle('hidden', !showMoveUi);
 
   selectablePieceIds.clear();
@@ -778,11 +752,8 @@ function renderPlaying() {
   renderControls();
   syncPieceTokens();
   renderRevealedFaces();
-  syncBranchHints();
 
-  if (pendingBranch && currentMoverToken === myToken) {
-    turnStatus.textContent = `말이 코너에 도착했어요 — 남은 ${pendingBranch.remainingSteps}칸을 어떻게 갈까요?`;
-  } else if (syPhase === 'collecting') {
+  if (syPhase === 'collecting') {
     const activeName = currentMoverToken ? nameOfToken(currentMoverToken) : '현재 플레이어';
     turnStatus.textContent = mySubmittedThisRound
       ? `${activeName}님의 던지기 — 제출 완료 (${submittedTokens.length}/4)`
@@ -934,11 +905,6 @@ function handleServerMessage(msg: any) {
       renderChatLog();
       break;
 
-    case 'await_branch':
-      pendingBranch = { pieceId: msg.pieceId, cornerId: msg.cornerId, remainingSteps: msg.remainingSteps };
-      renderPlaying();
-      break;
-
     case 'signal_received':
       lastSignal = { fromName: msg.fromName, suggestion: msg.suggestion };
       if (signalTimer) clearTimeout(signalTimer);
@@ -1054,15 +1020,6 @@ piecePickerEl.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('[data-piece-id]') as HTMLElement | null;
   if (!btn) return;
   send({ type: 'submit_move', pieceId: btn.dataset.pieceId, splitOff: btn.dataset.split === 'true' });
-});
-
-branchStraightBtn.addEventListener('click', () => {
-  if (!pendingBranch) return;
-  send({ type: 'submit_move', pieceId: pendingBranch.pieceId, branch: 'straight' });
-});
-branchShortcutBtn.addEventListener('click', () => {
-  if (!pendingBranch) return;
-  send({ type: 'submit_move', pieceId: pendingBranch.pieceId, branch: 'shortcut' });
 });
 
 chatSendBtn.addEventListener('click', submitChat);
