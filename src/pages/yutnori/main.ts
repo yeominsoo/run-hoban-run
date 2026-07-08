@@ -1,11 +1,8 @@
 import './yutnori.css';
-import * as THREE from 'three';
 import { shareRoomLink } from '../../shared/share';
 import { showCenterToast } from '../../shared/center-toast';
-import { buildYutBoardGraph, entryNodeId } from '../../game/yutnori-board';
-import { buildYutnoriBoardScene, nodeWorldPosition } from '../../render/yutnori-board';
-import { createYutPieceMesh, YUT_PLAYER_COLORS } from '../../render/yutnori-piece';
-import { YutnoriFx } from '../../render/yutnori-effects';
+import { buildYutBoardGraph, YUT_START_NODE_ID } from '../../game/yutnori-board';
+import { nodeScreenPos, stackOffsetPct, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -71,7 +68,6 @@ let pendingAction: PendingAction | null = null;
 let intentionalClose = false;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let reactionTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface BoardPieceEntry { id: string; ownerToken: string; leadId: string; home: boolean; nodeId: string | null; }
 interface PlayerEntry { token: string; name: string; connected: boolean; }
@@ -160,10 +156,31 @@ app.innerHTML = `
 
     <!-- Playing -->
     <div class="yn-panel wide hidden" id="playing-panel">
-      <div class="yn-players" id="yn-players"></div>
       <p class="status-text" id="yn-turn-status"></p>
-      <div class="yn-reaction-pop hidden" id="yn-reaction-pop"></div>
-      <div class="yn-canvas-wrap" id="yn-canvas-wrap"></div>
+      <div class="yn-board-wrap" id="yn-board-wrap">
+        <div class="yn-seat seat-tl" id="yn-seat-0">
+          <div class="yn-seat-badge" id="yn-seat-badge-0"></div>
+          <div class="yn-seat-reaction hidden" id="yn-seat-reaction-0"></div>
+        </div>
+        <div class="yn-seat seat-tr" id="yn-seat-1">
+          <div class="yn-seat-badge" id="yn-seat-badge-1"></div>
+          <div class="yn-seat-reaction hidden" id="yn-seat-reaction-1"></div>
+        </div>
+        <div class="yn-seat seat-br" id="yn-seat-2">
+          <div class="yn-seat-badge" id="yn-seat-badge-2"></div>
+          <div class="yn-seat-reaction hidden" id="yn-seat-reaction-2"></div>
+        </div>
+        <div class="yn-seat seat-bl" id="yn-seat-3">
+          <div class="yn-seat-badge" id="yn-seat-badge-3"></div>
+          <div class="yn-seat-reaction hidden" id="yn-seat-reaction-3"></div>
+        </div>
+        <div class="yn-board-2d" id="yn-board-2d">
+          <svg class="yn-board-svg" viewBox="0 0 100 100" id="yn-board-svg" aria-hidden="true"></svg>
+          <div class="yn-board-tokens" id="yn-board-tokens"></div>
+          <div class="yn-branch-hint straight hidden" id="yn-branch-hint-straight"></div>
+          <div class="yn-branch-hint shortcut hidden" id="yn-branch-hint-shortcut"></div>
+        </div>
+      </div>
 
       <div class="yn-controls">
         <button id="throw-btn" type="button" class="yn-btn primary throw-btn" aria-label="윷 던지기" disabled>
@@ -247,10 +264,15 @@ const lobbyStatus = document.getElementById('lobby-status')!;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButtonElement;
 
-const ynPlayersEl = document.getElementById('yn-players')!;
 const turnStatus = document.getElementById('yn-turn-status')!;
-const reactionPop = document.getElementById('yn-reaction-pop')!;
-const canvasWrap = document.getElementById('yn-canvas-wrap')!;
+const boardSvgEl = document.getElementById('yn-board-svg') as unknown as SVGSVGElement;
+const boardTokensEl = document.getElementById('yn-board-tokens')!;
+const branchHintStraightEl = document.getElementById('yn-branch-hint-straight')!;
+const branchHintShortcutEl = document.getElementById('yn-branch-hint-shortcut')!;
+const seatBadgeEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-badge-${i}`)!);
+const seatReactionEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-reaction-${i}`)!);
+const seatEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-${i}`)!);
+const seatReactionTimers: (ReturnType<typeof setTimeout> | null)[] = [null, null, null, null];
 const throwBtn = document.getElementById('throw-btn') as HTMLButtonElement;
 const throwQueueEl = document.getElementById('yn-throw-queue')!;
 const piecePickerEl = document.getElementById('yn-piece-picker')!;
@@ -304,7 +326,6 @@ function setPhase(next: Phase) {
   vis(panels.playing, next === 'playing');
   vis(panels.gameOver, next === 'game_over');
   vis(panels.error, next === 'error');
-  if (next === 'playing') ensureScene();
 }
 
 function showEntryError(msg: string) { entryError.textContent = msg; entryError.classList.remove('hidden'); }
@@ -410,8 +431,7 @@ function resetGameState() {
   selectedThrowId = null;
   isTossing = false;
   if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
-  if (reactionTimer) { clearTimeout(reactionTimer); reactionTimer = null; }
-  reactionPop.classList.add('hidden');
+  clearAllReactions();
   renderChatLog();
 }
 
@@ -430,11 +450,22 @@ function showToast(text: string, kind: 'throw' | 'capture' | 'info') {
   showCenterToast(text, { kind, duration: kind === 'throw' ? 1800 : 3000 });
 }
 
+/** 반응 이모지는 보낸 사람의 좌석 배지 옆 말풍선으로 표시한다(어느 위치인지 헷갈리지 않도록). */
 function showReaction(msg: ReactionMessage) {
-  if (reactionTimer) clearTimeout(reactionTimer);
-  reactionPop.innerHTML = `<span class="yn-reaction-emoji">${escapeHtml(msg.reaction.emoji)}</span><span class="yn-reaction-name">${escapeHtml(msg.name)}</span>`;
-  reactionPop.classList.remove('hidden');
-  reactionTimer = setTimeout(() => { reactionPop.classList.add('hidden'); }, 1600);
+  const slot = stablePlayerIndex(msg.token);
+  const el = seatReactionEls[slot];
+  if (!el) return;
+  if (seatReactionTimers[slot]) clearTimeout(seatReactionTimers[slot]!);
+  el.innerHTML = `<span class="yn-seat-reaction-emoji">${escapeHtml(msg.reaction.emoji)}</span>`;
+  el.classList.remove('hidden');
+  seatReactionTimers[slot] = setTimeout(() => { el.classList.add('hidden'); }, 1600);
+}
+
+function clearAllReactions() {
+  seatReactionEls.forEach((el, slot) => {
+    if (seatReactionTimers[slot]) { clearTimeout(seatReactionTimers[slot]!); seatReactionTimers[slot] = null; }
+    el.classList.add('hidden');
+  });
 }
 
 function escapeHtml(value: string): string {
@@ -527,7 +558,7 @@ function playerByToken(token: string): PlayerEntry | undefined {
 
 function playerColor(token: string): string {
   const idx = Math.max(0, playerIndex(token));
-  return `#${YUT_PLAYER_COLORS[idx % YUT_PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+  return YUT_PLAYER_COLORS[idx % YUT_PLAYER_COLORS.length];
 }
 
 function yutMiniPreview(kind: string): string {
@@ -565,226 +596,163 @@ function renderPieceButton(piece: BoardPieceEntry, groupCount: number, split: bo
   </button>`;
 }
 
-// ── Three.js scene ────────────────────────────────────────────────
-let scene: THREE.Scene | null = null;
-let camera: THREE.PerspectiveCamera | null = null;
-let renderer: THREE.WebGLRenderer | null = null;
-let clock: THREE.Clock | null = null;
-let animating = false;
-let fx: YutnoriFx | null = null;
+// ── 2D 보드 렌더링 ────────────────────────────────────────────────
 const boardGraph = buildYutBoardGraph();
-const pieceMeshes = new Map<string, THREE.Group>();
-const pieceTargets = new Map<string, THREE.Vector3>();
-// 이번 이동 단계에서 보드 클릭으로 고를 수 있는 lead 피스들. animate()가 매 프레임 halo/bounce에 사용한다.
+const pieceTokenEls = new Map<string, HTMLDivElement>();
+// 이번 이동 단계에서 보드 클릭으로 고를 수 있는 lead 피스들.
 const selectablePieceIds = new Set<string>();
-let raycaster: THREE.Raycaster | null = null;
-const pointer = new THREE.Vector2();
 
-function stagingPosition(cornerIndex: number, outward: number, stackIndex: number): THREE.Vector3 {
-  const startNode = boardGraph[entryNodeId(0)];
-  const dir = new THREE.Vector2(startNode.gridPos[0], startNode.gridPos[1]).normalize();
-  const tangent = new THREE.Vector2(-dir.y, dir.x);
-  const laneOffset = cornerIndex - (players.length - 1) / 2;
-  const base = nodeWorldPosition(startNode.gridPos).add(
-    new THREE.Vector3(dir.x, 0, dir.y).multiplyScalar(outward),
-  );
-  base.x += tangent.x * laneOffset * 0.58 + (stackIndex % 2) * 0.24 - 0.12;
-  base.z += tangent.y * laneOffset * 0.58 + Math.floor(stackIndex / 2) * 0.36;
-  return base;
-}
-
-function ensureScene() {
-  if (scene) { onResize(); return; }
-
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xfff9ef);
-  scene.fog = new THREE.Fog(0xfff9ef, 28, 58);
-
-  camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
-  camera.position.set(0, 23, 18);
-  camera.lookAt(0, 0, 0);
-
-  const hemi = new THREE.HemisphereLight(0xfff3d6, 0xf7d8c9, 1.05);
-  scene!.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffe9bd, 1.0);
-  dir.position.set(7, 12, 6);
-  dir.castShadow = true;
-  scene!.add(dir);
-
-  scene!.add(buildYutnoriBoardScene(boardGraph));
-  fx = new YutnoriFx(scene!);
-
-  try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  } catch {
-    canvasWrap.textContent = '이 브라우저에서는 3D 렌더링을 사용할 수 없어요.';
-    return;
-  }
-  renderer.shadowMap.enabled = true;
-  canvasWrap.innerHTML = '';
-  canvasWrap.appendChild(renderer.domElement);
-  raycaster = new THREE.Raycaster();
-  renderer.domElement.addEventListener('pointerdown', onCanvasPointer);
-  clock = new THREE.Clock();
-  onResize();
-  window.addEventListener('resize', onResize);
-
-  if (!animating) {
-    animating = true;
-    requestAnimationFrame(animate);
-  }
-}
-
-function onResize() {
-  if (!renderer || !camera) return;
-  const w = canvasWrap.clientWidth || 1;
-  const h = canvasWrap.clientHeight || 1;
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-  if (!renderer || !scene || !camera || !clock) return;
-  const delta = Math.min(clock.getDelta(), 0.1);
-  const lerpAlpha = 1 - Math.pow(0.001, delta);
-  const t = clock.elapsedTime;
-  fx?.update(delta);
-
-  pieceMeshes.forEach((mesh, id) => {
-    const target = pieceTargets.get(id);
-    if (target) mesh.position.lerp(target, lerpAlpha);
-
-    const selectable = selectablePieceIds.has(id);
-    const halo = mesh.getObjectByName('yut-piece-halo');
-    if (halo) {
-      halo.visible = selectable;
-      if (selectable) {
-        const pulse = 1 + Math.sin(t * 5) * 0.12;
-        halo.scale.set(pulse, pulse, 1);
-      }
+/** 보드 트랙(외곽 사각형 + 대각선 지름길) SVG를 한 번만 만든다. 토폴로지가 고정이라 매 프레임 다시 그릴 필요가 없다. */
+function buildBoardSvg() {
+  const nodes = Object.values(boardGraph);
+  const lines: string[] = [];
+  for (const node of nodes) {
+    const from = nodeScreenPos(node);
+    if (node.kind !== 'center') {
+      const to = nodeScreenPos(boardGraph[node.next]);
+      lines.push(`<line x1="${from.xPct}" y1="${from.yPct}" x2="${to.xPct}" y2="${to.yPct}" class="yn-board-line" />`);
     }
-    const inner = mesh.getObjectByName('yut-piece-inner');
-    if (inner) {
-      const hopRemain = ((mesh.userData.hopUntil as number) ?? 0) - t;
-      if (selectable) inner.position.y = Math.abs(Math.sin(t * 4)) * 0.16;
-      else if (hopRemain > 0) inner.position.y = Math.sin((1 - hopRemain / 0.5) * Math.PI) * 0.45;
-      else inner.position.y = 0;
+    if (node.shortcutNext) {
+      const to = nodeScreenPos(boardGraph[node.shortcutNext]);
+      lines.push(`<line x1="${from.xPct}" y1="${from.yPct}" x2="${to.xPct}" y2="${to.yPct}" class="yn-board-line" />`);
     }
-  });
-
-  renderer.render(scene, camera);
+  }
+  const dots = nodes.map((node) => {
+    const { xPct, yPct } = nodeScreenPos(node);
+    const big = node.kind === 'corner' || node.kind === 'center';
+    return `<circle cx="${xPct}" cy="${yPct}" r="${big ? 4.2 : 2.6}" class="yn-board-dot ${big ? 'corner' : 'outer'}" />`;
+  }).join('');
+  const start = nodeScreenPos(boardGraph[YUT_START_NODE_ID]);
+  const startLabel = `<text x="${start.xPct - 7}" y="${start.yPct - 6}" class="yn-board-start-label" text-anchor="end">출발</text>`;
+  boardSvgEl.innerHTML = `${lines.join('')}${dots}${startLabel}`;
 }
+buildBoardSvg();
 
-/** 보드 캔버스 클릭 → 레이캐스트로 내 말을 집어 이동 요청. 텍스트 버튼과 동일한 submit_move를 보낸다. */
-function onCanvasPointer(e: PointerEvent) {
-  if (!renderer || !camera || !raycaster) return;
+boardTokensEl.addEventListener('click', (e) => {
   if (currentTurnToken !== myToken || ynPhase !== 'move' || pendingBranch) return;
   if (!selectedThrowId) return;
-
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-
-  const hits = raycaster.intersectObjects([...pieceMeshes.values()], true);
-  let obj: THREE.Object3D | null = hits[0]?.object ?? null;
-  let pieceId: string | undefined;
-  while (obj) {
-    if (typeof obj.userData?.pieceId === 'string') { pieceId = obj.userData.pieceId; break; }
-    obj = obj.parent;
-  }
+  const el = (e.target as HTMLElement).closest('.yn-piece-token') as HTMLElement | null;
+  const pieceId = el?.dataset.pieceId;
   if (!pieceId || !selectablePieceIds.has(pieceId)) return;
-
   // 보드 클릭은 스택 전체 이동만 담당한다. 갈라치기는 하단 텍스트 버튼으로 남겨둔다.
   send({ type: 'submit_move', pieceId, pendingThrowId: selectedThrowId, splitOff: false });
-}
+});
 
-/** 잡히거나 업힌 말이 잠깐 통통 튀도록 표시한다(animate가 hopUntil을 읽는다). */
+/** 잡히거나 업힌 말이 잠깐 통통 튀도록 표시한다. */
 function hopPiece(id: string) {
-  const mesh = pieceMeshes.get(id);
-  if (mesh && clock) mesh.userData.hopUntil = clock.elapsedTime + 0.5;
+  const el = pieceTokenEls.get(id);
+  if (!el) return;
+  el.classList.remove('hop');
+  void el.offsetWidth;
+  el.classList.add('hop');
+  setTimeout(() => el.classList.remove('hop'), 520);
 }
 
-/** 분기 대기 중이면 코너의 외곽/지름길 후보 칸에 방향 화살표를 띄우고, 아니면 지운다. */
-function syncBranchFx() {
-  if (!fx) return;
+/** 홈인 시 해당 플레이어 좌석 배지를 잠깐 반짝인다. */
+function flashHome(token: string) {
+  const badge = seatBadgeEls[Math.max(0, stablePlayerIndex(token))];
+  if (!badge) return;
+  badge.classList.remove('home-flash');
+  void badge.offsetWidth;
+  badge.classList.add('home-flash');
+  setTimeout(() => badge.classList.remove('home-flash'), 750);
+}
+
+/** 분기 대기 중이면 코너의 외곽/지름길 후보 칸을 하이라이트하고, 아니면 지운다. */
+function syncBranchHints() {
   if (pendingBranch && currentTurnToken === myToken) {
     const corner = boardGraph[pendingBranch.cornerId];
     if (corner) {
-      const straightPos = nodeWorldPosition(boardGraph[corner.next].gridPos);
-      const shortcutPos = corner.shortcutNext ? nodeWorldPosition(boardGraph[corner.shortcutNext].gridPos) : null;
-      fx.showBranch(pendingBranch.cornerId, straightPos, shortcutPos);
+      const straight = nodeScreenPos(boardGraph[corner.next]);
+      branchHintStraightEl.style.left = `${straight.xPct}%`;
+      branchHintStraightEl.style.top = `${straight.yPct}%`;
+      branchHintStraightEl.classList.remove('hidden');
+      if (corner.shortcutNext) {
+        const shortcut = nodeScreenPos(boardGraph[corner.shortcutNext]);
+        branchHintShortcutEl.style.left = `${shortcut.xPct}%`;
+        branchHintShortcutEl.style.top = `${shortcut.yPct}%`;
+        branchHintShortcutEl.classList.remove('hidden');
+      } else {
+        branchHintShortcutEl.classList.add('hidden');
+      }
       return;
     }
   }
-  fx.clearBranch();
+  branchHintStraightEl.classList.add('hidden');
+  branchHintShortcutEl.classList.add('hidden');
 }
 
-function syncPieceMeshes() {
-  if (!scene) return;
+/** 완주(home)한 말은 배지 점수에만 반영하고 보드에는 그리지 않는다.
+ *  출발 전(nodeId=null) 말은 출발 칸 위에 대기 중인 것처럼 표시한다. */
+function effectiveNodeId(entry: BoardPieceEntry): string {
+  return entry.nodeId ?? YUT_START_NODE_ID;
+}
+
+function syncPieceTokens() {
+  const active = board.filter((b) => !b.home);
+  const byNode = new Map<string, BoardPieceEntry[]>();
+  for (const entry of active) {
+    const nid = effectiveNodeId(entry);
+    const arr = byNode.get(nid) ?? [];
+    arr.push(entry);
+    byNode.set(nid, arr);
+  }
 
   const seen = new Set<string>();
-  for (const entry of board) {
-    seen.add(entry.id);
-    let mesh = pieceMeshes.get(entry.id);
-    if (!mesh) {
-      mesh = createYutPieceMesh(playerIndex(entry.ownerToken));
-      mesh.userData.pieceId = entry.id;
-      pieceMeshes.set(entry.id, mesh);
-      scene.add(mesh);
-    }
+  byNode.forEach((entries, nodeId) => {
+    const base = nodeScreenPos(boardGraph[nodeId]);
+    entries.forEach((entry, i) => {
+      seen.add(entry.id);
+      const { dx, dy } = stackOffsetPct(i);
+      let el = pieceTokenEls.get(entry.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'yn-piece-token';
+        el.dataset.pieceId = entry.id;
+        boardTokensEl.appendChild(el);
+        pieceTokenEls.set(entry.id, el);
+      }
+      el.style.setProperty('--piece-color', playerColor(entry.ownerToken));
+      el.style.left = `${base.xPct + dx}%`;
+      el.style.top = `${base.yPct + dy}%`;
+      el.classList.toggle('selectable', selectablePieceIds.has(entry.id));
+    });
+  });
 
-    const idx = Number(entry.id.split('-').pop());
-    const cornerIndex = Math.max(0, playerIndex(entry.ownerToken));
-    let target: THREE.Vector3;
-    if (entry.home) {
-      target = stagingPosition(cornerIndex, 2.4, idx);
-    } else if (!entry.nodeId) {
-      target = stagingPosition(cornerIndex, 1.35, idx);
-    } else {
-      const node = boardGraph[entry.nodeId];
-      target = nodeWorldPosition(node.gridPos);
-      target.y = 0.15;
-      const sameNode = board.filter((b) => b.nodeId === entry.nodeId && !b.home);
-      const stackPos = sameNode.findIndex((b) => b.id === entry.id);
-      target.y += stackPos * 0.32;
-    }
-    pieceTargets.set(entry.id, target);
-  }
-
-  for (const id of [...pieceMeshes.keys()]) {
-    if (!seen.has(id)) {
-      const mesh = pieceMeshes.get(id)!;
-      scene.remove(mesh);
-      pieceMeshes.delete(id);
-      pieceTargets.delete(id);
-    }
+  for (const [id, el] of [...pieceTokenEls]) {
+    if (!seen.has(id)) { el.remove(); pieceTokenEls.delete(id); }
   }
 }
 
-// ── Player pips + controls ────────────────────────────────────────
-function renderPlayerPips() {
-  const teamList = teams.length ? teams : players.map((p) => [p.token]);
-  ynPlayersEl.innerHTML = teamList.map((team, teamIndex) => {
-    const teamHome = team.reduce((sum, token) => sum + board.filter((b) => b.ownerToken === token && b.home).length, 0);
-    const rows = team.map((token) => {
-      const p = playerByToken(token);
-      if (!p) return '';
-      const color = playerColor(token);
-      const isTurn = token === currentTurnToken;
-      const homeCount = board.filter((b) => b.ownerToken === token && b.home).length;
-      return `<div class="yn-player-pip${isTurn ? ' active-turn' : ''}${p.connected ? '' : ' disconnected'}">
-        <span class="yn-pip-dot" style="background:${color}"></span>
-        <span>${p.name}${token === myToken ? ' (나)' : ''} · ${homeCount}/4</span>
-      </div>`;
-    }).join('');
-    return `<div class="yn-team">
-      <div class="yn-team-label">팀 ${teamIndex + 1} · ${teamHome}/${team.length * 4}</div>
-      ${rows}
-    </div>`;
-  }).join('');
+// ── 좌석 배지(11/1/5/7시) + 컨트롤 ──────────────────────────────────
+/** 좌석 순서는 참가 순서(stablePlayerIndex)로 고정: 1p=11시, 2p=1시, 3p=5시, 4p=7시(시계방향). */
+function renderSeats() {
+  for (let slot = 0; slot < 4; slot += 1) {
+    const seatEl = seatEls[slot];
+    const badgeEl = seatBadgeEls[slot];
+    const token = players.find((p) => stablePlayerIndex(p.token) === slot)?.token;
+    if (!token) {
+      seatEl.classList.add('empty');
+      badgeEl.innerHTML = '';
+      continue;
+    }
+    seatEl.classList.remove('empty');
+    const p = playerByToken(token);
+    if (!p) continue;
+    const color = playerColor(token);
+    const isTurn = token === currentTurnToken;
+    const homeCount = board.filter((b) => b.ownerToken === token && b.home).length;
+    const teamIdx = teams.findIndex((t) => t.includes(token));
+    const teamTag = teamIdx >= 0 ? `<span class="yn-seat-team">팀${teamIdx + 1}</span>` : '';
+    badgeEl.innerHTML = `
+      <span class="yn-seat-dot" style="background:${color}"></span>
+      <span class="yn-seat-name">${escapeHtml(p.name)}${token === myToken ? ' (나)' : ''}</span>
+      ${teamTag}
+      <span class="yn-seat-score">${homeCount}/4</span>
+    `;
+    badgeEl.classList.toggle('active-turn', isTurn);
+    badgeEl.classList.toggle('disconnected', !p.connected);
+  }
 }
 
 function renderControls() {
@@ -835,10 +803,10 @@ function renderControls() {
 }
 
 function renderPlaying() {
-  renderPlayerPips();
-  syncPieceMeshes();
+  renderSeats();
   renderControls();
-  syncBranchFx();
+  syncPieceTokens();
+  syncBranchHints();
 
   if (pendingBranch && currentTurnToken === myToken) {
     turnStatus.textContent = `말이 코너에 도착했어요 — 남은 ${pendingBranch.remainingSteps}칸을 어떻게 갈까요?`;
@@ -951,18 +919,16 @@ function handleServerMessage(msg: any) {
           }
           showToast(`${event.name}님이 ${THROW_LABEL[event.result.kind] ?? event.result.kind}를 던졌어요${event.result.extraTurn ? ' — 한 번 더!' : ''}`, 'throw');
         } else if (event.kind === 'move' || event.kind === 'capture') {
-          const arrivePos = pieceTargets.get(event.pieceId);
           const movedPiece = board.find((b) => b.id === event.pieceId);
           if (event.capturedPieceIds.length) {
             showToast(`${event.name}님이 상대 말을 잡았어요! 보너스 던지기 획득`, 'capture');
-            if (fx && arrivePos) fx.captureBurst(arrivePos);
             event.capturedPieceIds.forEach(hopPiece);
           } else if (event.joinedPieceIds.length) {
             showToast(`${event.name}님이 말을 업었어요`, 'throw');
             event.joinedPieceIds.forEach(hopPiece);
             hopPiece(event.pieceId);
           }
-          if (movedPiece?.home && fx) fx.homeBurst(nodeWorldPosition(boardGraph[entryNodeId(0)].gridPos));
+          if (movedPiece?.home) flashHome(movedPiece.ownerToken);
         } else if (event.kind === 'turn_skipped') {
           showToast(`${event.name}님이 시간 초과로 차례를 넘겼어요`, 'info');
         } else if (event.kind === 'player_left') {
