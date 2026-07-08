@@ -1,6 +1,7 @@
 import './rps.css';
 import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from './hand-icons';
 import { shareRoomLink } from '../../shared/share';
+import { createChatWidget } from '../../shared/chat-widget';
 
 type Mode = '1v1' | 'battle' | 'tournament';
 type Phase =
@@ -62,6 +63,12 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let matchWins = { you: 0, opponent: 0 };
 let setScore = { you: 0, opponent: 0 };
 let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const chatWidget = createChatWidget({
+  channels: [{ id: 'general', label: '채팅' }],
+  position: 'right',
+  onSend: (_channelId, text) => send({ type: 'submit_chat', text }),
+});
 // 세트를 끝내는 판은 서버가 'result' 다음에 곧바로 'set_over'(+다음 라운드 match_start)를
 // 보낸다. 'result'의 가위-바위-보 콜 애니메이션은 ~1.3초가 걸려서, 그 사이 더 최신 메시지가
 // 이미 화면(phase)을 바꿔놨는데 뒤늦게 renderResult가 덮어써버리는 경쟁 상태가 있었다.
@@ -597,6 +604,7 @@ function leaveRoom() {
   matchWins = { you: 0, opponent: 0 };
   setScore = { you: 0, opponent: 0 };
   clearSession();
+  chatWidget.clearAll();
   setPhase('entry');
 }
 
@@ -776,6 +784,10 @@ function handleServerMessage(msg: any) {
 
     case 'battle_over':
       applyBattleOver(msg);
+      break;
+
+    case 'chat_message':
+      chatWidget.addMessage('general', { name: msg.name, text: msg.text, mine: msg.token === myToken });
       break;
 
     case 'guest_left':

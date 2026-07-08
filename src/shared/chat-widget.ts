@@ -127,6 +127,7 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
     if (isOpen) {
       unread.set(activeChannel, 0);
       renderTabs();
+      renderLog();
       renderBadgeTotal();
       inputEl.focus();
     }

@@ -1,5 +1,6 @@
 import './liar.css';
 import { shareRoomLink } from '../../shared/share';
+import { createChatWidget } from '../../shared/chat-widget';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -48,6 +49,12 @@ let pendingAction: PendingAction | null = null;
 let intentionalClose = false;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+const chatWidget = createChatWidget({
+  channels: [{ id: 'general', label: '채팅' }],
+  position: 'right',
+  onSend: (_channelId, text) => send({ type: 'submit_chat', text }),
+});
 // setPhase가 호출될 때마다 증가하는 세대 번호. 재접속/타이머 등 비동기 콜백이 실행되는
 // 시점에 화면이 이미 다른 곳으로 넘어갔으면(세대 번호가 달라졌으면) 조용히 무시한다.
 let messageGeneration = 0;
@@ -387,6 +394,7 @@ function resetGameState() {
   currentTurnToken = null;
   transcript = [];
   votedFor = null;
+  chatWidget.clearAll();
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────
@@ -579,6 +587,10 @@ function handleServerMessage(msg: any) {
       resetGameState();
       lobbyStatus.textContent = '인원이 부족해 로비로 돌아왔어요.';
       setPhase('lobby');
+      break;
+
+    case 'chat_message':
+      chatWidget.addMessage('general', { name: msg.name, text: msg.text, mine: msg.token === myToken });
       break;
 
     case 'round_result':
