@@ -7,6 +7,7 @@ const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 const FLIP_TIMEOUT_MS = 20000; // 차례인 사람이 20초간 뒤집지 않으면 다음 사람에게 순서를 넘긴다
 const RING_RESOLUTION_WINDOW_MS = 350; // 첫 종치기가 처리되는 동안 뒤이은 종치기는 무시(오탐 벌칙 방지)
+const MAX_CHAT_LEN = 120;
 
 const FRUITS = [
   { id: 'strawberry', name: '딸기', emoji: '🍓' },
@@ -491,6 +492,18 @@ export function registerHalliGalliServer() {
         if (!room) return;
         if (!room.turnOrder.includes(identity.token)) return;
         submitRing(room, identity.roomCode, identity.token);
+        return;
+      }
+
+      // ── submit_chat ───────────────────────────────────────────────
+      if (msg.type === 'submit_chat') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : '';
+        if (!text) return;
+        const name = nameOf(room, identity.token);
+        broadcast(room, { type: 'chat_message', token: identity.token, name, text });
         return;
       }
 

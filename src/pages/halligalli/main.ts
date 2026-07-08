@@ -1,6 +1,7 @@
 import './halligalli.css';
 import { shareRoomLink } from '../../shared/share';
 import { showCenterToast, clearCenterToast } from '../../shared/center-toast';
+import { createChatWidget } from '../../shared/chat-widget';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -50,6 +51,12 @@ let pendingAction: PendingAction | null = null;
 let intentionalClose = false;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+const chatWidget = createChatWidget({
+  channels: [{ id: 'general', label: '채팅' }],
+  position: 'right',
+  onSend: (_channelId, text) => send({ type: 'submit_chat', text }),
+});
 
 type BoardEntry = {
   token: string; name: string; connected: boolean;
@@ -331,6 +338,7 @@ function resetGameState() {
   board = [];
   currentTurnToken = null;
   totalCards = 0;
+  chatWidget.clearAll();
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────
@@ -503,6 +511,10 @@ function handleServerMessage(msg: any) {
         : '아무도 뒤집을 카드가 없어요 — 종을 쳐서 카드를 모아보세요';
       break;
     }
+
+    case 'chat_message':
+      chatWidget.addMessage('general', { name: msg.name, text: msg.text, mine: msg.token === myToken });
+      break;
 
     case 'game_over':
       renderGameOver(msg);

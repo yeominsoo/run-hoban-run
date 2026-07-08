@@ -134,6 +134,20 @@ export function registerStrategyYutnoriServer() {
     broadcast(room, { type: 'chat_message', token, name: player.name, text, sentAt: Date.now() });
   }
 
+  /** 파트너(팀원)에게만 보이는 전용 채널. 배신 가능한 게임이라 상대팀은 절대 못 본다. */
+  function handleSubmitTeamChat(room, token, msg) {
+    const player = playerByToken(room, token);
+    if (!player || !room.game) return;
+    const text = sanitizeChatText(msg.text);
+    if (!text) return;
+    let partnerToken;
+    try { partnerToken = partnerOf(room.game, token); } catch { return; }
+    const payload = { type: 'team_chat_message', token, name: player.name, text, sentAt: Date.now() };
+    if (player.ws) send(player.ws, payload);
+    const partner = playerByToken(room, partnerToken);
+    if (partner?.ws) send(partner.ws, payload);
+  }
+
   function handleSubmitReaction(room, token, msg) {
     const player = playerByToken(room, token);
     const reaction = REACTIONS[String(msg.reactionId ?? '')];
@@ -442,6 +456,14 @@ export function registerStrategyYutnoriServer() {
         const room = identity && rooms.get(identity.roomCode);
         if (!room) return;
         handleSubmitChat(room, identity.token, msg);
+        return;
+      }
+
+      if (msg.type === 'submit_team_chat') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        handleSubmitTeamChat(room, identity.token, msg);
         return;
       }
 

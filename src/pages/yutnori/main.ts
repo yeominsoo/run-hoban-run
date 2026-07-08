@@ -1,6 +1,7 @@
 import './yutnori.css';
 import { shareRoomLink } from '../../shared/share';
 import { showCenterToast } from '../../shared/center-toast';
+import { createChatWidget, type ChatWidgetHandle } from '../../shared/chat-widget';
 import { buildYutBoardGraph, YUT_START_NODE_ID } from '../../game/yutnori-board';
 import { nodeScreenPos, stackOffsetPct, stagingSlotPos, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
 
@@ -73,13 +74,11 @@ interface BoardPieceEntry { id: string; ownerToken: string; leadId: string; home
 interface PlayerEntry { token: string; name: string; connected: boolean; }
 interface ThrowResult { kind: string; steps: number; extraTurn: boolean; }
 interface PendingThrowEntry { id: string; result: ThrowResult; }
-interface ChatMessage { token: string; name: string; text: string; sentAt?: number; }
 interface ReactionMessage { token: string; name: string; reaction: { id: string; emoji: string; label: string }; sentAt?: number; }
 
 let board: BoardPieceEntry[] = [];
 let players: PlayerEntry[] = [];
 let teams: string[][] = [];
-let chatMessages: ChatMessage[] = [];
 const playerColorSlots = new Map<string, number>();
 let currentTurnToken: string | null = null;
 let ynPhase: 'throw' | 'move' = 'throw';
@@ -195,14 +194,6 @@ app.innerHTML = `
       <div class="yn-reactions" id="yn-reactions">
         ${REACTION_OPTIONS.map((r) => `<button type="button" class="yn-reaction-btn" data-reaction-id="${r.id}" aria-label="${r.label}">${r.emoji}</button>`).join('')}
       </div>
-
-      <section class="yn-chat" aria-label="채팅">
-        <div class="yn-chat-log" id="yn-chat-log"></div>
-        <div class="yn-chat-form">
-          <input id="yn-chat-input" class="yn-chat-input" type="text" maxlength="120" placeholder="메시지 입력" autocomplete="off" />
-          <button id="yn-chat-send-btn" class="yn-chat-send" type="button">전송</button>
-        </div>
-      </section>
     </div>
 
     <!-- Game over -->
@@ -266,10 +257,13 @@ const seatReactionTimers: (ReturnType<typeof setTimeout> | null)[] = [null, null
 const throwBtn = document.getElementById('throw-btn') as HTMLButtonElement;
 const throwQueueEl = document.getElementById('yn-throw-queue')!;
 const piecePickerEl = document.getElementById('yn-piece-picker')!;
-const chatLogEl = document.getElementById('yn-chat-log')!;
-const chatInput = document.getElementById('yn-chat-input') as HTMLInputElement;
-const chatSendBtn = document.getElementById('yn-chat-send-btn') as HTMLButtonElement;
 const reactionRow = document.getElementById('yn-reactions')!;
+
+const chatWidget: ChatWidgetHandle = createChatWidget({
+  channels: [{ id: 'general', label: '채팅' }],
+  position: 'right',
+  onSend: (_channelId, text) => send({ type: 'submit_chat', text }),
+});
 
 const gameOverBanner = document.getElementById('game-over-banner')!;
 const finalBoard = document.getElementById('final-board')!;
@@ -409,7 +403,6 @@ function resetGameState() {
   board = [];
   players = [];
   teams = [];
-  chatMessages = [];
   playerColorSlots.clear();
   currentTurnToken = null;
   ynPhase = 'throw';
@@ -418,7 +411,7 @@ function resetGameState() {
   isTossing = false;
   if (tossTimer) { clearTimeout(tossTimer); tossTimer = null; }
   clearAllReactions();
-  renderChatLog();
+  chatWidget.clearAll();
 }
 
 // ── Lobby rendering ───────────────────────────────────────────────
@@ -462,29 +455,6 @@ function escapeHtml(value: string): string {
     '"': '&quot;',
     "'": '&#39;',
   })[ch]!);
-}
-
-function renderChatLog() {
-  if (!chatLogEl) return;
-  if (chatMessages.length === 0) {
-    chatLogEl.innerHTML = '<div class="yn-chat-empty">아직 메시지가 없습니다.</div>';
-    return;
-  }
-  chatLogEl.innerHTML = chatMessages.map((m) => {
-    const mine = m.token === myToken;
-    return `<div class="yn-chat-msg${mine ? ' mine' : ''}">
-      <span class="yn-chat-name">${escapeHtml(m.name)}</span>
-      <span class="yn-chat-text">${escapeHtml(m.text)}</span>
-    </div>`;
-  }).join('');
-  chatLogEl.scrollTop = chatLogEl.scrollHeight;
-}
-
-function submitChat() {
-  const text = chatInput.value.trim().slice(0, 120);
-  if (!text) return;
-  chatInput.value = '';
-  send({ type: 'submit_chat', text });
 }
 
 function stablePlayerIndex(token: string): number {
@@ -905,16 +875,16 @@ function handleServerMessage(msg: any) {
     }
 
     case 'chat_message':
-      chatMessages.push({ token: msg.token, name: msg.name, text: msg.text, sentAt: msg.sentAt });
-      if (chatMessages.length > 80) chatMessages = chatMessages.slice(-80);
-      renderChatLog();
+      chatWidget.addMessage('general', { name: msg.name, text: msg.text, mine: msg.token === myToken });
       break;
 
     case 'reaction_message':
       showReaction(msg);
-      chatMessages.push({ token: msg.token, name: msg.name, text: `${msg.reaction?.emoji ?? ''} ${msg.reaction?.label ?? ''}`.trim(), sentAt: msg.sentAt });
-      if (chatMessages.length > 80) chatMessages = chatMessages.slice(-80);
-      renderChatLog();
+      chatWidget.addMessage('general', {
+        name: msg.name,
+        text: `${msg.reaction?.emoji ?? ''} ${msg.reaction?.label ?? ''}`.trim(),
+        mine: msg.token === myToken,
+      });
       break;
 
     case 'game_over':
@@ -1041,14 +1011,6 @@ piecePickerEl.addEventListener('click', (e) => {
     pendingThrowId: selectedThrowId,
     splitOff: btn.dataset.split === 'true',
   });
-});
-
-chatSendBtn.addEventListener('click', submitChat);
-chatInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    submitChat();
-  }
 });
 
 reactionRow.addEventListener('click', (e) => {

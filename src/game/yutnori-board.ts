@@ -61,8 +61,15 @@ export function diagonalStepOf(diagId: string): number {
   return Number(diagId.match(/^diag-\d+-(\d+)$/)?.[1] ?? 0);
 }
 
-/** 중앙에서 계속 전진할 때는 어느 대각선으로 들어왔든 항상 공유 출발점(코너 0) 방향 대각선으로 빠져나간다. */
-export function getCenterExit(): string {
+/** 한 던지기 도중 중앙을 그냥 지나치는 중이면(멈추지 않고 통과), 들어온 대각선의
+ *  반대편 대각선으로 직진해서 빠져나간다. */
+export function getCenterPassThroughExit(arrivedFromCornerIndex: number): string {
+  return diagonalNodeId(arrivedFromCornerIndex + 2, 1);
+}
+
+/** 중앙에 정확히 멈춰 있다가(직전 턴에 도착) 새 던지기를 시작하는 경우에는 어느 대각선으로
+ *  들어왔었는지와 무관하게 항상 공유 출발점(코너 0) 방향 대각선으로 빠져나간다. */
+export function getCenterRestExit(): string {
   return diagonalNodeId(0, 1);
 }
 

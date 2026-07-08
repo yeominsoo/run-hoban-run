@@ -303,35 +303,6 @@ button { border: 0; cursor: pointer; }
 .target-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.86); }
 .target-btn:disabled { opacity: 0.5; cursor: default; }
 
-/* ── Chat log ───────────────────────────────── */
-.chat-log {
-  width: 100%;
-  max-height: 200px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.chat-row {
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  font-size: 0.85rem;
-}
-.chat-name { font-weight: 800; color: #ffb3a8; white-space: nowrap; }
-.chat-text { color: var(--color-page-text); }
-
-.chat-input-row {
-  width: 100%;
-  display: flex;
-  gap: 8px;
-}
-.chat-input-row .nickname-input { flex: 1; }
-.chat-input-row .mafia-btn { width: auto; padding: 0 18px; }
-
 /* ── Game over / roles list ─────────────────── */
 .set-over-result {
   font-size: 1.5rem;

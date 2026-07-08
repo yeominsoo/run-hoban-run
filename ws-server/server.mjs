@@ -14,6 +14,7 @@ const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
 const BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 const ROOM_CODE_LENGTH = 6;
+const MAX_CHAT_LEN = 120;
 const RECONNECT_GRACE_MS = 45000;
 const WINS_TO_SET = 2;    // best-of-3 within a set: 2 wins
 const WINS_TO_BATTLE = 3; // battle royale: first to 3 round wins (or last survivor) wins
@@ -719,6 +720,21 @@ wss.on('connection', (ws) => {
 
       if (room.choices.has(oppToken)) {
         resolvePair(roomCode, pair[0], pair[1]);
+      }
+      return;
+    }
+
+    // ── submit_chat ───────────────────────────────────────────────
+    if (msg.type === 'submit_chat') {
+      const identity = wsIdentity.get(ws);
+      const room = identity && rooms.get(identity.roomCode);
+      if (!room) return;
+      const { token } = identity;
+      const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : '';
+      if (!text) return;
+      const name = playerByToken(room, token)?.name ?? '?';
+      for (const p of room.players) {
+        if (p.ws) send(p.ws, { type: 'chat_message', token, name, text });
       }
       return;
     }

@@ -296,6 +296,48 @@ test('the center always exits toward the shared start corner, regardless of whic
   ]);
 });
 
+test('mo → yut → yut: rest-then-shortcut at a corner, then passing through center goes straight to the opposite corner (not toward start), then continues past it', () => {
+  const state = createYutGame(['A', 'B'], 999);
+
+  // 1) mo(5): 신규 말이 정확히 첫 코너(코너1)에 도착해 멈춘다.
+  resetTurnTo(state, 'A');
+  forceThrow(state, 'mo');
+  forceThrow(state, 'do'); // mo는 추가 턴 -> move 단계로 넘기려고 한 번 더 던진다
+  const moThrow = state.pendingThrows.find((pt) => pt.result.kind === 'mo')!;
+  let outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: moThrow.id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual(['outer-1', 'outer-2', 'outer-3', 'outer-4', cornerNodeId(1)]);
+
+  // 2) yut(4): 코너1에 정확히 서 있던 말이 지름길로 들어가 중앙을 "지나치는 중"이므로, 도착지(코너0)
+  //    방향이 아니라 들어온 대각선의 반대편(코너3) 대각선으로 직진해야 한다.
+  resetTurnTo(state, 'A');
+  forceThrow(state, 'yut');
+  forceThrow(state, 'do');
+  const yutThrow1 = state.pendingThrows.find((pt) => pt.result.kind === 'yut')!;
+  outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: yutThrow1.id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual([
+    'outer-1', 'outer-2', 'outer-3', 'outer-4',
+    cornerNodeId(1), 'diag-1-0', 'diag-1-1', 'center', 'diag-3-1',
+  ]);
+
+  // 3) yut(4): 대각선 중간(diag-3-1)에서 이어 던지면 코너3을 지나 바깥 동선(코너3→코너0 사이)으로 계속 나간다.
+  resetTurnTo(state, 'A');
+  forceThrow(state, 'yut');
+  forceThrow(state, 'do');
+  const yutThrow2 = state.pendingThrows.find((pt) => pt.result.kind === 'yut')!;
+  outcome = submitMove(state, { pieceId: 'A-0', pendingThrowId: yutThrow2.id });
+  expect(outcome.status).toBe('applied');
+  if (outcome.status !== 'applied') throw new Error('unreachable');
+  expect(outcome.event.path).toEqual([
+    'outer-1', 'outer-2', 'outer-3', 'outer-4',
+    cornerNodeId(1), 'diag-1-0', 'diag-1-1', 'center', 'diag-3-1',
+    'diag-3-0', cornerNodeId(3), 'outer-16', 'outer-17',
+  ]);
+});
+
 test('a piece that already passed the center can take the mandatory shortcut again on a later lap', () => {
   const state = createYutGame(['A', 'B'], 7);
   // 이미 중앙을 한 번 지난 이력(path에 center 포함)이 있고, 지름길이 있는 코너(코너1)에 다시 서 있는 말.

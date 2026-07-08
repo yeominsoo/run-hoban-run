@@ -5,7 +5,8 @@ import {
   CENTER_NODE_ID,
   cornerIndexOfDiagonal,
   entryNodeId,
-  getCenterExit,
+  getCenterPassThroughExit,
+  getCenterRestExit,
   getDiagonalOuterNext,
   diagonalStepOf,
   MAX_PLAYERS,
@@ -13,7 +14,7 @@ import {
 
 export { MAX_PLAYERS };
 
-const CENTER_EXIT_ID = getCenterExit();
+const CENTER_REST_EXIT_ID = getCenterRestExit();
 
 // 실제 윷가락 확률의 단순화 근사치. 백도는 특수 표시된 가락 조합에서만 드물게 나온다는 점만 반영.
 const THROW_TABLE = [
@@ -163,8 +164,16 @@ function walkForward(graph, startPath, ownCornerId, steps) {
         const restingHere = path.length === startPath.length;
         nextId = restingHere ? node.shortcutNext : node.next;
       } else if (node.kind === 'center') {
-        // 중앙에서는 항상 공유 출발점 방향 대각선으로 빠져나간다(선택 없음).
-        nextId = CENTER_EXIT_ID;
+        // 중앙에 정확히 멈춰 있다가 새 던지기를 시작하는 경우에만 도착지(공유 출발점) 방향으로.
+        // 이번 던지기 도중 중앙을 그냥 지나치는 중이면, 들어온 대각선 반대편으로 직진한다.
+        const restingHere = path.length === startPath.length;
+        if (restingHere) {
+          nextId = CENTER_REST_EXIT_ID;
+        } else {
+          const prevId = path.length >= 2 ? path[path.length - 2] : undefined;
+          const fromCornerIndex = prevId ? cornerIndexOfDiagonal(prevId) : 0;
+          nextId = getCenterPassThroughExit(fromCornerIndex);
+        }
       } else if (node.kind === 'diagonal') {
         // 직전 칸으로 "중앙에서 되돌아 나오는 중"인지 판정한다. path 전체에 center가 있었는지로 보면
         // 중앙을 한 번 지난 말이 이후 지름길을 다시 탈 때 안쪽으로 못 가고 코너로 튕겨 나간다.

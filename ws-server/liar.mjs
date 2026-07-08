@@ -6,6 +6,7 @@ const RECONNECT_GRACE_MS = 45000; // rps와 동일한 재접속 유예 시간
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 12;
 const MAX_DESC_LEN = 80;
+const MAX_CHAT_LEN = 120;
 
 // 카테고리/제시어는 서버 메모리에만 존재한다. 이 파일이 클라이언트 번들에 포함될 일은 없지만,
 // 라이어에게 보내는 payload에도 word 필드 자체를 만들지 않는 것으로 부정행위를 원천 차단한다.
@@ -498,6 +499,21 @@ export function registerLiarServer() {
           accusedToken: room.liarToken,
           accusedName: playerByToken(room, room.liarToken)?.name ?? '?',
         });
+        return;
+      }
+
+      // ── submit_chat ───────────────────────────────────────────────
+      if (msg.type === 'submit_chat') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        const { token } = identity;
+        const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : '';
+        if (!text) return;
+        const name = playerByToken(room, token)?.name ?? '?';
+        for (const p of room.players) {
+          if (p.ws) send(p.ws, { type: 'chat_message', token, name, text });
+        }
         return;
       }
 

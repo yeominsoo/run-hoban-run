@@ -562,6 +562,24 @@ export function registerMafiaServer() {
         return;
       }
 
+      // ── submit_mafia_chat: 마피아끼리만 보이는 전용 채널(살아있는 동안, 로비/종료 제외 상시). ──
+      if (msg.type === 'submit_mafia_chat') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room || room.phase === 'lobby' || room.phase === 'game_over') return;
+        const { token } = identity;
+        if (!room.alive.has(token) || room.roles.get(token) !== 'mafia') return;
+        const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : '';
+        if (!text) return;
+
+        const name = nameOf(room, token);
+        for (const mafiaToken of aliveMafiaTokens(room)) {
+          const p = playerByToken(room, mafiaToken);
+          if (p?.ws) send(p.ws, { type: 'mafia_chat_message', token, name, text });
+        }
+        return;
+      }
+
       // ── submit_day_vote ───────────────────────────────────────────
       if (msg.type === 'submit_day_vote') {
         const identity = wsIdentity.get(ws);

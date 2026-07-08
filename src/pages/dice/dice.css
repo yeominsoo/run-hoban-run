@@ -207,7 +207,8 @@ button { border: 0; cursor: pointer; }
     0 6px 14px rgba(0,0,0,0.32);
   font-size: 1.7rem;
   font-weight: 900;
-  color: var(--color-page-text);
+  color: #eaf6ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   font-variant-numeric: tabular-nums;
 }
 
@@ -230,14 +231,15 @@ button { border: 0; cursor: pointer; }
 
 .dice-card.settled .dice-face {
   animation: dice-settle 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  color: var(--color-page-text);
+  color: #eaf6ff;
   border-color: rgba(94, 207, 188, 0.52);
 }
 
 .dice-card.rank-1 .dice-face {
   background: linear-gradient(155deg, #7a5a1a, #4a3610);
   border-color: rgba(255,214,102,0.55);
-  color: var(--color-accent-strong);
+  color: #ffe08a;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 @keyframes dice-shake {

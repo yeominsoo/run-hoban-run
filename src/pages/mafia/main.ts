@@ -1,5 +1,6 @@
 import './mafia.css';
 import { shareRoomLink } from '../../shared/share';
+import { createChatWidget, type ChatWidgetHandle } from '../../shared/chat-widget';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -63,7 +64,6 @@ let alivePlayers: AliveEntry[] = [];
 let myActionSubmitted = false;
 let myVoteSubmitted: string | null = null;
 let policeHistory: { round: number; targetName: string; isMafia: boolean }[] = [];
-let chatLog: { token: string; name: string; text: string }[] = [];
 
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
@@ -141,11 +141,6 @@ app.innerHTML = `
     <div class="mafia-panel hidden" id="day-panel">
       <p class="field-label" id="day-title">낮이 밝았습니다</p>
       <p class="status-text" id="day-death-announce"></p>
-      <div class="chat-log" id="chat-log"></div>
-      <div class="chat-input-row" id="chat-input-row">
-        <input id="chat-input" type="text" maxlength="120" placeholder="채팅을 입력하세요" class="nickname-input" />
-        <button id="chat-send-btn" type="button" class="mafia-btn primary">전송</button>
-      </div>
       <p class="field-label" id="vote-label">처형할 사람에게 투표하세요</p>
       <div class="target-row" id="day-vote-targets"></div>
       <p class="status-text muted" id="day-vote-progress-text"></p>
@@ -210,10 +205,17 @@ const nightProgressText = document.getElementById('night-progress-text')!;
 
 const dayTitle = document.getElementById('day-title')!;
 const dayDeathAnnounce = document.getElementById('day-death-announce')!;
-const chatLogEl = document.getElementById('chat-log')!;
-const chatInputRow = document.getElementById('chat-input-row')!;
-const chatInput = document.getElementById('chat-input') as HTMLInputElement;
-const chatSendBtn = document.getElementById('chat-send-btn') as HTMLButtonElement;
+const chatWidget: ChatWidgetHandle = createChatWidget({
+  channels: [
+    { id: 'general', label: '전체' },
+    { id: 'mafia', label: '마피아' },
+  ],
+  position: 'right',
+  onSend: (channelId, text) => {
+    send({ type: channelId === 'mafia' ? 'submit_mafia_chat' : 'submit_chat', text });
+  },
+});
+chatWidget.setChannelEnabled('mafia', false);
 const voteLabel = document.getElementById('vote-label')!;
 const dayVoteTargets = document.getElementById('day-vote-targets')!;
 const dayVoteProgressText = document.getElementById('day-vote-progress-text')!;
@@ -365,7 +367,14 @@ function resetGameState() {
   myActionSubmitted = false;
   myVoteSubmitted = null;
   policeHistory = [];
-  chatLog = [];
+  chatWidget.clearAll();
+  chatWidget.setChannelEnabled('mafia', false);
+}
+
+/** 마피아 전용 채팅 탭은 마피아 역할이고 살아있을 때만 보인다 — 다른 역할에게는
+ *  탭 자체를 숨겨서 "마피아 채널이 존재한다"는 사실조차 새지 않게 한다. */
+function syncMafiaChatVisibility() {
+  chatWidget.setChannelEnabled('mafia', myRole === 'mafia' && isAlive);
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────
@@ -400,13 +409,6 @@ function renderTargetButtons(row: HTMLElement, entries: AliveEntry[], onPick: (t
   Array.from(row.querySelectorAll<HTMLButtonElement>('.target-btn')).forEach(btn => {
     btn.addEventListener('click', () => onPick(btn.dataset.token!));
   });
-}
-
-function renderChatLog() {
-  chatLogEl.innerHTML = chatLog.map(c =>
-    `<div class="chat-row"><span class="chat-name">${c.name}</span><span class="chat-text">${c.text}</span></div>`
-  ).join('');
-  chatLogEl.scrollTop = chatLogEl.scrollHeight;
 }
 
 // ── Server message handler ────────────────────────────────────────
@@ -472,7 +474,10 @@ function handleServerMessage(msg: any) {
       round = game.round;
       alivePlayers = game.alive ?? [];
       policeHistory = game.policeHistory ?? [];
-      chatLog = game.chatLog ?? [];
+      syncMafiaChatVisibility();
+      (game.chatLog ?? []).forEach((c: { token: string; name: string; text: string }) => {
+        chatWidget.addMessage('general', { name: c.name, text: c.text, mine: c.token === myToken });
+      });
       if (game.phase === 'night') {
         enterNight({ round, alive: alivePlayers, yourActionRequired: isAlive && myRole !== 'citizen' });
       } else {
@@ -490,6 +495,7 @@ function handleServerMessage(msg: any) {
       myRole = msg.role;
       teammates = msg.teammates ?? [];
       isAlive = true;
+      syncMafiaChatVisibility();
       break;
 
     case 'night_start':
@@ -515,12 +521,16 @@ function handleServerMessage(msg: any) {
       round = msg.round;
       alivePlayers = msg.alive;
       if ((msg.deaths as any[]).some((d: any) => d.token === myToken)) isAlive = false;
+      syncMafiaChatVisibility();
       enterDay(msg);
       break;
 
     case 'chat_message':
-      chatLog.push({ token: msg.token, name: msg.name, text: msg.text });
-      renderChatLog();
+      chatWidget.addMessage('general', { name: msg.name, text: msg.text, mine: msg.token === myToken });
+      break;
+
+    case 'mafia_chat_message':
+      chatWidget.addMessage('mafia', { name: msg.name, text: msg.text, mine: msg.token === myToken });
       break;
 
     case 'day_vote_progress':
@@ -540,7 +550,6 @@ function handleServerMessage(msg: any) {
         : `⚖️ ${msg.executedName}님이 처형됐습니다.`;
       dayDeathAnnounce.textContent = summary;
       dayVoteTargets.innerHTML = '';
-      chatInputRow.classList.add('hidden');
       voteLabel.classList.add('hidden');
       break;
     }
@@ -622,17 +631,14 @@ function enterDay(msg: { round: number; alive: AliveEntry[]; deaths: { token: st
   dayDeathAnnounce.textContent = deaths.length
     ? `${deaths.map(d => d.name).join(', ')}님이 밤 사이 사망했습니다.`
     : '지난 밤에는 아무도 죽지 않았습니다.';
-  renderChatLog();
   voteLabel.classList.remove('hidden');
   voteLabel.textContent = '처형할 사람에게 투표하세요';
   dayVoteProgressText.textContent = '';
 
   if (!isAlive) {
-    chatInputRow.classList.add('hidden');
     dayVoteTargets.innerHTML = '';
     voteLabel.textContent = '당신은 사망했습니다. 관전 중입니다.';
   } else {
-    chatInputRow.classList.remove('hidden');
     renderTargetButtons(dayVoteTargets, msg.alive, submitDayVote, true);
   }
   setPhase('day');
@@ -703,14 +709,6 @@ gameOverLeaveBtn.addEventListener('click', leaveRoom);
 lobbyCopyBtn.addEventListener('click', () => copyLink(roomCode, lobbyCopyBtn));
 
 startBtn.addEventListener('click', () => { send({ type: 'start' }); });
-
-chatSendBtn.addEventListener('click', () => {
-  const text = chatInput.value.trim().slice(0, 120);
-  if (!text) return;
-  chatInput.value = '';
-  send({ type: 'submit_chat', text });
-});
-chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') chatSendBtn.click(); });
 
 retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAction); });
 
