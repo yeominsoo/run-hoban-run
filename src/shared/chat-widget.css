@@ -11,6 +11,35 @@
 .cw-root.cw-right { right: 16px; align-items: flex-end; }
 .cw-root.cw-left { left: 16px; align-items: flex-start; }
 
+/* 채팅창이 닫혀 있을 때 새 메시지가 오면 아이콘 위에 잠깐 뜨는 말풍선 미리보기. */
+.cw-preview {
+  max-width: min(70vw, 260px);
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: #fffdf8;
+  border: 1px solid rgba(214, 128, 158, 0.28);
+  box-shadow: 0 10px 26px rgba(60, 40, 55, 0.22);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transition: opacity 180ms ease, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.cw-preview.hidden { display: none; }
+.cw-preview.show { opacity: 1; transform: translateY(0) scale(1); }
+.cw-preview-name { font-size: 0.66rem; font-weight: 900; color: rgba(75, 52, 71, 0.66); }
+.cw-preview-text {
+  font-size: 0.82rem;
+  color: #4b3447;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .cw-fab {
   position: relative;
   width: 52px;

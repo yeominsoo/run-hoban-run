@@ -48,6 +48,10 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
   const root = document.createElement('div');
   root.className = `cw-root cw-${position}`;
 
+  const previewEl = document.createElement('div');
+  previewEl.className = 'cw-preview hidden';
+  root.appendChild(previewEl);
+
   const fab = document.createElement('button');
   fab.type = 'button';
   fab.className = 'cw-fab';
@@ -120,11 +124,33 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
     renderBadgeTotal();
   }
 
+  let previewAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
+  let previewRemoveTimer: ReturnType<typeof setTimeout> | null = null;
+  function hidePreview() {
+    if (previewAutoHideTimer) { clearTimeout(previewAutoHideTimer); previewAutoHideTimer = null; }
+    if (previewRemoveTimer) { clearTimeout(previewRemoveTimer); previewRemoveTimer = null; }
+    previewEl.classList.remove('show');
+    previewRemoveTimer = setTimeout(() => previewEl.classList.add('hidden'), 220);
+  }
+  /** 채팅창이 닫혀 있을 때 새 메시지가 오면, 닫힌 아이콘 위에 말풍선으로 잠깐 미리보기를 띄운다. */
+  function showPreview(entry: ChatMessageEntry) {
+    if (entry.system) return;
+    if (previewAutoHideTimer) clearTimeout(previewAutoHideTimer);
+    if (previewRemoveTimer) { clearTimeout(previewRemoveTimer); previewRemoveTimer = null; }
+    previewEl.innerHTML = `<span class="cw-preview-name">${escapeHtml(entry.name)}</span><span class="cw-preview-text">${escapeHtml(entry.text)}</span>`;
+    previewEl.classList.remove('hidden');
+    void previewEl.offsetWidth;
+    previewEl.classList.add('show');
+    previewAutoHideTimer = setTimeout(hidePreview, 3200);
+  }
+  previewEl.addEventListener('click', () => setOpen(true));
+
   function setOpen(next: boolean) {
     isOpen = next;
     dialog.classList.toggle('hidden', !isOpen);
     fab.classList.toggle('cw-fab-open', isOpen);
     if (isOpen) {
+      hidePreview();
       unread.set(activeChannel, 0);
       renderTabs();
       renderLog();
@@ -164,6 +190,7 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
         unread.set(channelId, (unread.get(channelId) ?? 0) + 1);
         renderTabs();
         renderBadgeTotal();
+        if (!isOpen && !entry.mine) showPreview(entry);
       }
     },
     setChannelEnabled(channelId, isEnabled) {
@@ -178,6 +205,7 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
     clearAll() {
       logs.forEach((_, id) => logs.set(id, []));
       unread.forEach((_, id) => unread.set(id, 0));
+      hidePreview();
       renderLog();
       renderTabs();
       renderBadgeTotal();

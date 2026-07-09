@@ -548,9 +548,11 @@ export function registerMafiaServer() {
       if (msg.type === 'submit_chat') {
         const identity = wsIdentity.get(ws);
         const room = identity && rooms.get(identity.roomCode);
-        if (!room || (room.phase !== 'day' && room.phase !== 'day_revote')) return;
+        const allowedPhase = room && (room.phase === 'lobby' || room.phase === 'day' || room.phase === 'day_revote');
+        if (!allowedPhase) return;
         const { token } = identity;
-        if (!room.alive.has(token)) return;
+        // 로비에는 생존 개념이 없다(게임이 아직 시작 전) — 게임 중일 때만 생존 여부를 확인한다.
+        if (room.phase !== 'lobby' && !room.alive.has(token)) return;
         const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, MAX_CHAT_LEN) : '';
         if (!text) return;
 
