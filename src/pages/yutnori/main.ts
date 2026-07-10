@@ -187,12 +187,16 @@ app.innerHTML = `
           </span>
           <span class="throw-btn-text">던지기</span>
         </button>
-        <div class="yn-throw-queue hidden" id="yn-throw-queue"></div>
-        <div class="yn-piece-picker hidden" id="yn-piece-picker"></div>
       </div>
 
-      <div class="yn-reactions" id="yn-reactions">
-        ${REACTION_OPTIONS.map((r) => `<button type="button" class="yn-reaction-btn" data-reaction-id="${r.id}" aria-label="${r.label}">${r.emoji}</button>`).join('')}
+      <div class="yn-choice-overlay hidden" id="yn-choice-overlay">
+        <div class="yn-choice-backdrop"></div>
+        <div class="yn-choice-sheet">
+          <div class="yn-choice-title" id="yn-throw-queue-title">이동할 던지기를 선택하세요</div>
+          <div class="yn-throw-queue" id="yn-throw-queue"></div>
+          <div class="yn-choice-title">움직일 말을 선택하세요</div>
+          <div class="yn-piece-picker" id="yn-piece-picker"></div>
+        </div>
       </div>
     </div>
 
@@ -255,14 +259,16 @@ const seatReactionEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat
 const seatEls = [0, 1, 2, 3].map((i) => document.getElementById(`yn-seat-${i}`)!);
 const seatReactionTimers: (ReturnType<typeof setTimeout> | null)[] = [null, null, null, null];
 const throwBtn = document.getElementById('throw-btn') as HTMLButtonElement;
+const choiceOverlayEl = document.getElementById('yn-choice-overlay')!;
 const throwQueueEl = document.getElementById('yn-throw-queue')!;
 const piecePickerEl = document.getElementById('yn-piece-picker')!;
-const reactionRow = document.getElementById('yn-reactions')!;
 
 const chatWidget: ChatWidgetHandle = createChatWidget({
   channels: [{ id: 'general', label: '채팅' }],
   position: 'right',
   onSend: (_channelId, text) => send({ type: 'submit_chat', text }),
+  reactions: REACTION_OPTIONS,
+  onReact: (reactionId) => send({ type: 'submit_reaction', reactionId }),
 });
 
 const gameOverBanner = document.getElementById('game-over-banner')!;
@@ -703,8 +709,7 @@ function renderControls() {
   throwBtn.disabled = !myTurn || ynPhase !== 'throw';
 
   const showMoveUi = myTurn && ynPhase === 'move';
-  throwQueueEl.classList.toggle('hidden', !showMoveUi);
-  piecePickerEl.classList.toggle('hidden', !showMoveUi);
+  choiceOverlayEl.classList.toggle('hidden', !showMoveUi);
 
   selectablePieceIds.clear();
   if (showMoveUi) {
@@ -1011,12 +1016,6 @@ piecePickerEl.addEventListener('click', (e) => {
     pendingThrowId: selectedThrowId,
     splitOff: btn.dataset.split === 'true',
   });
-});
-
-reactionRow.addEventListener('click', (e) => {
-  const btn = (e.target as HTMLElement).closest('[data-reaction-id]') as HTMLElement | null;
-  if (!btn) return;
-  send({ type: 'submit_reaction', reactionId: btn.dataset.reactionId });
 });
 
 retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAction); });

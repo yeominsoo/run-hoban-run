@@ -16,11 +16,19 @@ export interface ChatMessageEntry {
   system?: boolean;
 }
 
+export interface ChatWidgetReaction {
+  id: string;
+  emoji: string;
+  label: string;
+}
+
 export interface ChatWidgetOptions {
   channels: ChatWidgetChannel[];
   position?: 'left' | 'right';
   placeholder?: string;
   onSend: (channelId: string, text: string) => void;
+  reactions?: readonly ChatWidgetReaction[];
+  onReact?: (reactionId: string) => void;
 }
 
 export interface ChatWidgetHandle {
@@ -67,6 +75,10 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
       <button type="button" class="cw-close" aria-label="채팅 닫기">✕</button>
     </div>
     <div class="cw-log" id="cw-log"></div>
+    ${opts.reactions && opts.reactions.length > 0 ? `
+    <div class="cw-reactions" id="cw-reactions">
+      ${opts.reactions.map((r) => `<button type="button" class="cw-reaction-btn" data-reaction-id="${r.id}" aria-label="${escapeHtml(r.label)}">${r.emoji}</button>`).join('')}
+    </div>` : ''}
     <div class="cw-form">
       <input type="text" class="cw-input" maxlength="150" autocomplete="off" placeholder="${escapeHtml(opts.placeholder ?? '메시지 입력')}" />
       <button type="button" class="cw-send">전송</button>
@@ -164,6 +176,12 @@ export function createChatWidget(opts: ChatWidgetOptions): ChatWidgetHandle {
   tabsEl.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-channel]');
     if (btn?.dataset.channel) switchChannel(btn.dataset.channel);
+  });
+
+  const reactionsEl = dialog.querySelector('#cw-reactions') as HTMLElement | null;
+  reactionsEl?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-reaction-id]');
+    if (btn?.dataset.reactionId) opts.onReact?.(btn.dataset.reactionId);
   });
 
   function submit() {

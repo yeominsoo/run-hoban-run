@@ -571,6 +571,43 @@ button { border: 0; cursor: pointer; }
   gap: 10px;
 }
 
+/* ── 말 선택 오버레이(바텀시트) ─────────────────────
+ * 인라인으로 펼치면 페이지가 길어져 스크롤이 생기므로, 화면 하단에 고정된
+ * 다이얼로그로 띄워 보드를 가리지 않고 선택하게 한다. */
+.yn-choice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.yn-choice-overlay.hidden { display: none; }
+.yn-choice-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(40, 28, 36, 0.38);
+}
+.yn-choice-sheet {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 62vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--color-page-bg, #fffdf8);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -12px 32px rgba(60, 40, 55, 0.28);
+}
+.yn-choice-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--color-page-muted);
+  text-align: center;
+}
+
 .yn-piece-picker {
   width: 100%;
   display: flex;
@@ -641,24 +678,6 @@ button { border: 0; cursor: pointer; }
 }
 .yn-piece-title { color: var(--color-page-text); }
 .yn-piece-meta { font-size: 0.68rem; color: var(--color-page-muted); }
-
-.yn-reactions {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-.yn-reaction-btn {
-  height: 42px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--color-border);
-  font-size: 1.25rem;
-}
-.yn-reaction-btn:hover {
-  background: rgba(155, 135, 245, 0.14);
-  border-color: rgba(155, 135, 245, 0.35);
-}
 
 /* ── Game over ────────────────────────────────── */
 .set-over-result {

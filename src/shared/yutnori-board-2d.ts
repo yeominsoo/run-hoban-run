@@ -60,18 +60,20 @@ export function stackOffsetPct(stackIndex: number): { dx: number; dy: number } {
   return { dx, dy };
 }
 
-/** 출발 전(nodeId=null) 말들을 트랙/출발 코너 위에 겹쳐 두지 않고, 코너 0(출발점)에는
- *  지름길 대각선이 없어서 비어 있는 우측 하단 안쪽 공간에 플레이어 슬롯별로 모아 둔다.
- *  각 위치는 STACK_OFFSETS(최대 ±4.2)를 더해도 서로 겹치거나 보드 밖으로 나가지 않도록
- *  충분한 간격(14pt)을 둔다. */
-const WAITING_ZONE_SLOTS: [number, number][] = [
-  [63, 63],
-  [77, 63],
-  [63, 77],
-  [77, 77],
+/** 출발 전(nodeId=null) 말들을 트랙/출발 코너 위에 겹쳐 두지 않도록, 코너 0(출발점)에는
+ *  지름길 대각선이 없어 비어 있는 사분면(대략 x:54~86, y:54~86 — SVG의 yn-waiting-zone
+ *  점선 박스와 같은 영역) 안에서 우측 변에 가까운 "우측 날개"와 하단 변에 가까운
+ *  "좌측 날개"로 나눠 플레이어별로 배치한다. 이 사분면의 바깥쪽 경계(코너 마커·"출발"
+ *  라벨이 있는 x/y 88 이상 구간)와 중앙 근처(다른 코너의 대각선이 모이는 x/y 54 이하
+ *  구간)는 피해서, 어떤 트랙 선·라벨과도 겹치지 않는 안쪽 자리만 사용한다. */
+const WING_SLOTS: [number, number][] = [
+  [78, 58], // slot0: 우측 날개(우측 변 인접) 안쪽
+  [58, 78], // slot1: 좌측 날개(하단 변 인접) 안쪽
+  [78, 72], // slot2: 우측 날개, 코너에서 더 먼 자리
+  [72, 78], // slot3: 좌측 날개, 코너에서 더 먼 자리
 ];
 export function stagingSlotPos(playerSlot: number): ScreenPos {
-  const [xPct, yPct] = WAITING_ZONE_SLOTS[playerSlot % WAITING_ZONE_SLOTS.length];
+  const [xPct, yPct] = WING_SLOTS[playerSlot % WING_SLOTS.length];
   return { xPct, yPct };
 }
 

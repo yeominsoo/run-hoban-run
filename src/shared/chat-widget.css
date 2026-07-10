@@ -174,6 +174,27 @@
 .cw-msg-name { font-size: 0.66rem; font-weight: 900; color: rgba(75, 52, 71, 0.66); }
 .cw-msg-text { font-size: 0.84rem; line-height: 1.35; color: #4b3447; overflow-wrap: anywhere; }
 
+.cw-reactions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(214, 128, 158, 0.18);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.cw-reaction-btn {
+  border: 0;
+  cursor: pointer;
+  background: rgba(255, 111, 145, 0.1);
+  border-radius: 10px;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 6px 9px;
+  flex-shrink: 0;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.cw-reaction-btn:hover { background: rgba(255, 111, 145, 0.22); transform: translateY(-1px) scale(1.08); }
+
 .cw-form {
   display: flex;
   gap: 8px;
