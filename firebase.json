@@ -133,6 +133,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/tower-stack/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -231,6 +240,14 @@
       {
         "source": "/ball-dodge/**",
         "destination": "/ball-dodge/index.html"
+      },
+      {
+        "source": "/tower-stack",
+        "destination": "/tower-stack/index.html"
+      },
+      {
+        "source": "/tower-stack/**",
+        "destination": "/tower-stack/index.html"
       }
     ]
   }

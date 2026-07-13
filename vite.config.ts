@@ -18,6 +18,7 @@ export default defineConfig({
         'aim-trainer': resolve(__dirname, 'aim-trainer/index.html'),
         'color-slider': resolve(__dirname, 'color-slider/index.html'),
         'ball-dodge': resolve(__dirname, 'ball-dodge/index.html'),
+        'tower-stack': resolve(__dirname, 'tower-stack/index.html'),
       },
       output: {
         manualChunks(id) {

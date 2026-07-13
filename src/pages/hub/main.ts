@@ -20,6 +20,7 @@ const GAMES: GameEntry[] = [
   { slug: 'aim-trainer', icon: 'aim-trainer-mark', name: '에임 트레이너', desc: '30초 동안 화면에 나타나는 원을 최대한 빠르고 정확하게 탭! 레벨이 오를수록 원이 작아진다.' },
   { slug: 'color-slider', icon: 'color-slider-mark', name: '색 맞추기 슬라이더', desc: 'R/G/B 슬라이더로 목표 색을 최대한 똑같이 맞춰라. 10라운드, 라운드당 15초.' },
   { slug: 'ball-dodge', icon: 'ball-dodge-mark', name: '볼 피하기 + 수집', desc: '드래그로 캐릭터를 움직여 빨간 볼은 피하고 초록 볼은 모으세요. HP 3, 30초마다 더 치열해진다.' },
+  { slug: 'tower-stack', icon: 'tower-stack-mark', name: '타워 쌓기', desc: '좌우로 움직이는 블록을 탭해서 정확히 쌓아 올리세요. 삐져나온 부분은 잘려나가고, 너비가 10px 미만이면 게임 오버.' },
 ];
 
 const app = document.getElementById('app')!;

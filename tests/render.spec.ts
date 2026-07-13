@@ -1424,6 +1424,92 @@ test('ball dodge: losing all HP shows the result overlay and saves the best scor
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
 });
 
+/**
+ * 정렬 감지와 탭을 Node↔브라우저 왕복 없이 같은 requestAnimationFrame 틱 안에서 처리한다.
+ * (Node 쪽에서 "정렬 확인 → 그 다음 별도 CDP 호출로 클릭" 2단계로 나누면, 그 사이 애니메이션이
+ * 계속 진행돼 실제 클릭 시점엔 이미 크게 어긋나 있는 레이스 컨디션이 있었다.)
+ */
+async function waitAndTapWhenAligned(page: Page, tolerancePx: number, maxFrames: number): Promise<boolean> {
+  return page.evaluate(({ tol, maxFrames: cap }) => {
+    return new Promise<boolean>((resolve) => {
+      const canvas = document.querySelector('#ts-canvas') as HTMLElement | null;
+      if (!canvas) {
+        resolve(false);
+        return;
+      }
+      let frame = 0;
+      const tick = () => {
+        const diff = Math.abs(Number(canvas.dataset.topLeft) - Number(canvas.dataset.movingLeft));
+        if (diff < tol) {
+          canvas.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: 'mouse',
+            button: 0,
+            clientX: 0,
+            clientY: 0
+          }));
+          resolve(true);
+          return;
+        }
+        frame += 1;
+        if (frame > cap) {
+          resolve(false);
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }, { tol: tolerancePx, maxFrames });
+}
+
+test('tower stack: well-timed taps stack layers and increase the score', async ({ page }) => {
+  // 좁은 뷰포트일수록 블록의 왕복 폭이 짧아 정렬 타이밍을 더 자주 잡을 수 있다.
+  await page.setViewportSize({ width: 420, height: 800 });
+  await page.goto('/tower-stack/');
+  await expect(page.locator('.game-title')).toHaveText('타워 쌓기');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#ts-canvas')).toHaveAttribute('data-phase', 'playing');
+  await expect(page.locator('#hud-score')).toHaveText('0');
+
+  for (let i = 0; i < 5; i += 1) {
+    const tapped = await waitAndTapWhenAligned(page, 20, 600);
+    expect(tapped).toBe(true);
+    await expect(page.locator('#ts-canvas')).toHaveAttribute('data-phase', 'playing');
+  }
+
+  await expect(page.locator('#hud-score')).toHaveText('5');
+  await expect(page.locator('#ts-canvas')).toHaveAttribute('data-layers', '6');
+
+  const topWidth = Number(await page.locator('#ts-canvas').getAttribute('data-top-width'));
+  expect(topWidth).toBeGreaterThan(0);
+});
+
+test('tower stack: a badly misaligned tap eventually ends the game and saves the best score', async ({ page }) => {
+  await page.goto('/tower-stack/');
+  await page.evaluate(() => localStorage.removeItem('rhh_tower-stack_best'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+
+  // 정렬을 신경 쓰지 않고 계속 탭해서 너비를 빠르게 깎아 게임 오버를 유도한다.
+  await expect
+    .poll(async () => {
+      await page.locator('#ts-canvas').click();
+      return page.locator('#ts-canvas').getAttribute('data-phase');
+    }, { timeout: 20_000 })
+    .toBe('ended');
+
+  await expect(page.locator('#result-overlay')).toBeVisible();
+  const finalScore = Number(await page.locator('#result-score').textContent());
+  await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));
