@@ -16,6 +16,7 @@ export default defineConfig({
         yutnori: resolve(__dirname, 'yutnori/index.html'),
         'strategy-yutnori': resolve(__dirname, 'strategy-yutnori/index.html'),
         'aim-trainer': resolve(__dirname, 'aim-trainer/index.html'),
+        'color-slider': resolve(__dirname, 'color-slider/index.html'),
       },
       output: {
         manualChunks(id) {

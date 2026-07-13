@@ -115,6 +115,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/color-slider/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -197,6 +206,14 @@
       {
         "source": "/aim-trainer/**",
         "destination": "/aim-trainer/index.html"
+      },
+      {
+        "source": "/color-slider",
+        "destination": "/color-slider/index.html"
+      },
+      {
+        "source": "/color-slider/**",
+        "destination": "/color-slider/index.html"
       }
     ]
   }

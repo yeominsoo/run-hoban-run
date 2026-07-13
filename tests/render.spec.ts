@@ -1309,6 +1309,46 @@ test('aim trainer: starts, registers hits and misses, tracks level and best scor
   await expect(page.locator('#hud-level')).toHaveText('3');
 });
 
+test('color slider: moving sliders updates live accuracy and confirming advances rounds', async ({ page }) => {
+  await page.goto('/color-slider/');
+  await expect(page.locator('.game-title')).toHaveText('색 맞추기 슬라이더');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#hud-round')).toHaveText('1/10');
+  await expect(page.locator('#value-r')).toHaveText('128');
+
+  await page.locator('#slider-r').fill('200');
+  await page.locator('#slider-r').dispatchEvent('input');
+  await expect(page.locator('#value-r')).toHaveText('200');
+  await expect
+    .poll(async () => Number((await page.locator('#hud-accuracy').textContent())?.replace('%', '')))
+    .toBeGreaterThanOrEqual(0);
+
+  const scoreBefore = Number(await page.locator('#hud-score').textContent());
+  await page.locator('#confirm-btn').click();
+  await expect(page.locator('#hud-round')).toHaveText('2/10');
+  await expect(page.locator('#value-r')).toHaveText('128');
+  expect(Number(await page.locator('#hud-score').textContent())).toBeGreaterThanOrEqual(scoreBefore);
+});
+
+test('color slider: completing all 10 rounds shows the result overlay with a bounded score', async ({ page }) => {
+  await page.goto('/color-slider/');
+  await page.locator('#start-btn').click();
+
+  for (let i = 0; i < 10; i += 1) {
+    await page.locator('#confirm-btn').click();
+  }
+
+  await expect(page.locator('#result-overlay')).toBeVisible();
+  await expect(page.locator('#cs-play')).toBeHidden();
+  const finalScore = Number(await page.locator('#result-score').textContent());
+  expect(finalScore).toBeGreaterThanOrEqual(0);
+  expect(finalScore).toBeLessThanOrEqual(1000);
+  await expect(page.locator('#result-avg')).toContainText('평균 정확도');
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));

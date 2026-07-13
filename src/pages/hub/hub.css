@@ -333,6 +333,28 @@ body {
   box-shadow: 0 0 0 3px rgba(255, 111, 145, 0.18);
 }
 
+.color-slider-mark::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 10px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #e2554f, #3d9a5c, #3d6fd6);
+}
+
+.color-slider-mark::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 10px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(226,85,79,0.35), rgba(61,154,92,0.35), rgba(61,111,214,0.35));
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;
