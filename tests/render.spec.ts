@@ -1450,6 +1450,42 @@ test('color slider: completing all 10 rounds shows the result overlay with a bou
   await expect(page.locator('#result-avg')).toContainText('평균 정확도');
 });
 
+/**
+ * 결과 화면(닉네임 저장 폼이 보이는 상태)에서 시작해, 랭킹 저장 → 재방문 시 랭킹 목록에
+ * 표시 → 이미지 저장까지 공용 랭킹 UI(src/shared/leaderboard.ts) 흐름을 검증한다.
+ * 게임마다 결과 화면에 도달하는 과정만 다르고 이후 흐름은 동일해 공용 헬퍼로 뺐다.
+ */
+async function verifyRankingSaveAndView(page: Page, gamePath: string, name = '테스터') {
+  await expect(page.locator('#rank-name-input')).toBeVisible();
+  await page.locator('#rank-name-input').fill(name);
+  await page.locator('#rank-save-btn').click();
+  await expect(page.locator('#rank-saved-msg')).toBeVisible();
+  await expect(page.locator('#rank-save-btn')).toBeDisabled();
+
+  await page.goto(gamePath);
+  await expect(page.locator('#view-ranking-btn')).toBeVisible();
+  await page.locator('#view-ranking-btn').click();
+  await expect(page.locator('#ranking-overlay')).toBeVisible();
+  await expect(page.locator('#ranking-list')).toContainText(name);
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#ranking-save-image-btn').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.png$/);
+}
+
+test('color slider: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  await page.goto('/color-slider/');
+  await page.evaluate(() => localStorage.removeItem('rhh_color-slider_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  for (let i = 0; i < 10; i += 1) await page.locator('#confirm-btn').click();
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  await verifyRankingSaveAndView(page, '/color-slider/');
+});
+
 async function chaseBall(page: Page, kind: 'green' | 'red', maxIterations: number) {
   const canvas = page.locator('#bd-canvas');
   const box = await canvas.boundingBox();
@@ -1523,6 +1559,33 @@ test('ball dodge: losing all HP shows the result overlay and saves the best scor
 
   const finalScore = Number(await page.locator('#result-score').textContent());
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
+test('ball dodge: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  await page.goto('/ball-dodge/');
+  await page.evaluate(() => localStorage.removeItem('rhh_ball-dodge_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  const box = await page.locator('#bd-canvas').boundingBox();
+  if (!box) throw new Error('ball-dodge canvas has no bounding box');
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+
+  for (let hpLossAttempt = 0; hpLossAttempt < 3; hpLossAttempt += 1) {
+    const hpBefore = Number(await page.locator('#bd-canvas').getAttribute('data-hp'));
+    await expect
+      .poll(async () => {
+        await chaseBall(page, 'red', 5);
+        return Number(await page.locator('#bd-canvas').getAttribute('data-hp'));
+      }, { timeout: 20_000 })
+      .toBeLessThanOrEqual(hpBefore);
+    await page.waitForTimeout(1_050);
+  }
+  await page.mouse.up();
+  await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 10_000 });
+
+  await verifyRankingSaveAndView(page, '/ball-dodge/');
 });
 
 /**
@@ -1611,12 +1674,31 @@ test('tower stack: a badly misaligned tap eventually ends the game and saves the
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
 });
 
+test('tower stack: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  await page.goto('/tower-stack/');
+  await page.evaluate(() => localStorage.removeItem('rhh_tower-stack_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  await expect
+    .poll(async () => {
+      await page.locator('#ts-canvas').click();
+      return page.locator('#ts-canvas').getAttribute('data-phase');
+    }, { timeout: 20_000 })
+    .toBe('ended');
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  await verifyRankingSaveAndView(page, '/tower-stack/');
+});
+
 interface SnakeState {
   headX: number;
   headY: number;
   foodX: number;
   foodY: number;
   length: number;
+  dirDx: number;
+  dirDy: number;
   phase: string | undefined;
 }
 
@@ -1629,6 +1711,8 @@ async function readSnakeState(page: Page): Promise<SnakeState> {
       foodX: Number(canvas.dataset.foodX),
       foodY: Number(canvas.dataset.foodY),
       length: Number(canvas.dataset.length),
+      dirDx: Number(canvas.dataset.dirDx),
+      dirDy: Number(canvas.dataset.dirDy),
       phase: canvas.dataset.phase
     };
   });
@@ -1664,18 +1748,13 @@ test('snake: steering onto the food grows the snake and increases the score', as
   expect(Number(await page.locator('#hud-score').textContent())).toBeGreaterThan(0);
 });
 
-test('snake: turning back into its own body ends the game and saves the best score', async ({ page }) => {
-  await page.goto('/snake/');
-  await page.evaluate(() => localStorage.removeItem('rhh_snake_best'));
-  await page.reload();
-
-  await page.locator('#start-btn').click();
-
-  // 몸길이를 조금 늘려야 좁은 반전 동작으로 확실히 자기 몸에 부딪힌다.
+async function driveSnakeToGameOver(page: Page) {
+  // 몸길이를 5 이상(시작 3 + 먹이 2회)으로 늘려야 아래 2×2 루프에서 충돌이 수학적으로
+  // 보장된다.
   for (let grownCount = 0; grownCount < 2; grownCount += 1) {
     for (let i = 0; i < 60; i += 1) {
       const s = await readSnakeState(page);
-      if (s.phase !== 'playing') break;
+      if (s.phase !== 'playing') return;
       const dx = s.foodX - s.headX;
       const dy = s.foodY - s.headY;
       if (Math.abs(dx) > Math.abs(dy)) {
@@ -1684,22 +1763,66 @@ test('snake: turning back into its own body ends the game and saves the best sco
         await page.keyboard.press(dy > 0 ? 'ArrowDown' : 'ArrowUp');
       }
       await page.waitForTimeout(60);
+      const s2 = await readSnakeState(page);
+      if (s2.length > s.length) break;
     }
   }
 
-  // 왼쪽으로 좁은 사각형을 그려 자기 몸통과 부딪히게 만든다.
-  for (const key of ['ArrowDown', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft']) {
-    const phaseNow = (await readSnakeState(page)).phase;
-    if (phaseNow === 'ended') break;
-    await page.keyboard.press(key);
-    await page.waitForTimeout(250);
+  // 현재 실제 진행 방향을 90도씩 같은 방향으로 4번 회전시키면 정확히 한 바퀴 돌아
+  // 시작점으로 돌아온다. 몸길이가 5 이상이면 그 칸은 아직 몸통이 차지하고 있어(길이 5 >
+  // 경과 틱 4) 반드시 자기 몸과 부딪힌다. 고정된 키 시퀀스(예: Down 먼저) 대신 "현재
+  // 방향에서 90도 회전"으로 계산해야 한다 — 만약 스네이크가 이미 Up으로 가고 있는데
+  // 첫 키로 Down을 누르면 게임이 반대 방향 입력을 무시해버려 루프 자체가 깨진다.
+  const dirToKey = (dx: number, dy: number): string => {
+    if (dx === 1) return 'ArrowRight';
+    if (dx === -1) return 'ArrowLeft';
+    return dy === 1 ? 'ArrowDown' : 'ArrowUp';
+  };
+  const rotate90 = ({ dx, dy }: { dx: number; dy: number }) => ({ dx: -dy, dy: dx });
+
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    const state = await readSnakeState(page);
+    if (state.phase === 'ended') return;
+    let dir = { dx: state.dirDx, dy: state.dirDy };
+    const loopKeys = Array.from({ length: 4 }, () => {
+      dir = rotate90(dir);
+      return dirToKey(dir.dx, dir.dy);
+    });
+
+    for (const key of loopKeys) {
+      const phaseNow = (await readSnakeState(page)).phase;
+      if (phaseNow === 'ended') return;
+      await page.keyboard.press(key);
+      await page.waitForTimeout(250);
+    }
   }
+}
+
+test('snake: turning back into its own body ends the game and saves the best score', async ({ page }) => {
+  await page.goto('/snake/');
+  await page.evaluate(() => localStorage.removeItem('rhh_snake_best'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  await driveSnakeToGameOver(page);
 
   await expect(page.locator('#sn-canvas')).toHaveAttribute('data-phase', 'ended');
   await expect(page.locator('#result-overlay')).toBeVisible();
 
   const finalScore = Number(await page.locator('#result-score').textContent());
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
+test('snake: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  await page.goto('/snake/');
+  await page.evaluate(() => localStorage.removeItem('rhh_snake_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  await driveSnakeToGameOver(page);
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  await verifyRankingSaveAndView(page, '/snake/');
 });
 
 test('typing survival: typing the falling word clears it and increases the score', async ({ page }) => {
@@ -1740,6 +1863,21 @@ test('typing survival: letting words hit the floor loses HP and ends the game', 
   await expect(page.locator('#result-overlay')).toBeVisible();
   const finalScore = Number(await page.locator('#result-score').textContent());
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
+test('typing survival: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/typing-survival/');
+  await page.evaluate(() => localStorage.removeItem('rhh_typing-survival_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  await expect
+    .poll(async () => page.locator('#tp-canvas').getAttribute('data-phase'), { timeout: 45_000 })
+    .toBe('ended');
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  await verifyRankingSaveAndView(page, '/typing-survival/');
 });
 
 async function readHexTiles(page: Page): Promise<Array<{ q: number; r: number; value: number }>> {
@@ -1805,6 +1943,28 @@ test('2048 hex: a swipe gesture is recognized as a directional move', async ({ p
     }
   }
   expect(changed).toBe(true);
+});
+
+test('2048 hex: the ranking list can be saved as an image', async ({ page }) => {
+  // 정상적인 플레이만으로 "더 이상 이동 불가" 상태(19칸 전부 채워지고 인접 병합도 불가)를
+  // 결정론적으로 만들기는 비현실적이라, 랭킹보기/이미지 내보내기 경로만 저장된 랭킹으로
+  // 검증한다. 결과 화면에서의 "기록 저장" 자체는 다른 6개 게임에서 이미 충분히 검증했다.
+  await page.goto('/2048-hex/');
+  await page.evaluate(() => {
+    localStorage.setItem('rhh_2048-hex_ranking', JSON.stringify([
+      { name: '민수', score: 4096, at: Date.now() }
+    ]));
+  });
+  await page.reload();
+
+  await page.locator('#view-ranking-btn').click();
+  await expect(page.locator('#ranking-overlay')).toBeVisible();
+  await expect(page.locator('#ranking-list')).toContainText('민수');
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#ranking-save-image-btn').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.png$/);
 });
 
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {

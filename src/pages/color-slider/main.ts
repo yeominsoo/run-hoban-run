@@ -1,5 +1,6 @@
 import './color-slider.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
+import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'color-slider';
 const ROUND_COUNT = 10;
@@ -61,6 +62,7 @@ app.innerHTML = `
           <h2>색 맞추기 슬라이더</h2>
           <p>10라운드 동안 R/G/B 슬라이더로 목표 색을 최대한 똑같이 맞춰보세요.<br>라운드당 15초, 정확할수록 높은 점수!</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
+          <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
       </div>
 
@@ -72,7 +74,26 @@ app.innerHTML = `
             <span id="result-avg">평균 정확도 0%</span>
           </div>
           <p class="record-badge hidden" id="record-badge">🏆 신기록!</p>
+
+          <div class="rank-entry-form" id="rank-entry-form">
+            <input id="rank-name-input" class="rank-name-input" type="text" maxlength="12" placeholder="닉네임" autocomplete="off" />
+            <button id="rank-save-btn" class="rank-save-btn" type="button">기록 저장</button>
+          </div>
+          <p class="rank-saved-msg hidden" id="rank-saved-msg">저장했어요!</p>
+
           <button id="retry-btn" class="primary-btn" type="button">다시 하기</button>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="ranking-overlay">
+        <div class="overlay-card">
+          <h2>랭킹</h2>
+          <ol class="ranking-list" id="ranking-list"></ol>
+          <div class="result-image-actions">
+            <button id="ranking-save-image-btn" class="ghost-btn" type="button">이미지 저장</button>
+            <button id="ranking-share-image-btn" class="ghost-btn hidden" type="button">공유하기</button>
+          </div>
+          <button id="close-ranking-btn" class="primary-btn" type="button">닫기</button>
         </div>
       </div>
     </div>
@@ -96,6 +117,15 @@ const resultAvg = document.getElementById('result-avg')!;
 const recordBadge = document.getElementById('record-badge')!;
 const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
 const confirmBtn = document.getElementById('confirm-btn') as HTMLButtonElement;
+const rankNameInput = document.getElementById('rank-name-input') as HTMLInputElement;
+const rankSaveBtn = document.getElementById('rank-save-btn') as HTMLButtonElement;
+const rankSavedMsg = document.getElementById('rank-saved-msg')!;
+const viewRankingBtn = document.getElementById('view-ranking-btn') as HTMLButtonElement;
+const rankingOverlay = document.getElementById('ranking-overlay')!;
+const rankingList = document.getElementById('ranking-list')!;
+const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButtonElement;
+const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
+const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 const sliderR = document.getElementById('slider-r') as HTMLInputElement;
 const sliderG = document.getElementById('slider-g') as HTMLInputElement;
 const sliderB = document.getElementById('slider-b') as HTMLInputElement;
@@ -118,6 +148,23 @@ let dpr = Math.max(1, window.devicePixelRatio || 1);
 bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+
+setupRankingUI(
+  {
+    gameSlug: GAME_SLUG,
+    gameTitle: '색 맞추기 슬라이더',
+    nameInput: rankNameInput,
+    saveBtn: rankSaveBtn,
+    savedMsg: rankSavedMsg,
+    viewRankingBtn,
+    rankingOverlay,
+    rankingList,
+    closeRankingBtn,
+    rankingSaveImageBtn,
+    rankingShareImageBtn
+  },
+  () => score
+);
 
 function resizeCanvas() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -258,6 +305,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultAvg.textContent = `평균 정확도 ${avgAccuracy}%`;
   recordBadge.classList.toggle('hidden', !isRecord);
+  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
   resultOverlay.classList.remove('hidden');
 }
 

@@ -1,5 +1,6 @@
 import './typing-survival.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
+import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
 import { WORDS_EN, WORDS_KO } from './word-lists';
 
 const GAME_SLUG = 'typing-survival';
@@ -23,7 +24,10 @@ interface FallingWord {
 }
 
 const isMobile = window.matchMedia('(pointer: coarse)').matches;
-const wordPool = isMobile ? WORDS_EN : [...WORDS_EN, ...WORDS_KO];
+const isKoreanLocale = (navigator.language ?? '').toLowerCase().startsWith('ko');
+// 모바일은 소프트 키보드 언어 전환 마찰을 줄이기 위해 접속 로캘 기준 단일 언어만 출제한다
+// (한국어 로캘이면 한국어만, 그 외에는 영어만). 데스크톱은 기존대로 영어+한국어를 섞는다.
+const wordPool = isMobile ? (isKoreanLocale ? WORDS_KO : WORDS_EN) : [...WORDS_EN, ...WORDS_KO];
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -50,8 +54,9 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>타이핑 생존</h2>
-          <p>떨어지는 단어를 바닥에 닿기 전에 타이핑하세요.<br>HP 3, 10초마다 더 빨라지고 동시에 더 많은 단어가 떨어집니다.${isMobile ? '<br><small>모바일에서는 영어 단어만 출제됩니다.</small>' : ''}</p>
+          <p>떨어지는 단어를 바닥에 닿기 전에 타이핑하세요.<br>HP 3, 10초마다 더 빨라지고 동시에 더 많은 단어가 떨어집니다.${isMobile ? `<br><small>모바일에서는 기기 언어 설정에 따라 ${isKoreanLocale ? '한국어' : '영어'} 단어만 출제됩니다.</small>` : ''}</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
+          <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
       </div>
 
@@ -61,7 +66,26 @@ app.innerHTML = `
           <div class="result-score" id="result-score">0</div>
           <div class="result-stats"><span id="result-level">레벨 1까지 생존</span></div>
           <p class="record-badge hidden" id="record-badge">🏆 신기록!</p>
+
+          <div class="rank-entry-form" id="rank-entry-form">
+            <input id="rank-name-input" class="rank-name-input" type="text" maxlength="12" placeholder="닉네임" autocomplete="off" />
+            <button id="rank-save-btn" class="rank-save-btn" type="button">기록 저장</button>
+          </div>
+          <p class="rank-saved-msg hidden" id="rank-saved-msg">저장했어요!</p>
+
           <button id="retry-btn" class="primary-btn" type="button">다시 하기</button>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="ranking-overlay">
+        <div class="overlay-card">
+          <h2>랭킹</h2>
+          <ol class="ranking-list" id="ranking-list"></ol>
+          <div class="result-image-actions">
+            <button id="ranking-save-image-btn" class="ghost-btn" type="button">이미지 저장</button>
+            <button id="ranking-share-image-btn" class="ghost-btn hidden" type="button">공유하기</button>
+          </div>
+          <button id="close-ranking-btn" class="primary-btn" type="button">닫기</button>
         </div>
       </div>
     </div>
@@ -86,6 +110,15 @@ const resultScore = document.getElementById('result-score')!;
 const resultLevel = document.getElementById('result-level')!;
 const recordBadge = document.getElementById('record-badge')!;
 const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
+const rankNameInput = document.getElementById('rank-name-input') as HTMLInputElement;
+const rankSaveBtn = document.getElementById('rank-save-btn') as HTMLButtonElement;
+const rankSavedMsg = document.getElementById('rank-saved-msg')!;
+const viewRankingBtn = document.getElementById('view-ranking-btn') as HTMLButtonElement;
+const rankingOverlay = document.getElementById('ranking-overlay')!;
+const rankingList = document.getElementById('ranking-list')!;
+const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButtonElement;
+const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
+const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 
 // ── Theme colors ───────────────────────────────
 const rootStyle = getComputedStyle(document.documentElement);
@@ -134,6 +167,23 @@ syncViewport();
 window.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('scroll', syncViewport);
+
+setupRankingUI(
+  {
+    gameSlug: GAME_SLUG,
+    gameTitle: '타이핑 생존',
+    nameInput: rankNameInput,
+    saveBtn: rankSaveBtn,
+    savedMsg: rankSavedMsg,
+    viewRankingBtn,
+    rankingOverlay,
+    rankingList,
+    closeRankingBtn,
+    rankingSaveImageBtn,
+    rankingShareImageBtn
+  },
+  () => score
+);
 
 function resizeCanvas() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -235,6 +285,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultLevel.textContent = `레벨 ${level}까지 생존`;
   recordBadge.classList.toggle('hidden', !isRecord);
+  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
   resultOverlay.classList.remove('hidden');
 }
 

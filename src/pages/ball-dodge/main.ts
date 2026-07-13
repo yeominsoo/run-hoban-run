@@ -1,6 +1,7 @@
 import './ball-dodge.css';
 import { onDrag } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
+import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'ball-dodge';
 const PLAYER_RADIUS = 16;
@@ -49,6 +50,7 @@ app.innerHTML = `
           <h2>볼 피하기 + 수집</h2>
           <p>드래그로 캐릭터를 움직여 빨간 볼을 피하고 초록 볼을 모으세요.<br>HP 3, 초록 볼 하나당 +10점. 30초마다 더 빨라지고 볼이 늘어납니다.</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
+          <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
       </div>
 
@@ -60,7 +62,26 @@ app.innerHTML = `
             <span id="result-time">생존 0.0초</span>
           </div>
           <p class="record-badge hidden" id="record-badge">🏆 신기록!</p>
+
+          <div class="rank-entry-form" id="rank-entry-form">
+            <input id="rank-name-input" class="rank-name-input" type="text" maxlength="12" placeholder="닉네임" autocomplete="off" />
+            <button id="rank-save-btn" class="rank-save-btn" type="button">기록 저장</button>
+          </div>
+          <p class="rank-saved-msg hidden" id="rank-saved-msg">저장했어요!</p>
+
           <button id="retry-btn" class="primary-btn" type="button">다시 하기</button>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="ranking-overlay">
+        <div class="overlay-card">
+          <h2>랭킹</h2>
+          <ol class="ranking-list" id="ranking-list"></ol>
+          <div class="result-image-actions">
+            <button id="ranking-save-image-btn" class="ghost-btn" type="button">이미지 저장</button>
+            <button id="ranking-share-image-btn" class="ghost-btn hidden" type="button">공유하기</button>
+          </div>
+          <button id="close-ranking-btn" class="primary-btn" type="button">닫기</button>
         </div>
       </div>
     </div>
@@ -83,6 +104,15 @@ const resultScore = document.getElementById('result-score')!;
 const resultTime = document.getElementById('result-time')!;
 const recordBadge = document.getElementById('record-badge')!;
 const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
+const rankNameInput = document.getElementById('rank-name-input') as HTMLInputElement;
+const rankSaveBtn = document.getElementById('rank-save-btn') as HTMLButtonElement;
+const rankSavedMsg = document.getElementById('rank-saved-msg')!;
+const viewRankingBtn = document.getElementById('view-ranking-btn') as HTMLButtonElement;
+const rankingOverlay = document.getElementById('ranking-overlay')!;
+const rankingList = document.getElementById('ranking-list')!;
+const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButtonElement;
+const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
+const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 
 // ── Theme colors ───────────────────────────────
 const rootStyle = getComputedStyle(document.documentElement);
@@ -112,6 +142,23 @@ bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 canvas.dataset.phase = phase;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+
+setupRankingUI(
+  {
+    gameSlug: GAME_SLUG,
+    gameTitle: '볼 피하기 + 수집',
+    nameInput: rankNameInput,
+    saveBtn: rankSaveBtn,
+    savedMsg: rankSavedMsg,
+    viewRankingBtn,
+    rankingOverlay,
+    rankingList,
+    closeRankingBtn,
+    rankingSaveImageBtn,
+    rankingShareImageBtn
+  },
+  () => score
+);
 
 function resizeCanvas() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -202,6 +249,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultTime.textContent = `생존 ${(elapsedMs / 1000).toFixed(1)}초`;
   recordBadge.classList.toggle('hidden', !isRecord);
+  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
   resultOverlay.classList.remove('hidden');
 }
 

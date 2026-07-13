@@ -1,6 +1,7 @@
 import './snake.css';
 import { onSwipe } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
+import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'snake';
 const GRID_COLS = 16;
@@ -60,6 +61,7 @@ app.innerHTML = `
           <h2>스네이크 비틀기</h2>
           <p>방향키·WASD 또는 스와이프로 뱀을 조종해 먹이를 먹으세요.<br>벽은 없어요 — 반대편으로 통과합니다. 시간이 지날수록 빨라지고 색이 바뀝니다.</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
+          <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
       </div>
 
@@ -69,7 +71,26 @@ app.innerHTML = `
           <div class="result-score" id="result-score">0</div>
           <div class="result-stats"><span>먹이를 먹음</span></div>
           <p class="record-badge hidden" id="record-badge">🏆 신기록!</p>
+
+          <div class="rank-entry-form" id="rank-entry-form">
+            <input id="rank-name-input" class="rank-name-input" type="text" maxlength="12" placeholder="닉네임" autocomplete="off" />
+            <button id="rank-save-btn" class="rank-save-btn" type="button">기록 저장</button>
+          </div>
+          <p class="rank-saved-msg hidden" id="rank-saved-msg">저장했어요!</p>
+
           <button id="retry-btn" class="primary-btn" type="button">다시 하기</button>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="ranking-overlay">
+        <div class="overlay-card">
+          <h2>랭킹</h2>
+          <ol class="ranking-list" id="ranking-list"></ol>
+          <div class="result-image-actions">
+            <button id="ranking-save-image-btn" class="ghost-btn" type="button">이미지 저장</button>
+            <button id="ranking-share-image-btn" class="ghost-btn hidden" type="button">공유하기</button>
+          </div>
+          <button id="close-ranking-btn" class="primary-btn" type="button">닫기</button>
         </div>
       </div>
     </div>
@@ -89,6 +110,15 @@ const resultOverlay = document.getElementById('result-overlay')!;
 const resultScore = document.getElementById('result-score')!;
 const recordBadge = document.getElementById('record-badge')!;
 const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
+const rankNameInput = document.getElementById('rank-name-input') as HTMLInputElement;
+const rankSaveBtn = document.getElementById('rank-save-btn') as HTMLButtonElement;
+const rankSavedMsg = document.getElementById('rank-saved-msg')!;
+const viewRankingBtn = document.getElementById('view-ranking-btn') as HTMLButtonElement;
+const rankingOverlay = document.getElementById('ranking-overlay')!;
+const rankingList = document.getElementById('ranking-list')!;
+const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButtonElement;
+const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
+const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 
 // ── State ─────────────────────────────────────
 let phase: Phase = 'idle';
@@ -117,6 +147,23 @@ bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 canvas.dataset.phase = phase;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+
+setupRankingUI(
+  {
+    gameSlug: GAME_SLUG,
+    gameTitle: '스네이크 비틀기',
+    nameInput: rankNameInput,
+    saveBtn: rankSaveBtn,
+    savedMsg: rankSavedMsg,
+    viewRankingBtn,
+    rankingOverlay,
+    rankingList,
+    closeRankingBtn,
+    rankingSaveImageBtn,
+    rankingShareImageBtn
+  },
+  () => score
+);
 
 function resizeCanvas() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -163,6 +210,8 @@ function updateTestAttrs() {
   canvas.dataset.foodX = String(food.x);
   canvas.dataset.foodY = String(food.y);
   canvas.dataset.length = String(snake.length);
+  canvas.dataset.dirDx = String(direction.dx);
+  canvas.dataset.dirDy = String(direction.dy);
 }
 
 // ── Game flow ─────────────────────────────────
@@ -208,6 +257,7 @@ function endGame() {
 
   resultScore.textContent = String(score);
   recordBadge.classList.toggle('hidden', !isRecord);
+  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
   resultOverlay.classList.remove('hidden');
 }
 
