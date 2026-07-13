@@ -21,6 +21,7 @@ export default defineConfig({
         'tower-stack': resolve(__dirname, 'tower-stack/index.html'),
         snake: resolve(__dirname, 'snake/index.html'),
         'typing-survival': resolve(__dirname, 'typing-survival/index.html'),
+        '2048-hex': resolve(__dirname, '2048-hex/index.html'),
       },
       output: {
         manualChunks(id) {

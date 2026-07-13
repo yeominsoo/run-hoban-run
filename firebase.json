@@ -160,6 +160,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/2048-hex/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -282,6 +291,14 @@
       {
         "source": "/typing-survival/**",
         "destination": "/typing-survival/index.html"
+      },
+      {
+        "source": "/2048-hex",
+        "destination": "/2048-hex/index.html"
+      },
+      {
+        "source": "/2048-hex/**",
+        "destination": "/2048-hex/index.html"
       }
     ]
   }

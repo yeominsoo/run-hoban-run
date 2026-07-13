@@ -113,9 +113,27 @@ let rafId: number | null = null;
 // ── Init ──────────────────────────────────────
 bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 canvas.dataset.phase = phase;
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-window.visualViewport?.addEventListener('resize', resizeCanvas);
+
+/**
+ * 일부 모바일 브라우저는 소프트 키보드가 뜨면 포커스된 입력을 보여주려고 문서 전체를
+ * 위로 스크롤해버려서(내부 요소 리사이즈가 아니라 스크롤), 화면 상단(단어 낙하 영역)이
+ * 뷰포트 밖으로 밀려나 아무 단어도 안 보이는 문제가 있었다. body를 position:fixed로
+ * 고정해 브라우저의 "포커스 요소로 스크롤" 동작 자체를 막고, visualViewport 크기·스크롤
+ * 변화가 있을 때마다 문서 높이를 명시적으로 맞추고 스크롤 위치를 (0,0)으로 되돌린다.
+ */
+function syncViewport() {
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.height = `${h}px`;
+  document.body.style.height = `${h}px`;
+  if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+  resizeCanvas();
+}
+
+syncViewport();
+window.addEventListener('resize', syncViewport);
+window.visualViewport?.addEventListener('resize', syncViewport);
+window.visualViewport?.addEventListener('scroll', syncViewport);
 
 function resizeCanvas() {
   dpr = Math.max(1, window.devicePixelRatio || 1);

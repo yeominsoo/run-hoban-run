@@ -1641,6 +1641,64 @@ test('typing survival: letting words hit the floor loses HP and ends the game', 
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
 });
 
+async function readHexTiles(page: Page): Promise<Array<{ q: number; r: number; value: number }>> {
+  const raw = (await page.locator('#hx-canvas').getAttribute('data-tiles')) ?? '';
+  return raw.split('|').filter(Boolean).map((entry) => {
+    const [pos, value] = entry.split(':');
+    const [q, r] = pos.split(',').map(Number);
+    return { q, r, value: Number(value) };
+  });
+}
+
+test('2048 hex: keyboard moves slide and merge tiles, increasing the score', async ({ page }) => {
+  await page.goto('/2048-hex/');
+  await expect(page.locator('.game-title')).toHaveText('2048 변형(육각형)');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#hx-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  const before = await readHexTiles(page);
+  expect(before.length).toBe(2);
+
+  for (const key of ['KeyE', 'KeyA', 'KeyQ', 'KeyD', 'KeyW', 'KeyS']) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(30);
+  }
+
+  const after = await readHexTiles(page);
+  expect(after.length).toBeGreaterThan(before.length);
+  // 19칸짜리 격자 밖으로 나간 타일이 없어야 한다(반지름 2: |q|,|r|,|q+r| 전부 2 이하).
+  for (const tile of after) {
+    expect(Math.max(Math.abs(tile.q), Math.abs(tile.r), Math.abs(tile.q + tile.r))).toBeLessThanOrEqual(2);
+  }
+});
+
+test('2048 hex: a swipe gesture is recognized as a directional move', async ({ page }) => {
+  await page.goto('/2048-hex/');
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#hx-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  const before = await readHexTiles(page);
+  const box = await page.locator('#hx-canvas').boundingBox();
+  if (!box) throw new Error('hex canvas has no bounding box');
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  // 오른쪽으로 스와이프(E 방향)
+  await page.mouse.move(cx - 80, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 80, cy, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+
+  const after = await readHexTiles(page);
+  expect(after.length).toBeGreaterThanOrEqual(before.length);
+  const changed = JSON.stringify(before) !== JSON.stringify(after);
+  expect(changed).toBe(true);
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));
