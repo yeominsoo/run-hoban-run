@@ -355,6 +355,30 @@ body {
   background: linear-gradient(90deg, rgba(226,85,79,0.35), rgba(61,154,92,0.35), rgba(61,111,214,0.35));
 }
 
+.ball-dodge-mark::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  box-shadow: 16px 6px 0 -1px var(--color-danger);
+}
+
+.ball-dodge-mark::after {
+  content: "";
+  position: absolute;
+  bottom: 9px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: -17px 3px 0 -1px var(--color-success);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

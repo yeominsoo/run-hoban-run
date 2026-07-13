@@ -124,6 +124,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/ball-dodge/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -214,6 +223,14 @@
       {
         "source": "/color-slider/**",
         "destination": "/color-slider/index.html"
+      },
+      {
+        "source": "/ball-dodge",
+        "destination": "/ball-dodge/index.html"
+      },
+      {
+        "source": "/ball-dodge/**",
+        "destination": "/ball-dodge/index.html"
       }
     ]
   }

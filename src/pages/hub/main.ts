@@ -19,6 +19,7 @@ const GAMES: GameEntry[] = [
   { slug: 'strategy-yutnori', icon: 'strategy-yutnori-mark', name: '전략윷놀이', desc: '4명이 2:2로 겨루는 심리전 윷놀이. 앞면·뒷면을 비공개로 동시에 내 윷값을 정하고, 팀원마저 배신할 수 있다. &lt;더 지니어스&gt; 데스매치 변형.' },
   { slug: 'aim-trainer', icon: 'aim-trainer-mark', name: '에임 트레이너', desc: '30초 동안 화면에 나타나는 원을 최대한 빠르고 정확하게 탭! 레벨이 오를수록 원이 작아진다.' },
   { slug: 'color-slider', icon: 'color-slider-mark', name: '색 맞추기 슬라이더', desc: 'R/G/B 슬라이더로 목표 색을 최대한 똑같이 맞춰라. 10라운드, 라운드당 15초.' },
+  { slug: 'ball-dodge', icon: 'ball-dodge-mark', name: '볼 피하기 + 수집', desc: '드래그로 캐릭터를 움직여 빨간 볼은 피하고 초록 볼은 모으세요. HP 3, 30초마다 더 치열해진다.' },
 ];
 
 const app = document.getElementById('app')!;

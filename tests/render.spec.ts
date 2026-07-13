@@ -1349,6 +1349,81 @@ test('color slider: completing all 10 rounds shows the result overlay with a bou
   await expect(page.locator('#result-avg')).toContainText('평균 정확도');
 });
 
+async function chaseBall(page: Page, kind: 'green' | 'red', maxIterations: number) {
+  const canvas = page.locator('#bd-canvas');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('ball-dodge canvas has no bounding box');
+
+  for (let i = 0; i < maxIterations; i += 1) {
+    const pos = await canvas.evaluate((el, k) => ({
+      x: Number((el as HTMLElement).dataset[`${k}X`]),
+      y: Number((el as HTMLElement).dataset[`${k}Y`])
+    }), kind);
+    if (Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+      await page.mouse.move(box.x + pos.x, box.y + pos.y);
+    }
+    await page.waitForTimeout(50);
+  }
+}
+
+test('ball dodge: dragging onto a green ball scores points, red ball costs HP', async ({ page }) => {
+  await page.goto('/ball-dodge/');
+  await expect(page.locator('.game-title')).toHaveText('볼 피하기 + 수집');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#bd-canvas')).toHaveAttribute('data-phase', 'playing');
+  await expect(page.locator('#hud-hp')).toHaveText('❤️❤️❤️');
+
+  const box = await page.locator('#bd-canvas').boundingBox();
+  if (!box) throw new Error('ball-dodge canvas has no bounding box');
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+
+  await chaseBall(page, 'green', 40);
+  await expect
+    .poll(async () => Number(await page.locator('#hud-score').textContent()))
+    .toBeGreaterThanOrEqual(10);
+
+  await chaseBall(page, 'red', 40);
+  await expect
+    .poll(async () => Number(await page.locator('#bd-canvas').getAttribute('data-hp')))
+    .toBeLessThan(3);
+  await expect(page.locator('#hud-hp')).not.toHaveText('❤️❤️❤️');
+
+  await page.mouse.up();
+});
+
+test('ball dodge: losing all HP shows the result overlay and saves the best score', async ({ page }) => {
+  await page.goto('/ball-dodge/');
+  await page.evaluate(() => localStorage.removeItem('rhh_ball-dodge_best'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  const box = await page.locator('#bd-canvas').boundingBox();
+  if (!box) throw new Error('ball-dodge canvas has no bounding box');
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+
+  // 무적 시간(1초)이 끝날 때마다 빨간 볼을 계속 쫓아가 HP 3을 전부 소진시킨다.
+  // 정확히 몇 번째 시도에 맞았는지는 신경 쓰지 않고, phase가 'ended'가 될 때까지 반복한다
+  // (게임오버를 유발한 마지막 충돌 프레임엔 data-hp 갱신이 한 프레임 늦게 반영될 수 있어
+  // hp 값을 단계별로 정확히 추적하는 대신 최종 phase만 기준으로 삼는 편이 더 안정적이다).
+  await expect
+    .poll(async () => {
+      await chaseBall(page, 'red', 5);
+      return page.locator('#bd-canvas').getAttribute('data-phase');
+    }, { timeout: 30_000, intervals: [1_050] })
+    .toBe('ended');
+  await page.mouse.up();
+
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  const finalScore = Number(await page.locator('#result-score').textContent());
+  await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));
