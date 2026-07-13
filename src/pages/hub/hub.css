@@ -424,6 +424,33 @@ body {
   background: var(--color-accent-strong);
 }
 
+.typing-survival-mark::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 11px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-secondary);
+  box-shadow: 0 8px 0 0 var(--color-accent), 0 16px 0 0 var(--color-danger);
+}
+
+.typing-survival-mark::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 9px;
+  height: 2px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-page-muted) 0px, var(--color-page-muted) 3px,
+    transparent 3px, transparent 6px
+  );
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

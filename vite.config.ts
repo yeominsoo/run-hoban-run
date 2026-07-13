@@ -20,6 +20,7 @@ export default defineConfig({
         'ball-dodge': resolve(__dirname, 'ball-dodge/index.html'),
         'tower-stack': resolve(__dirname, 'tower-stack/index.html'),
         snake: resolve(__dirname, 'snake/index.html'),
+        'typing-survival': resolve(__dirname, 'typing-survival/index.html'),
       },
       output: {
         manualChunks(id) {

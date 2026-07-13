@@ -22,6 +22,7 @@ const GAMES: GameEntry[] = [
   { slug: 'ball-dodge', icon: 'ball-dodge-mark', name: '볼 피하기 + 수집', desc: '드래그로 캐릭터를 움직여 빨간 볼은 피하고 초록 볼은 모으세요. HP 3, 30초마다 더 치열해진다.' },
   { slug: 'tower-stack', icon: 'tower-stack-mark', name: '타워 쌓기', desc: '좌우로 움직이는 블록을 탭해서 정확히 쌓아 올리세요. 삐져나온 부분은 잘려나가고, 너비가 10px 미만이면 게임 오버.' },
   { slug: 'snake', icon: 'snake-mark', name: '스네이크 비틀기', desc: '방향키·WASD·스와이프로 뱀을 조종해 먹이를 먹으세요. 벽이 없어 반대편으로 통과하고, 시간이 지날수록 빨라지며 색이 바뀝니다.' },
+  { slug: 'typing-survival', icon: 'typing-survival-mark', name: '타이핑 생존', desc: '떨어지는 영어·한국어 단어를 바닥에 닿기 전에 타이핑하세요. HP 3, 10초마다 더 빠르고 많아집니다.' },
 ];
 
 const app = document.getElementById('app')!;

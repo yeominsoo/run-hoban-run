@@ -151,6 +151,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/typing-survival/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -265,6 +274,14 @@
       {
         "source": "/snake/**",
         "destination": "/snake/index.html"
+      },
+      {
+        "source": "/typing-survival",
+        "destination": "/typing-survival/index.html"
+      },
+      {
+        "source": "/typing-survival/**",
+        "destination": "/typing-survival/index.html"
       }
     ]
   }

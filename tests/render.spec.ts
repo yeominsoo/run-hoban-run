@@ -1601,6 +1601,46 @@ test('snake: turning back into its own body ends the game and saves the best sco
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
 });
 
+test('typing survival: typing the falling word clears it and increases the score', async ({ page }) => {
+  await page.goto('/typing-survival/');
+  await expect(page.locator('.game-title')).toHaveText('타이핑 생존');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#tp-canvas')).toHaveAttribute('data-phase', 'playing');
+  await expect(page.locator('#hud-score')).toHaveText('0');
+
+  await expect
+    .poll(async () => (await page.locator('#tp-canvas').getAttribute('data-word-count')) ?? '0')
+    .not.toBe('0');
+  const firstWord = ((await page.locator('#tp-canvas').getAttribute('data-words')) ?? '').split('|')[0];
+  expect(firstWord.length).toBeGreaterThan(0);
+
+  await page.locator('#tp-input').fill(firstWord);
+  await expect(page.locator('#hud-score')).toHaveText('1');
+  await expect(page.locator('#tp-input')).toHaveValue('');
+});
+
+test('typing survival: letting words hit the floor loses HP and ends the game', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/typing-survival/');
+  await page.evaluate(() => localStorage.removeItem('rhh_typing-survival_best'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#tp-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  // 아무것도 입력하지 않고 단어가 계속 바닥에 닿게 방치해 HP 3을 전부 소진시킨다.
+  await expect
+    .poll(async () => page.locator('#tp-canvas').getAttribute('data-phase'), { timeout: 90_000 })
+    .toBe('ended');
+
+  await expect(page.locator('#result-overlay')).toBeVisible();
+  const finalScore = Number(await page.locator('#result-score').textContent());
+  await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));
