@@ -4,7 +4,9 @@
 > 초안으로, Vanilla JS + Canvas 기반 단일 허브(`games/{name}/`) 구조를 전제로 작성되었다.
 > 실제 현재 저장소는 Vite + TypeScript + Three.js이며, `race/team/dice/rps/liar/mafia/halligalli`
 > 멀티페이지 구조와 `ws-server/` 실시간 서버를 이미 갖추고 있다(`AGENTS.md` 참고).
-> 이 계획을 실행하기 전 현재 아키텍처에 맞게 재검토가 필요하다.
+>
+> **→ 현재 아키텍처에 맞게 다시 짠 버전은 [`docs/game-collection-plan-v2-2026-07-13.md`](./game-collection-plan-v2-2026-07-13.md)를
+> 참고할 것.** 이 문서는 게임 아이디어/룰 명세의 원본 레퍼런스로만 남겨둔다.
 
 ## 목차
 
