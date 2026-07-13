@@ -7,6 +7,6 @@ metadata:
 data:
   sourceRepo: https://github.com/yeominsoo/run-hoban-run.git
   sourceRevision: master
-  sourceSha: "ca7bcff64687c4d45c2980352fa3e0e305371f1c"
+  sourceSha: "255fda706403d22dcb5b7012896eaa2660e8f1bb"
   firebaseProject: hoban-lakepark-ab19
   image: ghcr.io/yeominsoo/run-hoban-run:firebase
