@@ -399,6 +399,31 @@ body {
   background: var(--color-accent);
 }
 
+.snake-mark::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 12px;
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-secondary);
+  box-shadow:
+    5px 8px 0 -1px var(--color-secondary),
+    10px 16px 0 -1px var(--color-secondary);
+}
+
+.snake-mark::after {
+  content: "";
+  position: absolute;
+  left: 24px;
+  top: 26px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-strong);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

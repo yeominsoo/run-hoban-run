@@ -58,3 +58,40 @@ export function onDrag(el: HTMLElement, handlers: DragHandlers): () => void {
     el.removeEventListener('pointercancel', up);
   };
 }
+
+export type SwipeDirection = 'up' | 'down' | 'left' | 'right';
+
+/** 눌렀다 뗀 지점 사이의 이동량으로 스와이프 방향을 판정한다(대각선은 더 큰 축으로 판정). */
+export function onSwipe(el: HTMLElement, cb: (dir: SwipeDirection) => void, minDistancePx = 24): () => void {
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+
+  const down = (ev: PointerEvent) => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    tracking = true;
+    startX = ev.clientX;
+    startY = ev.clientY;
+  };
+  const up = (ev: PointerEvent) => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (Math.hypot(dx, dy) < minDistancePx) return;
+    cb(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  };
+  const cancel = () => {
+    tracking = false;
+  };
+
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', cancel);
+
+  return () => {
+    el.removeEventListener('pointerdown', down);
+    el.removeEventListener('pointerup', up);
+    el.removeEventListener('pointercancel', cancel);
+  };
+}

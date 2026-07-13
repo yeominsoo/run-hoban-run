@@ -1510,6 +1510,97 @@ test('tower stack: a badly misaligned tap eventually ends the game and saves the
   await expect(page.locator('#best-score')).toHaveText(String(finalScore));
 });
 
+interface SnakeState {
+  headX: number;
+  headY: number;
+  foodX: number;
+  foodY: number;
+  length: number;
+  phase: string | undefined;
+}
+
+async function readSnakeState(page: Page): Promise<SnakeState> {
+  return page.locator('#sn-canvas').evaluate((el) => {
+    const canvas = el as HTMLElement;
+    return {
+      headX: Number(canvas.dataset.headX),
+      headY: Number(canvas.dataset.headY),
+      foodX: Number(canvas.dataset.foodX),
+      foodY: Number(canvas.dataset.foodY),
+      length: Number(canvas.dataset.length),
+      phase: canvas.dataset.phase
+    };
+  });
+}
+
+test('snake: steering onto the food grows the snake and increases the score', async ({ page }) => {
+  await page.goto('/snake/');
+  await expect(page.locator('.game-title')).toHaveText('스네이크 비틀기');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#sn-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  const startLength = (await readSnakeState(page)).length;
+
+  for (let i = 0; i < 60; i += 1) {
+    const s = await readSnakeState(page);
+    if (s.phase !== 'playing' || s.length > startLength) break;
+    const dx = s.foodX - s.headX;
+    const dy = s.foodY - s.headY;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      await page.keyboard.press(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
+    } else if (dy !== 0) {
+      await page.keyboard.press(dy > 0 ? 'ArrowDown' : 'ArrowUp');
+    }
+    await page.waitForTimeout(60);
+  }
+
+  const grown = await readSnakeState(page);
+  expect(grown.phase).toBe('playing');
+  expect(grown.length).toBeGreaterThan(startLength);
+  expect(Number(await page.locator('#hud-score').textContent())).toBeGreaterThan(0);
+});
+
+test('snake: turning back into its own body ends the game and saves the best score', async ({ page }) => {
+  await page.goto('/snake/');
+  await page.evaluate(() => localStorage.removeItem('rhh_snake_best'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+
+  // 몸길이를 조금 늘려야 좁은 반전 동작으로 확실히 자기 몸에 부딪힌다.
+  for (let grownCount = 0; grownCount < 2; grownCount += 1) {
+    for (let i = 0; i < 60; i += 1) {
+      const s = await readSnakeState(page);
+      if (s.phase !== 'playing') break;
+      const dx = s.foodX - s.headX;
+      const dy = s.foodY - s.headY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        await page.keyboard.press(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
+      } else if (dy !== 0) {
+        await page.keyboard.press(dy > 0 ? 'ArrowDown' : 'ArrowUp');
+      }
+      await page.waitForTimeout(60);
+    }
+  }
+
+  // 왼쪽으로 좁은 사각형을 그려 자기 몸통과 부딪히게 만든다.
+  for (const key of ['ArrowDown', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft']) {
+    const phaseNow = (await readSnakeState(page)).phase;
+    if (phaseNow === 'ended') break;
+    await page.keyboard.press(key);
+    await page.waitForTimeout(250);
+  }
+
+  await expect(page.locator('#sn-canvas')).toHaveAttribute('data-phase', 'ended');
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  const finalScore = Number(await page.locator('#result-score').textContent());
+  await expect(page.locator('#best-score')).toHaveText(String(finalScore));
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));

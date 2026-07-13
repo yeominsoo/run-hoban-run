@@ -142,6 +142,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/snake/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -248,6 +257,14 @@
       {
         "source": "/tower-stack/**",
         "destination": "/tower-stack/index.html"
+      },
+      {
+        "source": "/snake",
+        "destination": "/snake/index.html"
+      },
+      {
+        "source": "/snake/**",
+        "destination": "/snake/index.html"
       }
     ]
   }
