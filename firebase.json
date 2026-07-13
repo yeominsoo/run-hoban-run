@@ -106,6 +106,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/aim-trainer/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -180,6 +189,14 @@
       {
         "source": "/strategy-yutnori/**",
         "destination": "/strategy-yutnori/index.html"
+      },
+      {
+        "source": "/aim-trainer",
+        "destination": "/aim-trainer/index.html"
+      },
+      {
+        "source": "/aim-trainer/**",
+        "destination": "/aim-trainer/index.html"
       }
     ]
   }

@@ -1257,3 +1257,75 @@ test('plays delayed helicopter shots and leaves eliminated runners down on the t
     fullPage: true
   });
 });
+
+async function clickAimCircle(page: Page) {
+  const canvas = page.locator('#aim-canvas');
+  const box = await canvas.boundingBox();
+  const attrs = await canvas.evaluate((el) => ({
+    x: Number(el.dataset.circleX),
+    y: Number(el.dataset.circleY),
+    r: Number(el.dataset.circleR)
+  }));
+  if (!box) throw new Error('aim canvas has no bounding box');
+  await page.mouse.click(box.x + attrs.x, box.y + attrs.y);
+  return attrs;
+}
+
+test('aim trainer: starts, registers hits and misses, tracks level and best score', async ({ page }) => {
+  await page.goto('/aim-trainer/');
+  await expect(page.locator('.game-title')).toHaveText('에임 트레이너');
+  await expect(page.getByRole('link', { name: '게임 선택' })).toBeVisible();
+  await expect(page.locator('#best-score')).toHaveText('0');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+  await expect(page.locator('#hud')).toBeHidden();
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#start-overlay')).toBeHidden();
+  await expect(page.locator('#hud')).toBeVisible();
+  await expect(page.locator('#aim-canvas')).toHaveAttribute('data-phase', 'playing');
+  await expect(page.locator('#aim-canvas')).toHaveAttribute('data-circle-r', '80');
+
+  const firstCircle = await clickAimCircle(page);
+  expect(firstCircle.r).toBe(80);
+  await expect(page.locator('#hud-hits')).toHaveText('1');
+  await expect(page.locator('#hud-level')).toHaveText('2');
+  await expect
+    .poll(async () => Number(await page.locator('#hud-score').textContent()))
+    .toBeGreaterThanOrEqual(100);
+
+  const scoreAfterHit = Number(await page.locator('#hud-score').textContent());
+
+  // 캔버스 바깥에 가까운, 다음 원과 겹치지 않을 확률이 높은 모서리를 클릭해 미스를 유도한다.
+  const canvasBox = await page.locator('#aim-canvas').boundingBox();
+  if (!canvasBox) throw new Error('aim canvas has no bounding box');
+  await page.mouse.click(canvasBox.x + 2, canvasBox.y + 2);
+
+  await expect(page.locator('#hud-hits')).toHaveText('1');
+  expect(Number(await page.locator('#hud-score').textContent())).toBe(scoreAfterHit);
+
+  const secondCircle = await clickAimCircle(page);
+  expect(secondCircle.r).toBe(75);
+  await expect(page.locator('#hud-hits')).toHaveText('2');
+  await expect(page.locator('#hud-level')).toHaveText('3');
+});
+
+test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
+  await page.goto('/aim-trainer/');
+  await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));
+  await page.reload();
+  await expect(page.locator('#best-score')).toHaveText('0');
+
+  await page.locator('#start-btn').click();
+  await clickAimCircle(page);
+  await clickAimCircle(page);
+  await clickAimCircle(page);
+
+  const scoreAfterHits = Number(await page.locator('#hud-score').textContent());
+  expect(scoreAfterHits).toBeGreaterThan(0);
+
+  await page.evaluate(() => {
+    localStorage.setItem('rhh_aim-trainer_best', '999999');
+  });
+  await page.reload();
+  await expect(page.locator('#best-score')).toHaveText('999999');
+});

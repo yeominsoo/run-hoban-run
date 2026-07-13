@@ -312,6 +312,27 @@ body {
   border-radius: 2px;
 }
 
+.aim-trainer-mark::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border: 2px solid var(--color-secondary);
+  border-radius: 50%;
+}
+
+.aim-trainer-mark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(255, 111, 145, 0.18);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

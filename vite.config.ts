@@ -15,6 +15,7 @@ export default defineConfig({
         halligalli: resolve(__dirname, 'halligalli/index.html'),
         yutnori: resolve(__dirname, 'yutnori/index.html'),
         'strategy-yutnori': resolve(__dirname, 'strategy-yutnori/index.html'),
+        'aim-trainer': resolve(__dirname, 'aim-trainer/index.html'),
       },
       output: {
         manualChunks(id) {
