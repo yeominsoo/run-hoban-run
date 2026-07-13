@@ -1309,6 +1309,107 @@ test('aim trainer: starts, registers hits and misses, tracks level and best scor
   await expect(page.locator('#hud-level')).toHaveText('3');
 });
 
+test('aim trainer: the 30s countdown only starts on the first tap', async ({ page }) => {
+  await page.goto('/aim-trainer/');
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#hud-time')).toHaveText('30.0');
+
+  await page.waitForTimeout(600);
+  await expect(page.locator('#hud-time')).toHaveText('30.0');
+
+  await clickAimCircle(page);
+  await expect
+    .poll(async () => page.locator('#hud-time').textContent())
+    .not.toBe('30.0');
+});
+
+test('aim trainer: saving a ranking entry shows it in the ranking view with the prefilled nickname', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto('/aim-trainer/');
+  await page.evaluate(() => {
+    localStorage.removeItem('rhh_last_nickname');
+    localStorage.removeItem('rhh_aim-trainer_ranking');
+  });
+  await page.reload();
+  await expect(page.locator('#view-ranking-btn')).toBeVisible();
+
+  await page.locator('#start-btn').click();
+  await clickAimCircle(page); // 첫 탭으로 타이머 시작
+
+  await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 35_000 });
+  await expect(page.locator('#rank-name-input')).toHaveValue('');
+
+  await page.locator('#rank-name-input').fill('플레이어1');
+  await page.locator('#rank-save-btn').click();
+  await expect(page.locator('#rank-saved-msg')).toBeVisible();
+  await expect(page.locator('#rank-save-btn')).toBeDisabled();
+
+  await page.locator('#retry-btn').click();
+  await expect(page.locator('#result-overlay')).toBeHidden();
+
+  await page.goto('/aim-trainer/');
+  await expect(page.locator('#start-overlay')).toBeVisible();
+  await page.locator('#view-ranking-btn').click();
+  await expect(page.locator('#ranking-overlay')).toBeVisible();
+  await expect(page.locator('#ranking-list')).toContainText('플레이어1');
+  await page.locator('#close-ranking-btn').click();
+  await expect(page.locator('#ranking-overlay')).toBeHidden();
+
+  await page.locator('#start-btn').click();
+  await clickAimCircle(page);
+  await expect(page.locator('#result-overlay')).toBeVisible({ timeout: 35_000 });
+  // 마지막에 쓴 닉네임이 다음 판 결과 화면에도 자동으로 선입력돼야 한다.
+  await expect(page.locator('#rank-name-input')).toHaveValue('플레이어1');
+});
+
+test('aim trainer: the ranking list can be saved as an image', async ({ page }) => {
+  await page.goto('/aim-trainer/');
+  await page.evaluate(() => {
+    localStorage.setItem('rhh_aim-trainer_ranking', JSON.stringify([
+      { name: '민수', score: 5000, at: Date.now() }
+    ]));
+  });
+  await page.reload();
+
+  await page.locator('#view-ranking-btn').click();
+  await expect(page.locator('#ranking-overlay')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#ranking-save-image-btn').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/랭킹.*\.png$/);
+});
+
+test('hub: splits games into single-player and multiplayer categories', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.hub-title')).toHaveText('Toris Arcade');
+  await expect(page.locator('[data-category="single"]')).toBeVisible();
+  await expect(page.locator('[data-category="multi"]')).toBeVisible();
+  await expect(page.locator('#hub-game-list')).toBeHidden();
+
+  await page.locator('[data-category="single"]').click();
+  await expect(page.locator('#hub-game-list')).toBeVisible();
+  await expect(page.locator('#hub-categories')).toBeHidden();
+  await expect(page.locator('#hub-list-title')).toHaveText('싱글플레이');
+  await expect(page.locator('.game-card[data-slug="race"]')).toBeVisible();
+  await expect(page.locator('.game-card[data-slug="aim-trainer"]')).toBeVisible();
+  await expect(page.locator('.game-card[data-slug="rps"]')).toHaveCount(0);
+
+  await page.locator('#hub-back-btn').click();
+  await expect(page.locator('#hub-categories')).toBeVisible();
+  await expect(page.locator('#hub-game-list')).toBeHidden();
+
+  await page.locator('[data-category="multi"]').click();
+  await expect(page.locator('#hub-list-title')).toHaveText('멀티플레이');
+  await expect(page.locator('.game-card[data-slug="rps"]')).toBeVisible();
+  await expect(page.locator('.game-card[data-slug="strategy-yutnori"]')).toBeVisible();
+  await expect(page.locator('.game-card[data-slug="race"]')).toHaveCount(0);
+
+  await page.locator('.game-card[data-slug="rps"] .game-card-toggle').click();
+  await expect(page.locator('#details-rps')).toBeVisible();
+  await expect(page.locator('.game-card[data-slug="rps"] .game-card-start-btn')).toHaveAttribute('href', '/rps/');
+});
+
 test('color slider: moving sliders updates live accuracy and confirming advances rounds', async ({ page }) => {
   await page.goto('/color-slider/');
   await expect(page.locator('.game-title')).toHaveText('색 맞추기 슬라이더');
@@ -1680,22 +1781,29 @@ test('2048 hex: a swipe gesture is recognized as a directional move', async ({ p
   await page.locator('#start-btn').click();
   await expect(page.locator('#hx-canvas')).toHaveAttribute('data-phase', 'playing');
 
-  const before = await readHexTiles(page);
   const box = await page.locator('#hx-canvas').boundingBox();
   if (!box) throw new Error('hex canvas has no bounding box');
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
 
-  // 오른쪽으로 스와이프(E 방향)
-  await page.mouse.move(cx - 80, cy);
-  await page.mouse.down();
-  await page.mouse.move(cx + 80, cy, { steps: 5 });
-  await page.mouse.up();
-  await page.waitForTimeout(50);
-
-  const after = await readHexTiles(page);
-  expect(after.length).toBeGreaterThanOrEqual(before.length);
-  const changed = JSON.stringify(before) !== JSON.stringify(after);
+  // 랜덤 초기 배치상 특정 방향은 우연히 "이동할 게 없는" 상태일 수 있으므로(스펙대로
+  // 그 스와이프는 아무 효과가 없는 게 맞는 동작), 여러 방향을 순서대로 시도해 스와이프
+  // 입력 자체가 인식되는지 확인한다.
+  const swipes: Array<[number, number]> = [[80, 0], [-80, 0], [0, 80], [0, -80]];
+  let changed = false;
+  for (const [dx, dy] of swipes) {
+    const before = await readHexTiles(page);
+    await page.mouse.move(cx - dx, cy - dy);
+    await page.mouse.down();
+    await page.mouse.move(cx + dx, cy + dy, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(50);
+    const after = await readHexTiles(page);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      changed = true;
+      break;
+    }
+  }
   expect(changed).toBe(true);
 });
 

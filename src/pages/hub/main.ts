@@ -1,30 +1,38 @@
 import './hub.css';
 
+type Category = 'single' | 'multi';
+
 interface GameEntry {
   slug: string;
   icon: string;
   name: string;
   desc: string;
+  category: Category;
 }
 
 const GAMES: GameEntry[] = [
-  { slug: 'race', icon: 'race-mark', name: '말발광 레이스', desc: '최대 500명이 참여하는 3D 레이스 토너먼트. 헬기 탈락 이벤트와 스킬 연출 포함.' },
-  { slug: 'team', icon: 'team-mark', name: '팀 랜덤 배분', desc: '참가자 명단을 원하는 수의 팀으로 무작위 배분. 같은 시드로 결과 재현 가능.' },
-  { slug: 'dice', icon: 'dice-mark', name: '주사위 돌리기', desc: '2~20명이 함께 굴리는 주사위. 눈금은 참가자 수 × 10까지, 가장 높은 사람이 1등.' },
-  { slug: 'rps', icon: 'rps-mark', name: '가위바위보 대결', desc: '방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.' },
-  { slug: 'liar', icon: 'liar-mark', name: '라이어게임', desc: '3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.' },
-  { slug: 'mafia', icon: 'mafia-mark', name: '마피아게임', desc: '4~12명이 참여하는 역할 추리 게임. 밤에는 마피아·경찰·의사가 은밀히 행동하고, 낮에는 토론과 투표로 마피아를 찾아낸다.' },
-  { slug: 'halligalli', icon: 'halligalli-mark', name: '할리갈리', desc: '2~6명이 참여하는 순발력 카드게임. 같은 과일이 5개가 되는 순간 누구보다 먼저 종을 쳐야 카드를 독식한다.' },
-  { slug: 'yutnori', icon: 'yutnori-mark', name: '윷놀이', desc: '2~4명이 실시간으로 즐기는 3D 윷놀이. 업기·잡기·갈라치기·지름길까지 표준 규칙 그대로.' },
-  { slug: 'strategy-yutnori', icon: 'strategy-yutnori-mark', name: '전략윷놀이', desc: '4명이 2:2로 겨루는 심리전 윷놀이. 앞면·뒷면을 비공개로 동시에 내 윷값을 정하고, 팀원마저 배신할 수 있다. &lt;더 지니어스&gt; 데스매치 변형.' },
-  { slug: 'aim-trainer', icon: 'aim-trainer-mark', name: '에임 트레이너', desc: '30초 동안 화면에 나타나는 원을 최대한 빠르고 정확하게 탭! 레벨이 오를수록 원이 작아진다.' },
-  { slug: 'color-slider', icon: 'color-slider-mark', name: '색 맞추기 슬라이더', desc: 'R/G/B 슬라이더로 목표 색을 최대한 똑같이 맞춰라. 10라운드, 라운드당 15초.' },
-  { slug: 'ball-dodge', icon: 'ball-dodge-mark', name: '볼 피하기 + 수집', desc: '드래그로 캐릭터를 움직여 빨간 볼은 피하고 초록 볼은 모으세요. HP 3, 30초마다 더 치열해진다.' },
-  { slug: 'tower-stack', icon: 'tower-stack-mark', name: '타워 쌓기', desc: '좌우로 움직이는 블록을 탭해서 정확히 쌓아 올리세요. 삐져나온 부분은 잘려나가고, 너비가 10px 미만이면 게임 오버.' },
-  { slug: 'snake', icon: 'snake-mark', name: '스네이크 비틀기', desc: '방향키·WASD·스와이프로 뱀을 조종해 먹이를 먹으세요. 벽이 없어 반대편으로 통과하고, 시간이 지날수록 빨라지며 색이 바뀝니다.' },
-  { slug: 'typing-survival', icon: 'typing-survival-mark', name: '타이핑 생존', desc: '떨어지는 영어·한국어 단어를 바닥에 닿기 전에 타이핑하세요. HP 3, 10초마다 더 빠르고 많아집니다.' },
-  { slug: '2048-hex', icon: 'hex2048-mark', name: '2048 변형(육각형)', desc: '육각형 격자에서 같은 숫자 타일을 밀어 합쳐 2048을 만들어보세요. 키보드 6방향 또는 스와이프로 조작.' },
+  { slug: 'race', icon: 'race-mark', name: '말발광 레이스', desc: '최대 500명이 참여하는 3D 레이스 토너먼트. 헬기 탈락 이벤트와 스킬 연출 포함.', category: 'single' },
+  { slug: 'team', icon: 'team-mark', name: '팀 랜덤 배분', desc: '참가자 명단을 원하는 수의 팀으로 무작위 배분. 같은 시드로 결과 재현 가능.', category: 'single' },
+  { slug: 'dice', icon: 'dice-mark', name: '주사위 돌리기', desc: '2~20명이 함께 굴리는 주사위. 눈금은 참가자 수 × 10까지, 가장 높은 사람이 1등.', category: 'single' },
+  { slug: 'aim-trainer', icon: 'aim-trainer-mark', name: '에임 트레이너', desc: '화면에 나타나는 원을 최대한 빠르고 정확하게 탭! 레벨이 오를수록 원이 작아진다.', category: 'single' },
+  { slug: 'color-slider', icon: 'color-slider-mark', name: '색 맞추기 슬라이더', desc: 'R/G/B 슬라이더로 목표 색을 최대한 똑같이 맞춰라. 10라운드, 라운드당 15초.', category: 'single' },
+  { slug: 'ball-dodge', icon: 'ball-dodge-mark', name: '볼 피하기 + 수집', desc: '드래그로 캐릭터를 움직여 빨간 볼은 피하고 초록 볼은 모으세요. HP 3, 30초마다 더 치열해진다.', category: 'single' },
+  { slug: 'tower-stack', icon: 'tower-stack-mark', name: '타워 쌓기', desc: '좌우로 움직이는 블록을 탭해서 정확히 쌓아 올리세요. 삐져나온 부분은 잘려나가고, 너비가 10px 미만이면 게임 오버.', category: 'single' },
+  { slug: 'snake', icon: 'snake-mark', name: '스네이크 비틀기', desc: '방향키·WASD·스와이프로 뱀을 조종해 먹이를 먹으세요. 벽이 없어 반대편으로 통과하고, 시간이 지날수록 빨라지며 색이 바뀝니다.', category: 'single' },
+  { slug: 'typing-survival', icon: 'typing-survival-mark', name: '타이핑 생존', desc: '떨어지는 영어·한국어 단어를 바닥에 닿기 전에 타이핑하세요. HP 3, 10초마다 더 빠르고 많아집니다.', category: 'single' },
+  { slug: '2048-hex', icon: 'hex2048-mark', name: '2048 변형(육각형)', desc: '육각형 격자에서 같은 숫자 타일을 밀어 합쳐 2048을 만들어보세요. 키보드 6방향 또는 스와이프로 조작.', category: 'single' },
+  { slug: 'rps', icon: 'rps-mark', name: '가위바위보 대결', desc: '방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.', category: 'multi' },
+  { slug: 'liar', icon: 'liar-mark', name: '라이어게임', desc: '3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.', category: 'multi' },
+  { slug: 'mafia', icon: 'mafia-mark', name: '마피아게임', desc: '4~12명이 참여하는 역할 추리 게임. 밤에는 마피아·경찰·의사가 은밀히 행동하고, 낮에는 토론과 투표로 마피아를 찾아낸다.', category: 'multi' },
+  { slug: 'halligalli', icon: 'halligalli-mark', name: '할리갈리', desc: '2~6명이 참여하는 순발력 카드게임. 같은 과일이 5개가 되는 순간 누구보다 먼저 종을 쳐야 카드를 독식한다.', category: 'multi' },
+  { slug: 'yutnori', icon: 'yutnori-mark', name: '윷놀이', desc: '2~4명이 실시간으로 즐기는 3D 윷놀이. 업기·잡기·갈라치기·지름길까지 표준 규칙 그대로.', category: 'multi' },
+  { slug: 'strategy-yutnori', icon: 'strategy-yutnori-mark', name: '전략윷놀이', desc: '4명이 2:2로 겨루는 심리전 윷놀이. 앞면·뒷면을 비공개로 동시에 내 윷값을 정하고, 팀원마저 배신할 수 있다. &lt;더 지니어스&gt; 데스매치 변형.', category: 'multi' }
 ];
+
+const CATEGORY_LABEL: Record<Category, string> = {
+  single: '싱글플레이',
+  multi: '멀티플레이'
+};
 
 const app = document.getElementById('app')!;
 
@@ -34,44 +42,93 @@ app.innerHTML = `
       <h1 class="hub-title">Toris Arcade</h1>
       <p class="hub-sub">추첨게임모음</p>
     </header>
-    <nav class="hub-grid" aria-label="게임 목록">
-      ${GAMES.map(g => `
-      <div class="game-card" data-slug="${g.slug}">
-        <button class="game-card-toggle" type="button" aria-expanded="false" aria-controls="details-${g.slug}">
-          <span class="game-card-icon ${g.icon}" aria-hidden="true"></span>
-          <span class="game-card-name">${g.name}</span>
-          <span class="game-card-chevron" aria-hidden="true"></span>
-        </button>
-        <div class="game-card-details" id="details-${g.slug}" hidden>
-          <p class="game-card-desc">${g.desc}</p>
-          <a class="game-card-start-btn" href="/${g.slug}/">시작하기</a>
-        </div>
-      </div>`).join('')}
+
+    <nav class="hub-categories" id="hub-categories" aria-label="게임 카테고리">
+      <button class="category-card" data-category="single" type="button">
+        <span class="category-icon category-icon-single" aria-hidden="true"></span>
+        <span class="category-name">싱글플레이</span>
+        <span class="category-count">${GAMES.filter((g) => g.category === 'single').length}종 · 혼자 또는 다같이 진행</span>
+      </button>
+      <button class="category-card" data-category="multi" type="button">
+        <span class="category-icon category-icon-multi" aria-hidden="true"></span>
+        <span class="category-name">멀티플레이</span>
+        <span class="category-count">${GAMES.filter((g) => g.category === 'multi').length}종 · 실시간 온라인 대전</span>
+      </button>
     </nav>
+
+    <div class="hub-game-list hidden" id="hub-game-list">
+      <button class="hub-back-btn" id="hub-back-btn" type="button">← 카테고리로</button>
+      <h2 class="hub-list-title" id="hub-list-title"></h2>
+      <nav class="hub-grid" id="hub-grid" aria-label="게임 목록"></nav>
+    </div>
   </div>
 `;
 
-const closeCard = (card: Element) => {
+const categoriesNav = document.getElementById('hub-categories')!;
+const gameListSection = document.getElementById('hub-game-list')!;
+const gameListTitle = document.getElementById('hub-list-title')!;
+const gameGrid = document.getElementById('hub-grid')!;
+const backBtn = document.getElementById('hub-back-btn') as HTMLButtonElement;
+
+function cardHtml(g: GameEntry): string {
+  return `
+    <div class="game-card" data-slug="${g.slug}">
+      <button class="game-card-toggle" type="button" aria-expanded="false" aria-controls="details-${g.slug}">
+        <span class="game-card-icon ${g.icon}" aria-hidden="true"></span>
+        <span class="game-card-name">${g.name}</span>
+        <span class="game-card-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="game-card-details" id="details-${g.slug}" hidden>
+        <p class="game-card-desc">${g.desc}</p>
+        <a class="game-card-start-btn" href="/${g.slug}/">시작하기</a>
+      </div>
+    </div>`;
+}
+
+function closeCard(card: Element) {
   const toggle = card.querySelector<HTMLButtonElement>('.game-card-toggle');
   const details = card.querySelector<HTMLElement>('.game-card-details');
   if (!toggle || !details) return;
   toggle.setAttribute('aria-expanded', 'false');
   details.hidden = true;
   card.classList.remove('expanded');
-};
+}
 
-Array.from(app.querySelectorAll<HTMLButtonElement>('.game-card-toggle')).forEach(btn => {
+function bindCardToggles() {
+  Array.from(gameGrid.querySelectorAll<HTMLButtonElement>('.game-card-toggle')).forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.game-card');
+      if (!card) return;
+      const details = card.querySelector<HTMLElement>('.game-card-details');
+      if (!details) return;
+
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      Array.from(gameGrid.querySelectorAll('.game-card.expanded')).forEach(closeCard);
+      btn.setAttribute('aria-expanded', String(!expanded));
+      details.hidden = expanded;
+      card.classList.toggle('expanded', !expanded);
+    });
+  });
+}
+
+function openCategory(category: Category) {
+  gameListTitle.textContent = CATEGORY_LABEL[category];
+  gameGrid.innerHTML = GAMES.filter((g) => g.category === category).map(cardHtml).join('');
+  bindCardToggles();
+  categoriesNav.classList.add('hidden');
+  gameListSection.classList.remove('hidden');
+}
+
+function closeCategory() {
+  gameListSection.classList.add('hidden');
+  categoriesNav.classList.remove('hidden');
+}
+
+Array.from(categoriesNav.querySelectorAll<HTMLButtonElement>('.category-card')).forEach((btn) => {
   btn.addEventListener('click', () => {
-    const card = btn.closest('.game-card');
-    if (!card) return;
-
-    const details = card.querySelector<HTMLElement>('.game-card-details');
-    if (!details) return;
-
-    const expanded = btn.getAttribute('aria-expanded') === 'true';
-    Array.from(app.querySelectorAll('.game-card.expanded')).forEach(closeCard);
-    btn.setAttribute('aria-expanded', String(!expanded));
-    details.hidden = expanded;
-    card.classList.toggle('expanded', !expanded);
+    const category = btn.dataset.category as Category;
+    openCategory(category);
   });
 });
+
+backBtn.addEventListener('click', closeCategory);

@@ -1,6 +1,7 @@
 import './aim-trainer.css';
 import { onTap } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
+import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'aim-trainer';
 const GAME_DURATION_MS = 30_000;
@@ -52,8 +53,9 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>에임 트레이너</h2>
-          <p>30초 동안 화면에 나타나는 원을 최대한 빠르고 정확하게 탭하세요.<br>레벨이 오를수록 원이 작아집니다.</p>
+          <p>화면에 나타나는 원을 최대한 빠르고 정확하게 탭하세요(첫 탭부터 30초 시작).<br>레벨이 오를수록 원이 작아집니다.</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
+          <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
       </div>
 
@@ -67,7 +69,31 @@ app.innerHTML = `
             <span id="result-accuracy">정확도 0%</span>
           </div>
           <p class="record-badge hidden" id="record-badge">🏆 신기록!</p>
+
+          <div class="rank-entry-form" id="rank-entry-form">
+            <input id="rank-name-input" class="rank-name-input" type="text" maxlength="12" placeholder="닉네임" autocomplete="off" />
+            <button id="rank-save-btn" class="rank-save-btn" type="button">기록 저장</button>
+          </div>
+          <p class="rank-saved-msg hidden" id="rank-saved-msg">저장했어요!</p>
+
+          <div class="result-image-actions">
+            <button id="save-image-btn" class="ghost-btn" type="button">이미지 저장</button>
+            <button id="share-image-btn" class="ghost-btn hidden" type="button">공유하기</button>
+          </div>
+
           <button id="retry-btn" class="primary-btn" type="button">다시 하기</button>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="ranking-overlay">
+        <div class="overlay-card">
+          <h2>랭킹</h2>
+          <ol class="ranking-list" id="ranking-list"></ol>
+          <div class="result-image-actions">
+            <button id="ranking-save-image-btn" class="ghost-btn" type="button">이미지 저장</button>
+            <button id="ranking-share-image-btn" class="ghost-btn hidden" type="button">공유하기</button>
+          </div>
+          <button id="close-ranking-btn" class="primary-btn" type="button">닫기</button>
         </div>
       </div>
     </div>
@@ -93,6 +119,17 @@ const resultMisses = document.getElementById('result-misses')!;
 const resultAccuracy = document.getElementById('result-accuracy')!;
 const recordBadge = document.getElementById('record-badge')!;
 const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
+const rankNameInput = document.getElementById('rank-name-input') as HTMLInputElement;
+const rankSaveBtn = document.getElementById('rank-save-btn') as HTMLButtonElement;
+const rankSavedMsg = document.getElementById('rank-saved-msg')!;
+const viewRankingBtn = document.getElementById('view-ranking-btn') as HTMLButtonElement;
+const rankingOverlay = document.getElementById('ranking-overlay')!;
+const rankingList = document.getElementById('ranking-list')!;
+const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButtonElement;
+const saveImageBtn = document.getElementById('save-image-btn') as HTMLButtonElement;
+const shareImageBtn = document.getElementById('share-image-btn') as HTMLButtonElement;
+const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
+const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 
 // ── Theme colors (read once from CSS custom properties) ──
 const rootStyle = getComputedStyle(document.documentElement);
@@ -108,6 +145,7 @@ let dpr = Math.max(1, window.devicePixelRatio || 1);
 let stageWidth = 0;
 let stageHeight = 0;
 let startedAt = 0;
+let hasStarted = false;
 let score = 0;
 let hits = 0;
 let misses = 0;
@@ -119,6 +157,30 @@ let rafId: number | null = null;
 bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 canvas.dataset.phase = phase;
 resizeCanvas();
+
+setupRankingUI(
+  {
+    gameSlug: GAME_SLUG,
+    gameTitle: '에임 트레이너',
+    nameInput: rankNameInput,
+    saveBtn: rankSaveBtn,
+    savedMsg: rankSavedMsg,
+    viewRankingBtn,
+    rankingOverlay,
+    rankingList,
+    closeRankingBtn,
+    rankingSaveImageBtn,
+    rankingShareImageBtn
+  },
+  () => score
+);
+
+const shareNav = navigator as Navigator & {
+  share?: (data: ShareData) => Promise<void>;
+  canShare?: (data: ShareData) => boolean;
+};
+const canShareImages = typeof shareNav.share === 'function' && typeof shareNav.canShare === 'function';
+if (!canShareImages) shareImageBtn.classList.add('hidden');
 
 // ── Canvas sizing ─────────────────────────────
 function resizeCanvas() {
@@ -174,7 +236,8 @@ function startGame() {
   hits = 0;
   misses = 0;
   popups = [];
-  startedAt = performance.now();
+  hasStarted = false;
+  startedAt = 0;
 
   startOverlay.classList.add('hidden');
   resultOverlay.classList.add('hidden');
@@ -215,12 +278,21 @@ function endGame() {
   resultMisses.textContent = `미스 ${misses}`;
   resultAccuracy.textContent = `정확도 ${accuracy}%`;
   recordBadge.classList.toggle('hidden', !isRecord);
+  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
   resultOverlay.classList.remove('hidden');
 }
 
 function handleTap(pos: { x: number; y: number }) {
   if (phase !== 'playing' || !circle) return;
   const now = performance.now();
+
+  // 대기 중에는 원이 떠 있어도 시간이 흐르지 않다가, 플레이어가 처음으로 원을 노려
+  // 탭한 이 순간부터(명중이든 미스든) 30초 카운트다운이 시작된다.
+  if (!hasStarted) {
+    hasStarted = true;
+    startedAt = now;
+  }
+
   const dist = Math.hypot(pos.x - circle.x, pos.y - circle.y);
 
   if (dist <= circle.radius) {
@@ -292,13 +364,15 @@ function drawPopups(now: number) {
 function loop(now: number) {
   if (phase !== 'playing') return;
 
-  const elapsed = now - startedAt;
-  const remainingMs = Math.max(0, GAME_DURATION_MS - elapsed);
-  hudTime.textContent = (remainingMs / 1000).toFixed(1);
+  if (hasStarted) {
+    const elapsed = now - startedAt;
+    const remainingMs = Math.max(0, GAME_DURATION_MS - elapsed);
+    hudTime.textContent = (remainingMs / 1000).toFixed(1);
 
-  if (remainingMs <= 0) {
-    endGame();
-    return;
+    if (remainingMs <= 0) {
+      endGame();
+      return;
+    }
   }
 
   ctx.clearRect(0, 0, stageWidth, stageHeight);
@@ -308,6 +382,78 @@ function loop(now: number) {
   rafId = requestAnimationFrame(loop);
 }
 
+// ── 결과 이미지 저장/공유 ───────────────────────
+function buildResultImage(): HTMLCanvasElement {
+  const width = 640;
+  const height = 360;
+  const totalTaps = hits + misses;
+  const accuracy = totalTaps === 0 ? 0 : Math.round((hits / totalTaps) * 100);
+
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = height;
+  const c = out.getContext('2d')!;
+
+  const bg = c.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, '#132338');
+  bg.addColorStop(1, '#0b1622');
+  c.fillStyle = bg;
+  c.fillRect(0, 0, width, height);
+
+  c.textAlign = 'center';
+  c.fillStyle = '#f0f9ff';
+  c.font = '900 32px Inter, sans-serif';
+  c.fillText('에임 트레이너', width / 2, 64);
+
+  c.font = '900 64px Inter, sans-serif';
+  c.fillStyle = '#ffe08a';
+  c.fillText(String(score), width / 2, 168);
+
+  c.font = '700 18px Inter, sans-serif';
+  c.fillStyle = 'rgba(232,244,255,0.85)';
+  c.fillText(`명중 ${hits} · 미스 ${misses} · 정확도 ${accuracy}%`, width / 2, 206);
+
+  c.font = '600 13px Inter, sans-serif';
+  c.fillStyle = 'rgba(232,244,255,0.45)';
+  const timestamp = new Date().toLocaleString('ko-KR');
+  c.fillText(`Toris Arcade · 에임 트레이너 · ${timestamp}`, width / 2, height - 24);
+
+  return out;
+}
+
+function resultImageBlob(): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    buildResultImage().toBlob((blob) => resolve(blob), 'image/png');
+  });
+}
+
+async function downloadResultImage() {
+  const blob = await resultImageBlob();
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `에임트레이너결과-${stamp}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function shareResultImage() {
+  const blob = await resultImageBlob();
+  if (!blob) return;
+  const file = new File([blob], 'aim-trainer-result.png', { type: 'image/png' });
+
+  if (!shareNav.canShare?.({ files: [file] }) || !shareNav.share) return;
+  try {
+    await shareNav.share({ files: [file], title: '에임 트레이너 결과', text: `점수 ${score}점을 기록했어요!` });
+  } catch (e) {
+    if ((e as Error)?.name !== 'AbortError') console.error(e);
+  }
+}
+
 // ── Events ────────────────────────────────────
 // 캔버스가 스테이지 전체(inset: 0)를 덮고, 재생 중에는 오버레이가 전부 숨겨지므로
 // 캔버스 하나에만 바인딩하면 스테이지 내 모든 탭을 받는다.
@@ -315,3 +461,5 @@ onTap(canvas, (pos) => handleTap(pos));
 
 startBtn.addEventListener('click', startGame);
 retryBtn.addEventListener('click', startGame);
+saveImageBtn.addEventListener('click', downloadResultImage);
+shareImageBtn.addEventListener('click', shareResultImage);
