@@ -23,6 +23,7 @@ const GAMES: GameEntry[] = [
   { slug: '2048-hex', icon: 'hex2048-mark', name: '2048 변형(육각형)', desc: '육각형 격자에서 같은 숫자 타일을 밀어 합쳐 2048을 만들어보세요. 키보드 6방향 또는 스와이프로 조작.', category: 'single' },
   { slug: 'endless-runner', icon: 'endless-runner-mark', name: '무한 러너', desc: '탭=점프, 아래 스와이프=슬라이드! 장애물과 구덩이를 피해 최대한 멀리 달려 코인을 모으세요.', category: 'single' },
   { slug: 'idle-farm', icon: 'idle-farm-mark', name: '방치형 농장', desc: '씨앗을 심고 기다렸다가 수확! 업그레이드로 수확량과 성장 속도를 올리고, 자동 수확기로 방치 수익도 챙기세요.', category: 'single' },
+  { slug: 'pinball-rogue', icon: 'pinball-rogue-mark', name: '핀볼 로그라이크', desc: '좌우 탭으로 플리퍼를 조작해 범퍼를 맞추고, 라운드를 클리어할 때마다 업그레이드를 골라 빌드를 쌓으세요.', category: 'single' },
   { slug: 'rps', icon: 'rps-mark', name: '가위바위보 대결', desc: '방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.', category: 'multi' },
   { slug: 'liar', icon: 'liar-mark', name: '라이어게임', desc: '3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.', category: 'multi' },
   { slug: 'mafia', icon: 'mafia-mark', name: '마피아게임', desc: '4~12명이 참여하는 역할 추리 게임. 밤에는 마피아·경찰·의사가 은밀히 행동하고, 낮에는 토론과 투표로 마피아를 찾아낸다.', category: 'multi' },

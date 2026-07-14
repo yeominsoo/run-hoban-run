@@ -650,6 +650,34 @@ body {
   box-shadow: 10px 2px 0 -3px var(--color-accent-strong);
 }
 
+.pinball-rogue-mark::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  bottom: 9px;
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-secondary);
+  transform: rotate(18deg);
+  box-shadow: 12px 0 0 0 var(--color-secondary);
+  transform-origin: left center;
+}
+
+.pinball-rogue-mark::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow:
+    -8px 10px 0 -2px var(--color-accent),
+    8px 4px 0 -3px var(--color-accent-strong);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

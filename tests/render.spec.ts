@@ -2060,6 +2060,27 @@ test('endless runner: colliding with an obstacle ends the game and saves a ranki
   await verifyRankingSaveAndView(page, '/endless-runner/');
 });
 
+test('endless runner: a fast second tap while airborne cancels the jump into a slide (double-tap slide)', async ({ page }) => {
+  // 실사용자 버그 리포트: 점프 체공 시간(약 690ms)이 더블탭 판정 창(300ms)보다 길어서,
+  // 예전 구현에서는 "빠른 탭 2번"의 두 번째 탭이 도착할 때 항상 이미 공중이라 슬라이드가
+  // 절대 발동하지 않았다(죽은 기능). 지금은 공중에서의 두 번째 탭이 점프를 취소하고
+  // 즉시 착지 후 슬라이드로 전환되어야 한다.
+  await page.goto('/endless-runner/');
+  await page.locator('#start-btn').click();
+  const canvas = page.locator('#er-canvas');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('endless-runner canvas has no bounding box');
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(canvas).toHaveAttribute('data-state', 'jumping');
+
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));
@@ -2238,4 +2259,111 @@ test('idle farm: saving a ranking entry shows it on revisit and can be exported 
   await page.reload();
 
   await verifyRankingSaveAndView(page, '/idle-farm/');
+});
+
+interface PinballState {
+  phase: string | undefined;
+  score: number;
+  round: number;
+  target: number;
+  lives: number;
+  ballsCount: number;
+}
+
+async function readPinballState(page: Page): Promise<PinballState> {
+  return page.locator('#pb-canvas').evaluate((el) => {
+    const canvas = el as HTMLElement;
+    return {
+      phase: canvas.dataset.phase,
+      score: Number(canvas.dataset.score ?? 0),
+      round: Number(canvas.dataset.round ?? 1),
+      target: Number(canvas.dataset.target ?? 0),
+      lives: Number(canvas.dataset.lives ?? 0),
+      ballsCount: Number(canvas.dataset.ballsCount ?? 0)
+    };
+  });
+}
+
+test('pinball rogue: holding both flippers keeps the ball in play and increases the score', async ({ page }) => {
+  await page.goto('/pinball-rogue/');
+  await expect(page.locator('.game-title')).toHaveText('핀볼 로그라이크');
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  // 키보드는 두 플리퍼를 동시에 누른 채 유지할 수 있어(포인터는 멀티터치가 필요) 이
+  // "양쪽 다 든 채 방치" 전략을 결정론적으로 재현할 수 있다.
+  await page.keyboard.down('ArrowLeft');
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(5000);
+  await page.keyboard.up('ArrowLeft');
+  await page.keyboard.up('ArrowRight');
+
+  const state = await readPinballState(page);
+  expect(state.score).toBeGreaterThan(0);
+  expect(['playing', 'round-clear']).toContain(state.phase);
+});
+
+test('pinball rogue: clearing the round target shows an upgrade choice and picking one continues the run', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/pinball-rogue/');
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  await page.keyboard.down('ArrowLeft');
+  await page.keyboard.down('ArrowRight');
+
+  const deadline = Date.now() + 40_000;
+  let reachedRoundClear = false;
+  while (Date.now() < deadline) {
+    const state = await readPinballState(page);
+    if (state.phase === 'round-clear') {
+      reachedRoundClear = true;
+      break;
+    }
+    if (state.phase === 'ended') break; // 방치 중 드레인으로 게임이 끝나도 이 테스트의 실패로 취급하지 않고 아래에서 판정
+    await page.waitForTimeout(300);
+  }
+  await page.keyboard.up('ArrowLeft');
+  await page.keyboard.up('ArrowRight');
+
+  expect(reachedRoundClear).toBe(true);
+  await expect(page.locator('#upgrade-overlay')).toBeVisible();
+  const choices = page.locator('.upgrade-choice-btn');
+  await expect(choices).toHaveCount(3);
+
+  const roundBefore = (await readPinballState(page)).round;
+  await choices.first().click();
+  await expect(page.locator('#upgrade-overlay')).toBeHidden();
+  // canvas의 data-* 속성은 rAF 틱마다만 갱신되므로(내부 phase 변수는 클릭과 동시에
+  // 바뀌지만, dataset 반영은 다음 프레임을 기다려야 한다), 한 번만 읽지 않고 폴링하는
+  // toHaveAttribute로 확인해야 레이스 없이 안정적으로 통과한다.
+  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'playing');
+  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-round', String(roundBefore + 1));
+});
+
+test('pinball rogue: draining all balls ends the game and saves a ranking entry', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/pinball-rogue/');
+  await page.evaluate(() => localStorage.removeItem('rhh_pinball-rogue_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  // 아무 조작도 하지 않아도(플리퍼를 전혀 들지 않아도) 공은 떨어지는 길에 범퍼를 맞아
+  // 점수를 얻으므로, 세 번 드레인되기 전에 라운드 목표(300점)를 먼저 넘겨 업그레이드
+  // 선택 오버레이가 뜰 수도 있다 — 그때마다 아무 업그레이드나 골라 계속 진행하면서
+  // 최종적으로는 플리퍼를 전혀 조작하지 않았으니 결국 목숨 3개가 모두 소진되어야 한다.
+  const deadline = Date.now() + 40_000;
+  while (Date.now() < deadline) {
+    const phase = await page.locator('#pb-canvas').getAttribute('data-phase');
+    if (phase === 'ended') break;
+    if (phase === 'round-clear') {
+      await page.locator('.upgrade-choice-btn').first().click();
+    }
+    await page.waitForTimeout(200);
+  }
+  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'ended');
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  await verifyRankingSaveAndView(page, '/pinball-rogue/');
 });
