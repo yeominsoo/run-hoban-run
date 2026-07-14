@@ -1,0 +1,87 @@
+@import "../../shared/pastel-theme.css";
+@import "../../shared/game-shell.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh; min-height: 100dvh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background: var(--color-page-bg);
+  color: var(--color-page-text);
+  overflow: hidden;
+}
+
+.er-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.game-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-hub-bg);
+  touch-action: none;
+}
+
+#er-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.hud {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  z-index: 2;
+  pointer-events: none;
+}
+.hud[hidden] { display: none; }
+
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+}
+
+.hud-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-page-muted);
+}
+
+.hud-value {
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: var(--color-page-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.result-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+}
+
+@media (max-width: 480px) {
+  .overlay-card { max-width: 300px; padding: 24px 20px; }
+}

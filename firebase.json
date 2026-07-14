@@ -169,6 +169,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/endless-runner/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -299,6 +308,14 @@
       {
         "source": "/2048-hex/**",
         "destination": "/2048-hex/index.html"
+      },
+      {
+        "source": "/endless-runner",
+        "destination": "/endless-runner/index.html"
+      },
+      {
+        "source": "/endless-runner/**",
+        "destination": "/endless-runner/index.html"
       }
     ]
   }

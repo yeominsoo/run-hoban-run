@@ -1967,6 +1967,99 @@ test('2048 hex: the ranking list can be saved as an image', async ({ page }) => 
   expect(download.suggestedFilename()).toMatch(/\.png$/);
 });
 
+interface RunnerObstacle {
+  type: string;
+  x: number;
+  width: number;
+}
+
+interface RunnerState {
+  phase: string | undefined;
+  playerX: number;
+  playerState: string | undefined;
+  obstacles: RunnerObstacle[];
+  score: number;
+  coins: number;
+}
+
+async function readRunnerState(page: Page): Promise<RunnerState> {
+  return page.locator('#er-canvas').evaluate((el) => {
+    const canvas = el as HTMLElement;
+    const obstacles = (canvas.dataset.obstacles ?? '')
+      .split('|')
+      .filter(Boolean)
+      .map((entry) => {
+        const [type, x, width] = entry.split(':');
+        return { type, x: Number(x), width: Number(width) };
+      });
+    return {
+      phase: canvas.dataset.phase,
+      playerX: Number(canvas.dataset.playerX),
+      playerState: canvas.dataset.state,
+      obstacles,
+      score: Number(canvas.dataset.score ?? 0),
+      coins: Number(canvas.dataset.coins ?? 0)
+    };
+  });
+}
+
+test('endless runner: jumping/sliding at the right moment clears obstacles and pits', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/endless-runner/');
+  await expect(page.locator('.game-title')).toHaveText('무한 러너');
+
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#er-canvas')).toHaveAttribute('data-phase', 'playing');
+
+  const canvas = page.locator('#er-canvas');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('endless-runner canvas has no bounding box');
+  const deadline = Date.now() + 15_000;
+
+  while (Date.now() < deadline) {
+    const state = await readRunnerState(page);
+    if (state.phase !== 'playing') break;
+
+    // 반응 창을 장애물 바로 앞(약 0.2초 거리)까지 좁혀야 한다 — 너무 일찍(예: 140px 밖)
+    // 점프하면 특히 폭이 넓은 구덩이를 건너는 도중 체공 시간이 바닥나 착지해버린다(실제로
+    // 겪은 실패 원인). 장애물이 코앞에 왔을 때 반응해야 점프 체공 시간을 최대한 활용한다.
+    const upcoming = state.obstacles.find(
+      (o) => o.x >= state.playerX + 10 && o.x <= state.playerX + 60
+    );
+    if (upcoming && state.playerState === 'running') {
+      if (upcoming.type === 'high') {
+        // 더블탭 타이밍에 기대는 대신, 명확한 아래로 스와이프 제스처로 슬라이드를 발동한다
+        // (연속 클릭 두 번은 이 테스트 환경의 실행 지연 때문에 더블탭 판정 창을 놓치기 쉬웠다).
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 60, { steps: 3 });
+        await page.mouse.up();
+      } else {
+        await canvas.click();
+      }
+    }
+    await page.waitForTimeout(35);
+  }
+
+  // 15초 동안 여러 장애물·구덩이를 만나면서도 살아남아야 한다(잘못 피하면 즉시 게임오버).
+  const finalState = await readRunnerState(page);
+  expect(finalState.phase).toBe('playing');
+  expect(finalState.score).toBeGreaterThan(0);
+});
+
+test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
+  await page.goto('/endless-runner/');
+  await page.evaluate(() => localStorage.removeItem('rhh_endless-runner_ranking'));
+  await page.reload();
+
+  await page.locator('#start-btn').click();
+  // 아무 조작도 하지 않고 방치하면 낮은 장애물/높은 장애물/구덩이 중 하나에 반드시 걸린다.
+  await expect(page.locator('#er-canvas')).toHaveAttribute('data-phase', 'ended', { timeout: 20_000 });
+  await expect(page.locator('#result-overlay')).toBeVisible();
+
+  await verifyRankingSaveAndView(page, '/endless-runner/');
+});
+
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await page.evaluate(() => localStorage.removeItem('rhh_aim-trainer_best'));

@@ -600,6 +600,33 @@ body {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
+.endless-runner-mark::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 11px;
+  height: 2px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-page-muted) 0px, var(--color-page-muted) 4px,
+    transparent 4px, transparent 9px
+  );
+}
+
+.endless-runner-mark::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  bottom: 13px;
+  width: 12px;
+  height: 16px;
+  border-radius: 6px 6px 3px 3px;
+  background: var(--color-primary);
+  box-shadow: 14px -6px 0 -2px var(--color-accent);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

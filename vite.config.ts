@@ -22,6 +22,7 @@ export default defineConfig({
         snake: resolve(__dirname, 'snake/index.html'),
         'typing-survival': resolve(__dirname, 'typing-survival/index.html'),
         '2048-hex': resolve(__dirname, '2048-hex/index.html'),
+        'endless-runner': resolve(__dirname, 'endless-runner/index.html'),
       },
       output: {
         manualChunks(id) {
