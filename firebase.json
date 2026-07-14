@@ -178,6 +178,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/idle-farm/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -316,6 +325,14 @@
       {
         "source": "/endless-runner/**",
         "destination": "/endless-runner/index.html"
+      },
+      {
+        "source": "/idle-farm",
+        "destination": "/idle-farm/index.html"
+      },
+      {
+        "source": "/idle-farm/**",
+        "destination": "/idle-farm/index.html"
       }
     ]
   }

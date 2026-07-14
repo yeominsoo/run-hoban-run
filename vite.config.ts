@@ -23,6 +23,7 @@ export default defineConfig({
         'typing-survival': resolve(__dirname, 'typing-survival/index.html'),
         '2048-hex': resolve(__dirname, '2048-hex/index.html'),
         'endless-runner': resolve(__dirname, 'endless-runner/index.html'),
+        'idle-farm': resolve(__dirname, 'idle-farm/index.html'),
       },
       output: {
         manualChunks(id) {

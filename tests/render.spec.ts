@@ -2080,3 +2080,162 @@ test('aim trainer: saves and restores the best score across visits', async ({ pa
   await page.reload();
   await expect(page.locator('#best-score')).toHaveText('999999');
 });
+
+function emptyFarmState(overrides: Record<string, unknown> = {}) {
+  return {
+    coins: 0,
+    totalEarned: 0,
+    plots: Array.from({ length: 6 }, () => ({ crop: null, plantedAt: null })),
+    yieldLevel: 0,
+    speedLevel: 0,
+    autoHarvester: false,
+    ...overrides
+  };
+}
+
+test('idle farm: planting via the crop picker grows to a harvestable state and pays out on tap', async ({ page }) => {
+  const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await page.clock.install({ time: start });
+  await page.goto('/idle-farm/');
+  await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState());
+  await page.reload();
+
+  const plot0 = page.locator('.plot').nth(0);
+  await plot0.click();
+  await expect(page.locator('#crop-picker-overlay')).toBeVisible();
+  await page.locator('.crop-picker-btn[data-crop-id="carrot"]').click();
+  await expect(page.locator('#crop-picker-overlay')).toBeHidden();
+  await expect(plot0).toHaveAttribute('data-crop', 'carrot');
+  await expect(plot0).toHaveAttribute('data-ready', 'false');
+
+  // 당근 성장시간(8초)에 못 미치는 시점에서는 아직 수확할 수 없어야 한다.
+  await page.clock.fastForward(7000);
+  await expect(plot0).toHaveAttribute('data-ready', 'false');
+
+  await page.clock.fastForward(2000);
+  await expect(plot0).toHaveAttribute('data-ready', 'true');
+
+  await plot0.click();
+  await expect(plot0).toHaveAttribute('data-crop', '');
+  await expect(page.locator('#coin-balance')).toHaveText('4');
+  await expect(page.locator('#total-earned')).toHaveText('4');
+});
+
+test('idle farm: buying the yield upgrade increases coins earned per harvest', async ({ page }) => {
+  const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await page.clock.install({ time: start });
+  await page.goto('/idle-farm/');
+  await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState({ coins: 1000 }));
+  await page.reload();
+
+  await expect(page.locator('#yield-cost')).toHaveText('50코인');
+  await page.locator('#upgrade-yield').click();
+  await expect(page.locator('#yield-level')).toHaveText('Lv.1');
+  await expect(page.locator('#coin-balance')).toHaveText('950');
+
+  const plot0 = page.locator('.plot').nth(0);
+  await plot0.click();
+  await page.locator('.crop-picker-btn[data-crop-id="tomato"]').click();
+  await page.clock.fastForward(25_000);
+  await expect(plot0).toHaveAttribute('data-ready', 'true');
+  await plot0.click();
+
+  // 토마토 기본 수확량 15코인에 Lv.1(+10%) 보정 → round(16.5) = 17코인.
+  await expect(page.locator('#total-earned')).toHaveText('17');
+});
+
+test('idle farm: buying the growth speed upgrade shortens the time until a plot is ready', async ({ page }) => {
+  const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await page.clock.install({ time: start });
+  await page.goto('/idle-farm/');
+  await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState({ coins: 1000 }));
+  await page.reload();
+
+  await page.locator('#upgrade-speed').click();
+  await expect(page.locator('#speed-level')).toHaveText('Lv.1');
+
+  const plot0 = page.locator('.plot').nth(0);
+  await plot0.click();
+  await page.locator('.crop-picker-btn[data-crop-id="carrot"]').click();
+
+  // 기본 성장시간 8000ms의 92%는 7360ms. 업그레이드가 없었다면 아직 안 익었을
+  // 7500ms 시점에도 Lv.1 속도 보정 덕에 이미 수확 가능해야 한다.
+  await page.clock.fastForward(7500);
+  await expect(plot0).toHaveAttribute('data-ready', 'true');
+});
+
+test('idle farm: the auto harvester automatically re-harvests and replants while the page stays open', async ({ page }) => {
+  const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await page.clock.install({ time: start });
+  await page.goto('/idle-farm/');
+  await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState({ coins: 1000 }));
+  await page.reload();
+
+  await page.locator('#upgrade-auto').click();
+  await expect(page.locator('#auto-cost')).toHaveText('보유 중');
+
+  const plot0 = page.locator('.plot').nth(0);
+  await plot0.click();
+  await page.locator('.crop-picker-btn[data-crop-id="carrot"]').click();
+
+  // 아무것도 탭하지 않아도 자동 수확기가 스스로 수확하고 같은 작물을 다시 심는다.
+  await page.clock.runFor(17_000);
+
+  const totalEarned = Number(await page.locator('#total-earned').textContent());
+  expect(totalEarned).toBeGreaterThanOrEqual(4);
+  const coinBalance = Number(await page.locator('#coin-balance').textContent());
+  expect(coinBalance).toBeGreaterThan(500);
+  await expect(plot0).toHaveAttribute('data-crop', 'carrot');
+});
+
+test('idle farm: reopening after time away catches up multiple auto-harvest cycles at once and shows a one-time toast', async ({ page }) => {
+  const start = new Date('2026-01-01T00:00:00Z').getTime();
+  const seeded = emptyFarmState({ autoHarvester: true });
+  (seeded as { plots: unknown[] }).plots[0] = { crop: 'carrot', plantedAt: start };
+
+  // 옛 페이지가 살아있는 채로 localStorage를 직접 덮어쓰고 시계만 돌리면, 그 옛 페이지의
+  // 자동 저장 틱이 먼저 깨어나 방금 덮어쓴 값을 기본값으로 되돌려버리는 레이스가 있었다
+  // (구현 노트의 "테스트로 발견한 버그" 참고). addInitScript로 첫 네비게이션이 일어나기
+  // 전에 값을 심어 그 경쟁 자체를 없앤 상태에서 "떠나 있던 동안"을 재현한다.
+  await page.clock.install({ time: start });
+  await page.addInitScript((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), seeded);
+  // 심어놓고 3.5사이클(28초)치 시간이 흐른 뒤에야 처음 열어본 상황을 재현한다.
+  await page.clock.fastForward(28_000);
+  await page.goto('/idle-farm/');
+
+  await expect(page.locator('#farm-toast')).toBeVisible();
+  await expect(page.locator('#farm-toast')).toContainText('12코인');
+  await expect(page.locator('#total-earned')).toHaveText('12');
+  await expect(page.locator('#coin-balance')).toHaveText('12');
+
+  const plot0 = page.locator('.plot').nth(0);
+  await expect(plot0).toHaveAttribute('data-crop', 'carrot');
+  await expect(plot0).toHaveAttribute('data-ready', 'false');
+});
+
+test('idle farm: without the auto harvester, time away only makes a plot ready for one manual harvest', async ({ page }) => {
+  const start = new Date('2026-01-01T00:00:00Z').getTime();
+  const seeded = emptyFarmState();
+  (seeded as { plots: unknown[] }).plots[0] = { crop: 'carrot', plantedAt: start };
+
+  await page.clock.install({ time: start });
+  await page.addInitScript((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), seeded);
+  await page.clock.fastForward(28_000);
+  await page.goto('/idle-farm/');
+
+  const plot0 = page.locator('.plot').nth(0);
+  await expect(plot0).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('#total-earned')).toHaveText('0');
+
+  await plot0.click();
+  await expect(page.locator('#total-earned')).toHaveText('4');
+  await expect(plot0).toHaveAttribute('data-crop', '');
+});
+
+test('idle farm: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  await page.goto('/idle-farm/');
+  await page.evaluate(() => localStorage.removeItem('rhh_idle-farm_ranking'));
+  await page.reload();
+
+  await verifyRankingSaveAndView(page, '/idle-farm/');
+});
