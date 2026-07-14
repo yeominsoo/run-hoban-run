@@ -187,15 +187,6 @@
             "value": "no-cache"
           }
         ]
-      },
-      {
-        "source": "/pinball-rogue/index.html",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
       }
     ],
     "rewrites": [
@@ -342,14 +333,6 @@
       {
         "source": "/idle-farm/**",
         "destination": "/idle-farm/index.html"
-      },
-      {
-        "source": "/pinball-rogue",
-        "destination": "/pinball-rogue/index.html"
-      },
-      {
-        "source": "/pinball-rogue/**",
-        "destination": "/pinball-rogue/index.html"
       }
     ]
   }

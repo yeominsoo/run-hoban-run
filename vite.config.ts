@@ -24,7 +24,6 @@ export default defineConfig({
         '2048-hex': resolve(__dirname, '2048-hex/index.html'),
         'endless-runner': resolve(__dirname, 'endless-runner/index.html'),
         'idle-farm': resolve(__dirname, 'idle-farm/index.html'),
-        'pinball-rogue': resolve(__dirname, 'pinball-rogue/index.html'),
       },
       output: {
         manualChunks(id) {
