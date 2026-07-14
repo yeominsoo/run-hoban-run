@@ -401,6 +401,7 @@ function render(now: number) {
       refs.root.dataset.ready = 'false';
       delete refs.root.dataset.plantedAt;
       refs.icon.className = 'plot-icon';
+      refs.icon.style.transform = '';
       refs.fill.style.width = '0%';
       refs.label.textContent = '빈 밭 (탭해서 심기)';
       return;
@@ -414,6 +415,8 @@ function render(now: number) {
     refs.root.dataset.ready = String(ready);
     refs.root.dataset.plantedAt = String(plot.plantedAt);
     refs.icon.className = `plot-icon crop-icon-${plot.crop}`;
+    const growScale = 0.45 + progress * 0.55;
+    refs.icon.style.transform = ready ? '' : `scale(${growScale.toFixed(3)})`;
     refs.fill.style.width = `${Math.round(progress * 100)}%`;
     refs.label.textContent = ready
       ? `${crop.name} 수확하기!`

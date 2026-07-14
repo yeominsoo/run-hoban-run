@@ -94,17 +94,88 @@ body {
 }
 
 .plot-icon {
+  position: relative;
   width: 34px;
   height: 34px;
-  border-radius: 50%;
-  background: transparent;
   transition: transform 160ms;
 }
 .plot--ready .plot-icon { transform: scale(1.12); }
 
-.crop-icon-carrot { background: radial-gradient(circle at 35% 30%, #ffd08a, #f59f3a); }
-.crop-icon-tomato { background: radial-gradient(circle at 35% 30%, #ff9d9d, #ff6f6f); }
-.crop-icon-watermelon { background: radial-gradient(circle at 35% 30%, #8fe6ac, #39b879); }
+/* ── 당근: 아래로 갈수록 좁아지는 몸통 + 지그재그 잎 ───────── */
+.crop-icon-carrot {
+  width: 20px;
+  height: 26px;
+  margin: 8px auto 0;
+  background: linear-gradient(200deg, #ffcf8a 0%, #f59f3a 55%, #e2821f 100%);
+  clip-path: polygon(50% 100%, 12% 6%, 88% 6%);
+  border-radius: 2px 2px 8px 8px;
+}
+.crop-icon-carrot::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 22px;
+  height: 12px;
+  transform: translateX(-50%);
+  background: linear-gradient(160deg, #6bc26f, #3f9a52);
+  clip-path: polygon(
+    0% 100%, 10% 30%, 22% 100%, 34% 10%, 50% 100%,
+    66% 10%, 78% 100%, 90% 30%, 100% 100%
+  );
+}
+
+/* ── 토마토: 둥근 몸통 + 별모양 꼭지 ──────────────────────── */
+.crop-icon-tomato {
+  width: 30px;
+  height: 30px;
+  margin: 2px auto 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffa5a5, #ef5757 65%, #d84545 100%);
+  box-shadow: inset -3px -4px 6px rgba(120, 20, 20, 0.25), inset 3px 3px 4px rgba(255, 255, 255, 0.35);
+}
+.crop-icon-tomato::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: #4fa25a;
+  clip-path: polygon(
+    50% 0%, 61% 32%, 95% 22%, 71% 48%,
+    90% 78%, 58% 62%, 50% 96%, 42% 62%,
+    10% 78%, 29% 48%, 5% 22%, 39% 32%
+  );
+}
+
+/* ── 수박: 둥근 몸통 + 곡선 줄무늬 ────────────────────────── */
+.crop-icon-watermelon {
+  width: 32px;
+  height: 32px;
+  margin: 1px auto 0;
+  border-radius: 50%;
+  background:
+    repeating-linear-gradient(
+      100deg,
+      rgba(23, 87, 46, 0.6) 0px, rgba(23, 87, 46, 0.6) 3px,
+      transparent 3px, transparent 9px
+    ),
+    radial-gradient(circle at 35% 30%, #9ff0b8, #39b879 70%, #2a9862 100%);
+  box-shadow: inset -3px -4px 6px rgba(20, 70, 40, 0.3), inset 3px 3px 4px rgba(255, 255, 255, 0.3);
+}
+.crop-icon-watermelon::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 4px;
+  height: 8px;
+  transform: translateX(-50%) rotate(-12deg);
+  background: #4fa25a;
+  border-radius: 2px;
+}
 
 .plot-progress-track {
   width: 100%;
@@ -221,10 +292,17 @@ body {
 .crop-picker-btn:hover { background: rgba(255, 255, 255, 0.92); border-color: var(--color-border-strong); }
 
 .crop-picker-icon {
+  position: relative;
   flex: 0 0 auto;
   width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  height: 30px;
+}
+/* 밭 칸 아이콘은 세로 중앙 정렬을 위해 위쪽 margin을 쓰지만, 팝업 목록의 가로 배치에서는
+   불필요하므로 0으로 맞춘다 — 모양·크기는 공용 crop-icon-* 규칙을 그대로 물려받는다. */
+.crop-picker-icon.crop-icon-carrot,
+.crop-picker-icon.crop-icon-tomato,
+.crop-picker-icon.crop-icon-watermelon {
+  margin: 0;
 }
 
 .crop-picker-name {

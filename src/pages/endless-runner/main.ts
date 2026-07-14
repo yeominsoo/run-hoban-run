@@ -432,67 +432,205 @@ function recomputeScore() {
 }
 
 // ── Render ────────────────────────────────────
-function draw() {
-  ctx.clearRect(0, 0, stageWidth, stageHeight);
+function shadeColor(hex: string, percent: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.max(0, ((n >> 16) & 0xff) + Math.round(255 * percent)));
+  const g = Math.min(255, Math.max(0, ((n >> 8) & 0xff) + Math.round(255 * percent)));
+  const b = Math.min(255, Math.max(0, (n & 0xff) + Math.round(255 * percent)));
+  return `rgb(${r},${g},${b})`;
+}
 
-  // sky
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillRect(0, 0, stageWidth, groundY);
+function drawRoundedRect(x: number, y: number, w: number, h: number, r: number) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
 
-  // ground (구덩이는 뚫어서 그린다)
-  ctx.fillStyle = COLOR_SECONDARY;
-  let cursor = 0;
+function drawGround() {
+  // 구덩이는 뚫어서 그리고, 안쪽엔 그라데이션으로 깊이감을 준다.
   const pits = obstacles.filter((o) => o.type === 'pit').sort((a, b) => a.x - b.x);
+  let cursor = 0;
+  ctx.fillStyle = COLOR_SECONDARY;
   for (const pit of pits) {
     if (pit.x > cursor) ctx.fillRect(cursor, groundY, pit.x - cursor, stageHeight - groundY);
     cursor = Math.max(cursor, pit.x + pit.width);
   }
   if (cursor < stageWidth) ctx.fillRect(cursor, groundY, stageWidth - cursor, stageHeight - groundY);
 
-  // obstacles
+  // 지면 표면 하이라이트 줄무늬
+  ctx.fillStyle = shadeColor(COLOR_SECONDARY, 0.16);
+  cursor = 0;
+  for (const pit of pits) {
+    if (pit.x > cursor) ctx.fillRect(cursor, groundY, pit.x - cursor, 4);
+    cursor = Math.max(cursor, pit.x + pit.width);
+  }
+  if (cursor < stageWidth) ctx.fillRect(cursor, groundY, stageWidth - cursor, 4);
+
+  for (const pit of pits) {
+    const gradient = ctx.createLinearGradient(0, groundY, 0, groundY + 26);
+    gradient.addColorStop(0, 'rgba(43,30,40,0.55)');
+    gradient.addColorStop(1, 'rgba(43,30,40,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(pit.x, groundY, pit.width, 26);
+    // 가장자리 위험 표시
+    ctx.fillStyle = COLOR_ACCENT;
+    for (let sx = pit.x - 6; sx < pit.x; sx += 6) ctx.fillRect(sx, groundY, 3, 4);
+    for (let sx = pit.x + pit.width; sx < pit.x + pit.width + 6; sx += 6) ctx.fillRect(sx, groundY, 3, 4);
+  }
+}
+
+function drawLowObstacle(o: Obstacle, top: number, height: number) {
+  drawRoundedRect(o.x, top, o.width, height, 4);
+  ctx.fillStyle = '#b9895a';
+  ctx.fill();
+  ctx.strokeStyle = shadeColor('#b9895a', -0.28);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // 나무 상자 느낌의 X자 판자 무늬
+  ctx.save();
+  ctx.beginPath();
+  drawRoundedRect(o.x, top, o.width, height, 4);
+  ctx.clip();
+  ctx.strokeStyle = shadeColor('#b9895a', -0.32);
+  ctx.lineWidth = Math.max(2, o.width * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(o.x, top);
+  ctx.lineTo(o.x + o.width, top + height);
+  ctx.moveTo(o.x + o.width, top);
+  ctx.lineTo(o.x, top + height);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHighObstacle(o: Obstacle, top: number, height: number) {
+  const gradient = ctx.createLinearGradient(0, top, 0, top + height);
+  gradient.addColorStop(0, 'rgba(232,93,117,0)');
+  gradient.addColorStop(0.35, COLOR_DANGER);
+  gradient.addColorStop(1, COLOR_DANGER);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(o.x, top, o.width, height);
+
+  // 아래쪽 끝에 아래를 향한 가시를 달아 "여기 아래로 지나가면 위험"을 시각적으로 강조한다.
+  const spikeCount = Math.max(2, Math.floor(o.width / 14));
+  const spikeW = o.width / spikeCount;
+  const bottom = top + height;
+  ctx.fillStyle = shadeColor(COLOR_DANGER, -0.15);
+  for (let i = 0; i < spikeCount; i += 1) {
+    const sx = o.x + i * spikeW;
+    ctx.beginPath();
+    ctx.moveTo(sx, bottom);
+    ctx.lineTo(sx + spikeW / 2, bottom + 10);
+    ctx.lineTo(sx + spikeW, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawCoin(c: Coin, now: number) {
+  const spin = Math.sin(now / 260 + c.x * 0.05);
+  const scaleX = Math.max(0.18, Math.abs(spin));
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.scale(scaleX, 1);
+  ctx.beginPath();
+  ctx.arc(0, 0, 9, 0, Math.PI * 2);
+  ctx.fillStyle = COLOR_ACCENT;
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(COLOR_ACCENT, -0.25);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (spin > 0) {
+    ctx.beginPath();
+    ctx.moveTo(-3, -4);
+    ctx.lineTo(3, -4);
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPlayer(now: number) {
+  const pHeight = playerHeight();
+  const x = playerX - PLAYER_WIDTH / 2;
+  const y = playerTopY();
+  const facing = 1;
+
+  // 다리: 달리는 동안엔 번갈아 앞뒤로 움직이고, 점프 중엔 접히고, 슬라이드 중엔 뒤로 눕는다.
+  ctx.fillStyle = shadeColor(COLOR_PRIMARY, -0.3);
+  if (playerState === 'running') {
+    const cycle = Math.sin(distancePx / 9);
+    const legLen = pHeight * 0.32;
+    for (const sign of [-1, 1]) {
+      const swing = cycle * sign * (PLAYER_WIDTH * 0.16);
+      ctx.beginPath();
+      ctx.ellipse(playerX + swing * 0.3, y + pHeight - legLen * 0.3, 4, legLen * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (playerState === 'sliding') {
+    ctx.beginPath();
+    ctx.ellipse(x - 2, y + pHeight - 4, 7, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawRoundedRect(x, y, PLAYER_WIDTH, pHeight, playerState === 'sliding' ? 6 : 9);
+  const bodyGradient = ctx.createLinearGradient(x, y, x, y + pHeight);
+  bodyGradient.addColorStop(0, shadeColor(COLOR_PRIMARY, 0.12));
+  bodyGradient.addColorStop(1, COLOR_PRIMARY);
+  ctx.fillStyle = bodyGradient;
+  ctx.fill();
+
+  // 눈(항상 진행 방향인 오른쪽을 바라본다)
+  const eyeY = y + pHeight * (playerState === 'sliding' ? 0.42 : 0.32);
+  const eyeX = x + PLAYER_WIDTH * 0.66 * facing + (facing > 0 ? 0 : PLAYER_WIDTH * 0.34);
+  ctx.beginPath();
+  ctx.arc(eyeX, eyeY, 3.6, 0, Math.PI * 2);
+  ctx.fillStyle = '#fffdf8';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(eyeX + 1.2, eyeY, 1.9, 0, Math.PI * 2);
+  ctx.fillStyle = '#2a1f28';
+  ctx.fill();
+
+  // 점프 중엔 잔상을 살짝 남겨 속도감을 준다.
+  if (playerState === 'jumping') {
+    ctx.globalAlpha = 0.18;
+    drawRoundedRect(x - 8, y + 3, PLAYER_WIDTH, pHeight, 9);
+    ctx.fillStyle = COLOR_PRIMARY;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  void now;
+}
+
+function draw() {
+  const now = performance.now();
+  ctx.clearRect(0, 0, stageWidth, stageHeight);
+
+  // sky
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(0, 0, stageWidth, groundY);
+
+  drawGround();
+
   for (const o of obstacles) {
     if (o.type === 'pit') continue;
     const { top, height } = obstacleGeometry(o);
-    if (o.type === 'low') {
-      ctx.fillStyle = COLOR_DANGER;
-      ctx.fillRect(o.x, top, o.width, height);
-    } else {
-      // 위로 화면 밖까지 뻗은 "매달린 기둥" — 위쪽은 흐려져서 천장 너머로 이어지는 느낌을 준다.
-      const gradient = ctx.createLinearGradient(0, top, 0, top + height);
-      gradient.addColorStop(0, 'rgba(232,93,117,0)');
-      gradient.addColorStop(0.35, COLOR_DANGER);
-      gradient.addColorStop(1, COLOR_DANGER);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(o.x, top, o.width, height);
-    }
+    if (o.type === 'low') drawLowObstacle(o, top, height);
+    else drawHighObstacle(o, top, height);
   }
 
-  // coins
   for (const c of coins) {
     if (c.collected) continue;
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, 9, 0, Math.PI * 2);
-    ctx.fillStyle = COLOR_ACCENT;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    drawCoin(c, now);
   }
 
-  // player
-  const pHeight = playerHeight();
-  ctx.fillStyle = COLOR_PRIMARY;
-  const radius = 8;
-  const x = playerX - PLAYER_WIDTH / 2;
-  const y = playerTopY();
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + PLAYER_WIDTH, y, x + PLAYER_WIDTH, y + pHeight, radius);
-  ctx.arcTo(x + PLAYER_WIDTH, y + pHeight, x, y + pHeight, radius);
-  ctx.arcTo(x, y + pHeight, x, y, radius);
-  ctx.arcTo(x, y, x + PLAYER_WIDTH, y, radius);
-  ctx.closePath();
-  ctx.fill();
+  drawPlayer(now);
 
   ctx.fillStyle = COLOR_TEXT;
   ctx.font = '700 12px Inter, sans-serif';

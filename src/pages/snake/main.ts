@@ -301,27 +301,103 @@ function cellRect(cell: Cell) {
   };
 }
 
+function shadeColor(hex: string, percent: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.max(0, ((n >> 16) & 0xff) + Math.round(255 * percent)));
+  const g = Math.min(255, Math.max(0, ((n >> 8) & 0xff) + Math.round(255 * percent)));
+  const b = Math.min(255, Math.max(0, (n & 0xff) + Math.round(255 * percent)));
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawSnakeEyes(cx: number, cy: number, size: number, dir: Direction) {
+  const eyeOffset = size * 0.16;
+  const alongX = dir.dx * size * 0.14;
+  const alongY = dir.dy * size * 0.14;
+  const sideX = -dir.dy * eyeOffset;
+  const sideY = dir.dx * eyeOffset;
+  const eyeR = size * 0.11;
+
+  for (const sign of [-1, 1]) {
+    const ex = cx + alongX + sideX * sign;
+    const ey = cy + alongY + sideY * sign;
+    ctx.beginPath();
+    ctx.arc(ex, ey, eyeR, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffdf8';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ex + dir.dx * eyeR * 0.4, ey + dir.dy * eyeR * 0.4, eyeR * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = '#2a1f28';
+    ctx.fill();
+  }
+}
+
 function draw() {
   const theme = THEMES[themeIndex % THEMES.length];
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, stageWidth, stageHeight);
+  if (snake.length === 0) return;
 
   const pad = Math.max(1, cellSize * 0.08);
+  const len = snake.length;
+
+  // 꼬리 쪽으로 갈수록 살짝 얇아지게 그려 뱀 특유의 유기적인 형태를 낸다.
   snake.forEach((cell, i) => {
+    if (i === 0) return;
     const r = cellRect(cell);
-    ctx.fillStyle = i === 0 ? theme.head : theme.snake;
-    const radius = i === 0 ? cellSize * 0.32 : cellSize * 0.24;
-    drawRoundedRect(r.x + pad, r.y + pad, r.size - pad * 2, r.size - pad * 2, radius);
+    const taper = Math.max(0.55, 1 - (i / len) * 0.5);
+    const inset = pad + (r.size - pad * 2) * (1 - taper) * 0.5;
+    const segSize = r.size - inset * 2;
+    const isEven = i % 2 === 0;
+    ctx.fillStyle = isEven ? theme.snake : shadeColor(theme.snake, -0.08);
+    drawRoundedRect(r.x + inset, r.y + inset, segSize, segSize, segSize * 0.32);
+    ctx.fill();
+    // 비늘 하이라이트
+    ctx.beginPath();
+    ctx.arc(r.x + r.size / 2, r.y + r.size / 2 - segSize * 0.18, segSize * 0.16, 0, Math.PI * 2);
+    ctx.fillStyle = shadeColor(theme.snake, isEven ? 0.14 : 0.06);
     ctx.fill();
   });
 
+  // 머리
+  const headCell = snake[0];
+  const hr = cellRect(headCell);
+  const hcx = hr.x + hr.size / 2;
+  const hcy = hr.y + hr.size / 2;
+  drawRoundedRect(hr.x + pad * 0.6, hr.y + pad * 0.6, hr.size - pad * 1.2, hr.size - pad * 1.2, hr.size * 0.36);
+  ctx.fillStyle = theme.head;
+  ctx.fill();
+  drawSnakeEyes(hcx, hcy, hr.size, direction);
+
+  drawFood();
+}
+
+function drawFood() {
+  const theme = THEMES[themeIndex % THEMES.length];
   const foodRect = cellRect(food);
   const pulse = 1 + Math.sin(performance.now() / 220) * 0.08;
   const cx = foodRect.x + foodRect.size / 2;
   const cy = foodRect.y + foodRect.size / 2;
+  const r = (foodRect.size / 2 - Math.max(1, cellSize * 0.08)) * pulse;
+
+  // 사과 모양: 몸통(윗부분을 살짝 눌러 하트꼴로) + 줄기 + 잎
   ctx.beginPath();
-  ctx.arc(cx, cy, (foodRect.size / 2 - pad) * pulse, 0, Math.PI * 2);
+  ctx.moveTo(cx, cy - r * 0.15);
+  ctx.bezierCurveTo(cx - r * 0.55, cy - r * 1.15, cx - r * 1.15, cy - r * 0.15, cx, cy + r * 1.05);
+  ctx.bezierCurveTo(cx + r * 1.15, cy - r * 0.15, cx + r * 0.55, cy - r * 1.15, cx, cy - r * 0.15);
+  ctx.closePath();
   ctx.fillStyle = theme.food;
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(theme.food, -0.25);
+  ctx.lineWidth = Math.max(1, r * 0.16);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r * 0.55);
+  ctx.lineTo(cx, cy - r * 0.95);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx + r * 0.35, cy - r * 0.85, r * 0.32, r * 0.16, -0.5, 0, Math.PI * 2);
+  ctx.fillStyle = shadeColor('#5ecfbc', 0.05);
   ctx.fill();
 }
 
