@@ -9,6 +9,7 @@ import { registerMafiaServer } from './mafia.mjs';
 import { registerHalliGalliServer } from './halligalli.mjs';
 import { registerYutnoriServer } from './yutnori.mjs';
 import { registerStrategyYutnoriServer } from './strategy-yutnori.mjs';
+import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
@@ -36,15 +37,6 @@ function scheduleSave() {
     saveTimer = null;
     try { writeFileSync(RANKING_FILE, JSON.stringify(rankingData)); } catch (e) { console.error('[ranking] save failed', e.message); }
   }, 2000);
-}
-
-function isoWeekKey(date = new Date()) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
 /** Record a set/round win for a player in the current ISO week. */
@@ -76,6 +68,19 @@ const CORS_HEADERS = {
   'access-control-allow-headers': 'content-type',
 };
 
+/** rps 이외의 승/패 랭킹(라이어/마피아/할리갈리/윷놀이/전략윷놀이) 공용 응답 헬퍼. */
+function respondGameRanking(req, res, getRankingFn) {
+  const week = new URL(req.url, 'http://localhost').searchParams.get('week') || isoWeekKey();
+  const entries = getRankingFn(week);
+  const prevWeek = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return isoWeekKey(d); })();
+  res.writeHead(200, { 'content-type': 'application/json', ...CORS_HEADERS });
+  res.end(JSON.stringify({ week, entries, prevWeek }));
+}
+
+// /ranking 접두사 하위 경로("/ranking/liar" 등)를 각 게임의 랭킹 조회 함수로 매핑한다.
+// 이 맵은 아래에서 각 게임 서버를 등록한 뒤 채워진다(파일 뒷부분의 registerXServer() 참고).
+const GAME_RANKING_HANDLERS = {};
+
 const httpServer = createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS_HEADERS); res.end(); return; }
   if (req.url === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
@@ -86,6 +91,12 @@ const httpServer = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json', ...CORS_HEADERS });
     res.end(JSON.stringify({ week, entries, prevWeek }));
     return;
+  }
+  const pathname = req.url?.split('?')[0];
+  if (pathname && pathname.startsWith('/ranking/')) {
+    const gameKey = pathname.slice('/ranking/'.length);
+    const getRankingFn = GAME_RANKING_HANDLERS[gameKey];
+    if (getRankingFn) { respondGameRanking(req, res, getRankingFn); return; }
   }
   res.writeHead(404); res.end();
 });
@@ -771,11 +782,17 @@ wss.on('connection', (ws) => {
   });
 });
 
-const liarWss = registerLiarServer();
-const mafiaWss = registerMafiaServer();
-const halliGalliWss = registerHalliGalliServer();
-const yutnoriWss = registerYutnoriServer();
-const strategyYutnoriWss = registerStrategyYutnoriServer();
+const { wss: liarWss, getRanking: getLiarRanking } = registerLiarServer();
+const { wss: mafiaWss, getRanking: getMafiaRanking } = registerMafiaServer();
+const { wss: halliGalliWss, getRanking: getHalliGalliRanking } = registerHalliGalliServer();
+const { wss: yutnoriWss, getRanking: getYutnoriRanking } = registerYutnoriServer();
+const { wss: strategyYutnoriWss, getRanking: getStrategyYutnoriRanking } = registerStrategyYutnoriServer();
+
+GAME_RANKING_HANDLERS.liar = getLiarRanking;
+GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
+GAME_RANKING_HANDLERS.halligalli = getHalliGalliRanking;
+GAME_RANKING_HANDLERS.yutnori = getYutnoriRanking;
+GAME_RANKING_HANDLERS['strategy-yutnori'] = getStrategyYutnoriRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];

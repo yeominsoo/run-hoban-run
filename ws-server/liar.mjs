@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
+import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000; // rps와 동일한 재접속 유예 시간
@@ -59,6 +60,7 @@ export function registerLiarServer() {
   const rooms = new Map();
   /** ws -> { roomCode, token } */
   const wsIdentity = new Map();
+  const ranking = createRankingStore('liar');
 
   function send(ws, payload) {
     if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
@@ -252,6 +254,14 @@ export function registerLiarServer() {
     room.phase = 'round_over';
     room.started = false; // 호스트가 다시 'start'를 보내면 새 라운드가 시작되도록 게이트를 연다
     const liarName = playerByToken(room, room.liarToken)?.name ?? '?';
+    // 무승부(재투표까지 갔는데도 또 동률)는 승패 어느 쪽도 아니므로 기록하지 않는다.
+    if (resultInfo.winner !== 'draw') {
+      for (const p of room.players) {
+        const isLiar = p.token === room.liarToken;
+        const won = resultInfo.winner === (isLiar ? 'liar' : 'citizens');
+        ranking.recordResult(p.name, won);
+      }
+    }
     for (const p of room.players) {
       if (p.ws) {
         send(p.ws, {
@@ -548,5 +558,5 @@ export function registerLiarServer() {
   });
 
   console.log('[liar-server] registered ws path: /liar');
-  return wss;
+  return { wss, getRanking: ranking.getRanking };
 }

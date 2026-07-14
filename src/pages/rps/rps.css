@@ -204,6 +204,31 @@ button { border: 0; cursor: pointer; }
   font-weight: 600;
 }
 
+.ranking-footer {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 20px;
+  flex-shrink: 0;
+}
+.ranking-action-btn {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--color-border);
+  color: var(--color-page-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.ranking-action-btn:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: var(--color-border-strong);
+  color: var(--color-page-text);
+}
+.ranking-action-btn.hidden { display: none; }
+
 .rps-stage {
   width: 100%;
   max-width: 480px;

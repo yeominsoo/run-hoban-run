@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
+import { createRankingStore } from './ranking-store.mjs';
 import {
   createYutGame,
   currentToken,
@@ -42,6 +43,16 @@ export function registerYutnoriServer() {
   const rooms = new Map();
   /** ws -> { roomCode, token } */
   const wsIdentity = new Map();
+  const ranking = createRankingStore('yutnori');
+
+  /** 승자가 정해진 순간 방에 남아있던 전원의 승/패를 기록한다. */
+  function recordResult(room) {
+    const winnerToken = room.game?.winner;
+    if (!winnerToken) return;
+    for (const p of room.players) {
+      ranking.recordResult(p.name, p.token === winnerToken);
+    }
+  }
 
   function send(ws, payload) {
     if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
@@ -157,6 +168,7 @@ export function registerYutnoriServer() {
   function gameOverPayload(room, extra = {}) {
     const winnerToken = room.game.winner;
     const winnerTeam = teamOf(room.game, winnerToken);
+    recordResult(room);
     return {
       type: 'game_over',
       winnerToken,
@@ -466,5 +478,5 @@ export function registerYutnoriServer() {
   });
 
   console.log('[yutnori-server] registered ws path: /yutnori');
-  return wss;
+  return { wss, getRanking: ranking.getRanking };
 }

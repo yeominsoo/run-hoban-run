@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
+import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000; // rps/liar/mafia와 동일한 재접속 유예 시간
@@ -56,6 +57,15 @@ export function registerHalliGalliServer() {
   const rooms = new Map();
   /** ws -> { roomCode, token } */
   const wsIdentity = new Map();
+  const ranking = createRankingStore('halligalli');
+
+  /** 승자가 정해진 순간 방에 남아있던 전원의 승/패를 기록한다. */
+  function recordResult(room, winnerToken) {
+    if (!winnerToken) return;
+    for (const p of room.players) {
+      ranking.recordResult(p.name, p.token === winnerToken);
+    }
+  }
 
   function send(ws, payload) {
     if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
@@ -292,6 +302,7 @@ export function registerHalliGalliServer() {
     clearFlipTimer(room);
     room.phase = 'game_over';
     room.started = false;
+    recordResult(room, winner);
     broadcast(room, {
       type: 'game_over',
       winnerToken: winner,
@@ -330,6 +341,7 @@ export function registerHalliGalliServer() {
       room.phase = 'game_over';
       room.started = false;
       const winner = room.turnOrder[0] ?? null;
+      recordResult(room, winner);
       broadcast(room, {
         type: 'game_over',
         winnerToken: winner,
@@ -538,5 +550,5 @@ export function registerHalliGalliServer() {
   });
 
   console.log('[halligalli-server] registered ws path: /halligalli');
-  return wss;
+  return { wss, getRanking: ranking.getRanking };
 }

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
+import { createRankingStore } from './ranking-store.mjs';
 import {
   createStrategyYutGame,
   currentMover,
@@ -39,6 +40,15 @@ const REACTIONS = {
 export function registerStrategyYutnoriServer() {
   const rooms = new Map();
   const wsIdentity = new Map();
+  const ranking = createRankingStore('strategy-yutnori');
+
+  /** 승자가 정해진 순간 방에 남아있던 전원의 승/패를 기록한다(개인전, 팀 무관). */
+  function recordResult(room, winnerToken) {
+    if (!winnerToken) return;
+    for (const p of room.players) {
+      ranking.recordResult(p.name, p.token === winnerToken);
+    }
+  }
 
   function send(ws, payload) {
     if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
@@ -262,6 +272,7 @@ export function registerStrategyYutnoriServer() {
       room.started = false;
       let partnerToken = null;
       try { partnerToken = partnerOf(room.game, outcome.token); } catch { /* no-op */ }
+      recordResult(room, outcome.token);
       broadcast(room, {
         type: 'game_over',
         winnerToken: outcome.token,
@@ -314,6 +325,7 @@ export function registerStrategyYutnoriServer() {
     room.phase = 'game_over';
     room.started = false;
     const winnerToken = room.game.winner;
+    recordResult(room, winnerToken);
     broadcast(room, {
       type: 'game_over',
       winnerToken,
@@ -505,5 +517,5 @@ export function registerStrategyYutnoriServer() {
   });
 
   console.log('[strategy-yutnori-server] registered ws path: /strategy-yutnori');
-  return wss;
+  return { wss, getRanking: ranking.getRanking };
 }

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
+import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000; // rps/liar와 동일한 재접속 유예 시간
@@ -60,6 +61,7 @@ export function registerMafiaServer() {
   const rooms = new Map();
   /** ws -> { roomCode, token } */
   const wsIdentity = new Map();
+  const ranking = createRankingStore('mafia');
 
   function send(ws, payload) {
     if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
@@ -347,6 +349,10 @@ export function registerMafiaServer() {
     room.phase = 'game_over';
     room.started = false;
     const roles = room.players.map(p => ({ name: p.name, role: room.roles.get(p.token) ?? '?' }));
+    for (const r of roles) {
+      const won = (winner === 'mafia') === (r.role === 'mafia');
+      ranking.recordResult(r.name, won);
+    }
     for (const p of room.players) {
       if (p.ws) send(p.ws, { type: 'game_over', winner, roles });
     }
@@ -628,5 +634,5 @@ export function registerMafiaServer() {
   });
 
   console.log('[mafia-server] registered ws path: /mafia');
-  return wss;
+  return { wss, getRanking: ranking.getRanking };
 }

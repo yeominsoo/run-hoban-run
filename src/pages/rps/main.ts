@@ -106,6 +106,10 @@ app.innerHTML = `
     <div class="ranking-body" id="ranking-body">
       <div class="ranking-loading"><div class="spinner"></div></div>
     </div>
+    <div class="ranking-footer">
+      <button class="ranking-action-btn" id="ranking-save-image-btn" type="button">이미지 저장</button>
+      <button class="ranking-action-btn hidden" id="ranking-share-image-btn" type="button">공유하기</button>
+    </div>
   </div>
 </div>
 
@@ -307,6 +311,8 @@ const rankingBody = document.getElementById('ranking-body')!;
 const rankingWeekEl = document.getElementById('ranking-week')!;
 const rankingBtnEl = document.getElementById('ranking-btn') as HTMLButtonElement;
 const rankingTabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.ranking-tab'));
+const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
+const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 
 // ── Refs ──────────────────────────────────────────────────────────
 const panels = {
@@ -1164,6 +1170,8 @@ retryBtn.addEventListener('click', () => { if (pendingAction) connect(pendingAct
 const MODE_LABEL: Record<string, string> = { '1v1': '1:1', battle: '배틀로얄', tournament: '토너먼트' };
 const RANK_MEDAL: Record<number, string> = { 0: '🥇', 1: '🥈', 2: '🥉' };
 let rankingPrevWeek = '';
+let rankingCurrentWeek = '';
+let rankingCurrentEntries: { name: string; byMode: Record<string, number>; total: number }[] = [];
 
 async function fetchAndShowRanking(weekParam: 'current' | 'prev') {
   rankingOverlay.classList.remove('hidden');
@@ -1180,6 +1188,8 @@ async function fetchAndShowRanking(weekParam: 'current' | 'prev') {
     const data: { week: string; entries: any[]; prevWeek: string } = await res.json();
 
     rankingPrevWeek = data.prevWeek;
+    rankingCurrentWeek = data.week;
+    rankingCurrentEntries = data.entries;
     rankingWeekEl.textContent = data.week;
 
     if (data.entries.length === 0) {
@@ -1228,5 +1238,134 @@ rankingTabBtns.forEach(btn => {
     fetchAndShowRanking(btn.dataset.week as 'current' | 'prev');
   });
 });
+
+// ── 랭킹 이미지 저장/공유 ────────────────────────────────────────
+function drawRankingRoundedRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+function buildRpsRankingImageCanvas(): HTMLCanvasElement {
+  const width = 640;
+  const rowHeight = 56;
+  const headerHeight = 104;
+  const footerHeight = 44;
+  const entries = rankingCurrentEntries;
+  const rowsHeight = (entries.length === 0 ? 1 : entries.length) * rowHeight;
+  const height = headerHeight + rowsHeight + footerHeight;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const c = canvas.getContext('2d')!;
+
+  const bg = c.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, '#132338');
+  bg.addColorStop(1, '#0b1622');
+  c.fillStyle = bg;
+  c.fillRect(0, 0, width, height);
+
+  c.textAlign = 'center';
+  c.fillStyle = '#f0f9ff';
+  c.font = '900 28px Inter, sans-serif';
+  c.fillText('가위바위보 이번 주 랭킹', width / 2, 46);
+  c.font = '700 13px Inter, sans-serif';
+  c.fillStyle = 'rgba(232,244,255,0.55)';
+  c.fillText(`Toris Arcade · ${rankingCurrentWeek}`, width / 2, 70);
+
+  if (entries.length === 0) {
+    c.font = '700 16px Inter, sans-serif';
+    c.fillStyle = 'rgba(232,244,255,0.6)';
+    c.fillText('아직 이번 주 기록이 없어요', width / 2, headerHeight + rowHeight / 2);
+  } else {
+    entries.forEach((entry, i) => {
+      const y = headerHeight + i * rowHeight;
+      const isFirst = i === 0;
+
+      c.fillStyle = isFirst ? 'rgba(255,214,102,0.14)' : i % 2 === 0 ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.015)';
+      drawRankingRoundedRect(c, 24, y + 4, width - 48, rowHeight - 8, 10);
+      c.fill();
+
+      c.textAlign = 'left';
+      c.font = '800 16px Inter, sans-serif';
+      c.fillStyle = isFirst ? '#ffe08a' : 'rgba(126,200,248,0.9)';
+      c.fillText(`${i + 1}위`, 40, y + 24);
+
+      c.font = '700 15px Inter, sans-serif';
+      c.fillStyle = isFirst ? '#fff4d6' : '#eaf6ff';
+      c.fillText(entry.name, 96, y + 24);
+
+      const breakdown = Object.entries(entry.byMode)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${MODE_LABEL[k] ?? k} ${v}`)
+        .join('  ·  ');
+      c.font = '600 12px Inter, sans-serif';
+      c.fillStyle = 'rgba(232,244,255,0.5)';
+      c.fillText(breakdown, 96, y + 42);
+
+      c.textAlign = 'right';
+      c.font = '900 18px Inter, sans-serif';
+      c.fillStyle = isFirst ? '#ffe08a' : '#eaf6ff';
+      c.fillText(`${entry.total}점`, width - 40, y + 32);
+    });
+  }
+
+  c.textAlign = 'center';
+  c.font = '600 11px Inter, sans-serif';
+  c.fillStyle = 'rgba(232,244,255,0.4)';
+  c.fillText(new Date().toLocaleString('ko-KR'), width / 2, height - 18);
+
+  return canvas;
+}
+
+function rpsRankingImageBlob(): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    buildRpsRankingImageCanvas().toBlob((blob) => resolve(blob), 'image/png');
+  });
+}
+
+async function downloadRpsRankingImage() {
+  const blob = await rpsRankingImageBlob();
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `가위바위보-랭킹-${stamp}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+type RpsShareNav = Navigator & {
+  share?: (data: ShareData) => Promise<void>;
+  canShare?: (data: ShareData) => boolean;
+};
+
+async function shareRpsRankingImage() {
+  const blob = await rpsRankingImageBlob();
+  if (!blob) return;
+  const file = new File([blob], 'ranking.png', { type: 'image/png' });
+  const nav = navigator as RpsShareNav;
+  if (!nav.canShare?.({ files: [file] }) || !nav.share) return;
+  try {
+    await nav.share({ files: [file], title: '가위바위보 랭킹', text: '가위바위보 이번 주 랭킹을 확인해보세요!' });
+  } catch (e) {
+    if ((e as Error)?.name !== 'AbortError') console.error(e);
+  }
+}
+
+const rpsShareNav = navigator as RpsShareNav;
+const rpsShareSupported = typeof rpsShareNav.share === 'function' && typeof rpsShareNav.canShare === 'function';
+if (!rpsShareSupported) rankingShareImageBtn.classList.add('hidden');
+
+rankingSaveImageBtn.addEventListener('click', () => { void downloadRpsRankingImage(); });
+rankingShareImageBtn.addEventListener('click', () => { void shareRpsRankingImage(); });
 
 setPhase('entry');

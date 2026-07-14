@@ -1,6 +1,8 @@
 import './mafia.css';
+import '../../shared/ws-ranking.css';
 import { shareRoomLink } from '../../shared/share';
 import { createChatWidget, type ChatWidgetHandle } from '../../shared/chat-widget';
+import { setupWsRankingUI } from '../../shared/ws-ranking';
 
 type Phase =
   | 'entry' | 'connecting' | 'lobby'
@@ -68,9 +70,31 @@ let policeHistory: { round: number; targetName: string; isMafia: boolean }[] = [
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
 app.innerHTML = `
+<div class="ws-ranking-overlay hidden" id="ws-ranking-overlay" role="dialog" aria-modal="true" aria-label="이번 주 랭킹">
+  <div class="ws-ranking-modal">
+    <div class="ws-ranking-header">
+      <h2 class="ws-ranking-title">🏆 이번 주 랭킹</h2>
+      <button class="ws-ranking-close" id="ws-ranking-close" type="button" aria-label="닫기">✕</button>
+    </div>
+    <p class="ws-ranking-week" id="ws-ranking-week"></p>
+    <div class="ws-ranking-tabs">
+      <button class="ws-ranking-tab active" data-week="current" type="button">이번 주</button>
+      <button class="ws-ranking-tab" data-week="prev" type="button">지난 주</button>
+    </div>
+    <div class="ws-ranking-body" id="ws-ranking-body">
+      <div class="ws-ranking-loading"><div class="ws-ranking-spinner"></div></div>
+    </div>
+    <div class="ws-ranking-footer">
+      <button class="ws-ranking-action-btn" id="ws-ranking-save-btn" type="button">이미지 저장</button>
+      <button class="ws-ranking-action-btn hidden" id="ws-ranking-share-btn" type="button">공유하기</button>
+    </div>
+  </div>
+</div>
+
 <div class="mafia-shell">
   <div class="mafia-top-bar">
     <a class="back-link" href="/">← 게임 선택</a>
+    <button class="ws-ranking-btn" id="ws-ranking-btn" type="button">🏆 이번 주 랭킹</button>
   </div>
   <div class="mafia-stage">
     <h1 class="mafia-title">마피아게임</h1>
@@ -163,6 +187,20 @@ app.innerHTML = `
 `;
 
 // ── Refs ──────────────────────────────────────────────────────────
+setupWsRankingUI({
+  gameKey: 'mafia',
+  gameTitle: '마피아게임',
+  wsUrl: WS_URL,
+  openBtn: document.getElementById('ws-ranking-btn') as HTMLButtonElement,
+  overlay: document.getElementById('ws-ranking-overlay')!,
+  closeBtn: document.getElementById('ws-ranking-close') as HTMLButtonElement,
+  weekEl: document.getElementById('ws-ranking-week')!,
+  tabBtns: Array.from(document.querySelectorAll<HTMLButtonElement>('.ws-ranking-tab')),
+  bodyEl: document.getElementById('ws-ranking-body')!,
+  saveImageBtn: document.getElementById('ws-ranking-save-btn') as HTMLButtonElement,
+  shareImageBtn: document.getElementById('ws-ranking-share-btn') as HTMLButtonElement,
+});
+
 const panels = {
   entry: document.getElementById('entry-panel')!,
   waiting: document.getElementById('waiting-panel')!,

@@ -1,0 +1,186 @@
+/* 멀티게임(라이어/마피아/할리갈리/윷놀이/전략윷놀이) 공용 "이번 주 랭킹" 오버레이.
+   RPS는 모드별 집계라는 다른 스키마를 써서 이 모듈을 쓰지 않고 자체 CSS를 유지한다. */
+
+.ws-ranking-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-weak);
+  color: var(--color-accent-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.ws-ranking-btn:hover { background: var(--color-surface-hover); }
+
+.ws-ranking-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay-scrim);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+.ws-ranking-overlay.hidden { display: none; }
+
+.ws-ranking-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: 90dvh;
+  background: var(--color-surface-strong);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ws-ranking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+  flex-shrink: 0;
+}
+.ws-ranking-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: var(--color-accent-strong);
+}
+.ws-ranking-close {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-page-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.ws-ranking-close:hover { background: var(--color-surface-hover); color: var(--color-page-text); }
+
+.ws-ranking-week {
+  margin: 4px 24px 0;
+  font-size: 0.72rem;
+  color: var(--color-page-faint);
+  flex-shrink: 0;
+}
+
+.ws-ranking-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 24px 0;
+  flex-shrink: 0;
+}
+.ws-ranking-tab {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-page-faint);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ws-ranking-tab.active {
+  background: var(--color-secondary-soft);
+  border-color: var(--color-secondary);
+  color: var(--color-secondary);
+}
+
+.ws-ranking-body {
+  overflow-y: auto;
+  padding: 12px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-ranking-loading {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+}
+.ws-ranking-spinner {
+  width: 34px; height: 34px;
+  border: 4px solid var(--color-secondary-soft);
+  border-top-color: var(--color-secondary);
+  border-radius: 50%;
+  animation: ws-ranking-spin 850ms linear infinite;
+}
+@keyframes ws-ranking-spin { to { transform: rotate(360deg); } }
+
+.ws-ranking-empty {
+  text-align: center;
+  color: var(--color-page-faint);
+  font-size: 0.9rem;
+  padding: 32px 0;
+  margin: 0;
+}
+
+.ws-ranking-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-surface-weak);
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+}
+.ws-ranking-row.top {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.ws-ranking-rank { font-size: 1.1rem; text-align: center; }
+.ws-ranking-name {
+  min-width: 0;
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--color-page-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-ranking-record {
+  font-weight: 900;
+  font-size: 0.82rem;
+  color: var(--color-secondary);
+  white-space: nowrap;
+  text-align: right;
+}
+.ws-ranking-record .ws-ranking-losses { color: var(--color-page-faint); font-weight: 700; }
+
+.ws-ranking-footer {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 20px;
+  flex-shrink: 0;
+}
+
+.ws-ranking-action-btn {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 9px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-page-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.ws-ranking-action-btn:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+  color: var(--color-page-text);
+}
+.ws-ranking-action-btn.hidden { display: none; }
