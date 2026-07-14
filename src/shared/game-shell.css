@@ -8,7 +8,7 @@ button { border: 0; cursor: pointer; font: inherit; }
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--color-surface-soft);
   border-bottom: 1px solid var(--color-border);
   flex: 0 0 auto;
 }
@@ -25,12 +25,12 @@ button { border: 0; cursor: pointer; font: inherit; }
   font-weight: 600;
   color: var(--color-page-muted);
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--color-surface-weak);
   transition: background 120ms, color 120ms, border-color 120ms;
 }
 .back-link:hover {
   color: var(--color-page-text);
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--color-surface);
   border-color: var(--color-border-strong);
 }
 
@@ -59,7 +59,7 @@ button { border: 0; cursor: pointer; font: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 250, 241, 0.72);
+  background: var(--color-overlay-scrim);
   backdrop-filter: blur(6px);
   z-index: 3;
   padding: 20px;
@@ -114,7 +114,7 @@ button { border: 0; cursor: pointer; font: inherit; }
   min-height: 40px;
   padding: 0 20px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-page-muted);
   font-size: 0.84rem;
@@ -122,7 +122,7 @@ button { border: 0; cursor: pointer; font: inherit; }
   transition: background 120ms, border-color 120ms, color 120ms;
 }
 .ghost-btn:hover {
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--color-surface-hover);
   border-color: var(--color-border-strong);
   color: var(--color-page-text);
 }
@@ -162,7 +162,7 @@ button { border: 0; cursor: pointer; font: inherit; }
   padding: 0 12px;
   border: 1px solid var(--color-border);
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-surface);
   color: var(--color-page-text);
   font-size: 0.86rem;
   font-weight: 700;
@@ -214,7 +214,7 @@ button { border: 0; cursor: pointer; font: inherit; }
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--color-surface-weak);
   border: 1px solid var(--color-border);
   border-radius: 10px;
 }

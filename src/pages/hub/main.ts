@@ -1,4 +1,5 @@
 import './hub.css';
+import { THEMES, loadTheme, saveTheme, type ThemeId } from '../../shared/theme';
 
 type Category = 'single' | 'multi';
 
@@ -23,7 +24,6 @@ const GAMES: GameEntry[] = [
   { slug: '2048-hex', icon: 'hex2048-mark', name: '2048 변형(육각형)', desc: '육각형 격자에서 같은 숫자 타일을 밀어 합쳐 2048을 만들어보세요. 키보드 6방향 또는 스와이프로 조작.', category: 'single' },
   { slug: 'endless-runner', icon: 'endless-runner-mark', name: '무한 러너', desc: '탭=점프, 아래 스와이프=슬라이드! 장애물과 구덩이를 피해 최대한 멀리 달려 코인을 모으세요.', category: 'single' },
   { slug: 'idle-farm', icon: 'idle-farm-mark', name: '방치형 농장', desc: '씨앗을 심고 기다렸다가 수확! 업그레이드로 수확량과 성장 속도를 올리고, 자동 수확기로 방치 수익도 챙기세요.', category: 'single' },
-  { slug: 'pinball-rogue', icon: 'pinball-rogue-mark', name: '핀볼 로그라이크', desc: '좌우 탭으로 플리퍼를 조작해 범퍼를 맞추고, 라운드를 클리어할 때마다 업그레이드를 골라 빌드를 쌓으세요.', category: 'single' },
   { slug: 'rps', icon: 'rps-mark', name: '가위바위보 대결', desc: '방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.', category: 'multi' },
   { slug: 'liar', icon: 'liar-mark', name: '라이어게임', desc: '3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.', category: 'multi' },
   { slug: 'mafia', icon: 'mafia-mark', name: '마피아게임', desc: '4~12명이 참여하는 역할 추리 게임. 밤에는 마피아·경찰·의사가 은밀히 행동하고, 낮에는 토론과 투표로 마피아를 찾아낸다.', category: 'multi' },
@@ -42,8 +42,18 @@ const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="hub">
     <header class="hub-header">
-      <h1 class="hub-title">Toris Arcade</h1>
-      <p class="hub-sub">추첨게임모음</p>
+      <div class="hub-header-spacer" aria-hidden="true"></div>
+      <div class="hub-header-titles">
+        <h1 class="hub-title">Toris Arcade</h1>
+        <p class="hub-sub">추첨게임모음</p>
+      </div>
+      <button class="hub-theme-btn" id="hub-theme-btn" type="button" aria-label="테마 설정">
+        <span class="hub-theme-btn-icon" aria-hidden="true">
+          <span class="hub-theme-dot hub-theme-dot-a"></span>
+          <span class="hub-theme-dot hub-theme-dot-b"></span>
+          <span class="hub-theme-dot hub-theme-dot-c"></span>
+        </span>
+      </button>
     </header>
 
     <nav class="hub-categories" id="hub-categories" aria-label="게임 카테고리">
@@ -64,6 +74,15 @@ app.innerHTML = `
       <h2 class="hub-list-title" id="hub-list-title"></h2>
       <nav class="hub-grid" id="hub-grid" aria-label="게임 목록"></nav>
     </div>
+
+    <div class="theme-overlay hidden" id="theme-overlay">
+      <div class="theme-overlay-card">
+        <h2>테마 선택</h2>
+        <p>사이트 전체에 적용돼요. 원하는 분위기를 골라보세요.</p>
+        <div class="theme-option-list" id="theme-option-list"></div>
+        <button class="hub-back-btn" id="theme-close-btn" type="button">닫기</button>
+      </div>
+    </div>
   </div>
 `;
 
@@ -72,6 +91,10 @@ const gameListSection = document.getElementById('hub-game-list')!;
 const gameListTitle = document.getElementById('hub-list-title')!;
 const gameGrid = document.getElementById('hub-grid')!;
 const backBtn = document.getElementById('hub-back-btn') as HTMLButtonElement;
+const themeBtn = document.getElementById('hub-theme-btn') as HTMLButtonElement;
+const themeOverlay = document.getElementById('theme-overlay')!;
+const themeOptionList = document.getElementById('theme-option-list')!;
+const themeCloseBtn = document.getElementById('theme-close-btn') as HTMLButtonElement;
 
 function cardHtml(g: GameEntry): string {
   return `
@@ -135,3 +158,41 @@ Array.from(categoriesNav.querySelectorAll<HTMLButtonElement>('.category-card')).
 });
 
 backBtn.addEventListener('click', closeCategory);
+
+// ── 테마 선택 ──────────────────────────────
+const THEME_SWATCHES: Record<ThemeId, [string, string, string]> = {
+  cloud: ['#ff6f91', '#5ecfbc', '#ffc857'],
+  casino: ['#0e2a1c', '#c9a227', '#1f8f5f'],
+  girlish: ['#ff5ca8', '#c9a8ff', '#ffb6d9'],
+  cyberpunk: ['#0a0e27', '#f724c9', '#00e5f0']
+};
+
+function renderThemeOptions() {
+  const current = loadTheme();
+  themeOptionList.innerHTML = THEMES.map((t) => {
+    const [a, b, c] = THEME_SWATCHES[t.id];
+    return `
+      <button class="theme-option${t.id === current ? ' selected' : ''}" type="button" data-theme-id="${t.id}">
+        <span class="theme-option-swatch" style="background: linear-gradient(135deg, ${a}, ${b} 55%, ${c});"></span>
+        <span class="theme-option-text">
+          <span class="theme-option-name">${t.name}</span>
+          <span class="theme-option-desc">${t.desc}</span>
+        </span>
+        <span class="theme-option-check" aria-hidden="true">${t.id === current ? '✓' : ''}</span>
+      </button>`;
+  }).join('');
+
+  themeOptionList.querySelectorAll<HTMLButtonElement>('.theme-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.themeId as ThemeId;
+      saveTheme(id);
+      renderThemeOptions();
+    });
+  });
+}
+
+themeBtn.addEventListener('click', () => {
+  renderThemeOptions();
+  themeOverlay.classList.remove('hidden');
+});
+themeCloseBtn.addEventListener('click', () => themeOverlay.classList.add('hidden'));

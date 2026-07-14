@@ -1,3 +1,7 @@
+/* 사이트 전체 테마. 기본(:root)은 "구름구름해" 테마이고, 나머지 3개는
+   <html data-theme="..."> 속성으로 오버라이드된다. 실제 스위칭 로직은
+   shared/theme.ts 참고. */
+
 :root {
   --color-page-text: #4b3447;
   --color-page-muted: rgba(75, 52, 71, 0.66);
@@ -10,6 +14,13 @@
   --color-surface: rgba(255, 255, 255, 0.78);
   --color-surface-strong: #fffdf8;
   --color-surface-soft: rgba(255, 247, 236, 0.74);
+  --color-surface-weak: rgba(255, 255, 255, 0.6);
+  --color-surface-hover: rgba(255, 255, 255, 0.92);
+  --color-overlay-scrim: rgba(255, 250, 241, 0.72);
+  --color-card-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 236, 0.74));
+  --color-card-gradient-hover: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 239, 247, 0.84));
+  --color-icon-gradient: linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 236, 244, 0.64));
+  --color-icon-inset-highlight: rgba(255, 255, 255, 0.72);
   --color-border: rgba(214, 128, 158, 0.22);
   --color-border-strong: rgba(255, 122, 162, 0.42);
   --color-primary: #ff6f91;
@@ -28,4 +39,124 @@
   --color-success: #39b879;
   --shadow-soft: 0 12px 30px rgba(177, 91, 124, 0.13);
   --shadow-card: 0 18px 44px rgba(177, 91, 124, 0.16);
+}
+
+/* ── 카지노: 초록 펠트 + 골드 ─────────────────────────────── */
+:root[data-theme="casino"] {
+  --color-page-text: #f3e6c4;
+  --color-page-muted: rgba(243, 230, 196, 0.68);
+  --color-page-faint: rgba(243, 230, 196, 0.44);
+  --color-page-bg: linear-gradient(180deg, #0c2a1c 0%, #0a2118 48%, #081a14 100%);
+  --color-hub-bg:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.09) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(225deg, rgba(212, 175, 55, 0.07) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(180deg, #0e2f1f 0%, #0a2016 50%, #0c2419 100%);
+  --color-surface: rgba(24, 51, 37, 0.82);
+  --color-surface-strong: #13301f;
+  --color-surface-soft: rgba(24, 51, 37, 0.62);
+  --color-surface-weak: rgba(24, 51, 37, 0.48);
+  --color-surface-hover: rgba(32, 63, 46, 0.92);
+  --color-overlay-scrim: rgba(6, 18, 13, 0.78);
+  --color-card-gradient: linear-gradient(135deg, rgba(28, 58, 42, 0.92), rgba(20, 44, 32, 0.8));
+  --color-card-gradient-hover: linear-gradient(135deg, rgba(36, 70, 50, 0.96), rgba(26, 54, 39, 0.88));
+  --color-icon-gradient: linear-gradient(145deg, rgba(36, 70, 50, 0.9), rgba(20, 44, 32, 0.7));
+  --color-icon-inset-highlight: rgba(212, 175, 55, 0.28);
+  --color-border: rgba(212, 175, 55, 0.3);
+  --color-border-strong: rgba(212, 175, 55, 0.58);
+  --color-primary: #c9a227;
+  --color-primary-hover: #e0b830;
+  --color-primary-contrast: #14251b;
+  --color-primary-soft: rgba(201, 162, 39, 0.2);
+  --color-secondary: #1f8f5f;
+  --color-secondary-soft: rgba(31, 143, 95, 0.24);
+  --color-accent: #d4af37;
+  --color-accent-strong: #eecb5f;
+  --color-accent-soft: rgba(212, 175, 55, 0.24);
+  --color-lilac: #a06bd0;
+  --color-lilac-soft: rgba(160, 107, 208, 0.2);
+  --color-danger: #e0555a;
+  --color-danger-soft: rgba(224, 85, 90, 0.22);
+  --color-success: #3fae6a;
+  --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 18px 44px rgba(0, 0, 0, 0.55);
+}
+
+/* ── 소녀감성: 핑크 + 라벤더 ──────────────────────────────── */
+:root[data-theme="girlish"] {
+  --color-page-text: #5c3352;
+  --color-page-muted: rgba(92, 51, 82, 0.66);
+  --color-page-faint: rgba(92, 51, 82, 0.42);
+  --color-page-bg: linear-gradient(180deg, #fff0f8 0%, #ffe6f3 48%, #f5ecff 100%);
+  --color-hub-bg:
+    linear-gradient(135deg, rgba(255, 92, 168, 0.11) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(225deg, rgba(201, 168, 255, 0.13) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(180deg, #fff3fa 0%, #ffe9f5 50%, #f6edff 100%);
+  --color-surface: rgba(255, 255, 255, 0.8);
+  --color-surface-strong: #fffbfe;
+  --color-surface-soft: rgba(255, 240, 249, 0.78);
+  --color-surface-weak: rgba(255, 255, 255, 0.62);
+  --color-surface-hover: rgba(255, 255, 255, 0.94);
+  --color-overlay-scrim: rgba(255, 240, 249, 0.76);
+  --color-card-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 235, 247, 0.78));
+  --color-card-gradient-hover: linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(255, 224, 244, 0.88));
+  --color-icon-gradient: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(255, 224, 244, 0.68));
+  --color-icon-inset-highlight: rgba(255, 255, 255, 0.78);
+  --color-border: rgba(255, 92, 168, 0.26);
+  --color-border-strong: rgba(255, 92, 168, 0.5);
+  --color-primary: #ff5ca8;
+  --color-primary-hover: #ff3f97;
+  --color-primary-contrast: #fffdf8;
+  --color-primary-soft: rgba(255, 92, 168, 0.16);
+  --color-secondary: #c9a8ff;
+  --color-secondary-soft: rgba(201, 168, 255, 0.2);
+  --color-accent: #ffb6d9;
+  --color-accent-strong: #ff85bb;
+  --color-accent-soft: rgba(255, 182, 217, 0.28);
+  --color-lilac: #b78cf0;
+  --color-lilac-soft: rgba(183, 140, 240, 0.18);
+  --color-danger: #ef6c93;
+  --color-danger-soft: rgba(239, 108, 147, 0.16);
+  --color-success: #4fbf8f;
+  --shadow-soft: 0 12px 30px rgba(255, 92, 168, 0.18);
+  --shadow-card: 0 18px 44px rgba(255, 92, 168, 0.22);
+}
+
+/* ── 사이버펑크: 네온 마젠타 + 시안 ────────────────────────── */
+:root[data-theme="cyberpunk"] {
+  --color-page-text: #e8f4ff;
+  --color-page-muted: rgba(232, 244, 255, 0.68);
+  --color-page-faint: rgba(232, 244, 255, 0.44);
+  --color-page-bg: linear-gradient(180deg, #0a0e27 0%, #0d0221 48%, #0a0e27 100%);
+  --color-hub-bg:
+    linear-gradient(135deg, rgba(247, 36, 201, 0.11) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(225deg, rgba(0, 240, 255, 0.11) 25%, transparent 25%) 0 0 / 28px 28px,
+    linear-gradient(180deg, #0b0f2a 0%, #0d0524 50%, #0a0e27 100%);
+  --color-surface: rgba(22, 24, 50, 0.82);
+  --color-surface-strong: #14162e;
+  --color-surface-soft: rgba(22, 24, 50, 0.62);
+  --color-surface-weak: rgba(22, 24, 50, 0.48);
+  --color-surface-hover: rgba(30, 33, 64, 0.92);
+  --color-overlay-scrim: rgba(6, 7, 20, 0.8);
+  --color-card-gradient: linear-gradient(135deg, rgba(26, 29, 58, 0.92), rgba(18, 20, 42, 0.82));
+  --color-card-gradient-hover: linear-gradient(135deg, rgba(34, 38, 72, 0.96), rgba(24, 27, 54, 0.9));
+  --color-icon-gradient: linear-gradient(145deg, rgba(34, 38, 72, 0.9), rgba(18, 20, 42, 0.72));
+  --color-icon-inset-highlight: rgba(0, 229, 240, 0.3);
+  --color-border: rgba(0, 240, 255, 0.3);
+  --color-border-strong: rgba(247, 36, 201, 0.58);
+  --color-primary: #f724c9;
+  --color-primary-hover: #ff4bd8;
+  --color-primary-contrast: #0a0e27;
+  --color-primary-soft: rgba(247, 36, 201, 0.2);
+  --color-secondary: #00e5f0;
+  --color-secondary-soft: rgba(0, 229, 240, 0.2);
+  --color-accent: #f7ff00;
+  --color-accent-strong: #d4e000;
+  --color-accent-soft: rgba(247, 255, 0, 0.18);
+  --color-lilac: #a06bff;
+  --color-lilac-soft: rgba(160, 107, 255, 0.22);
+  --color-danger: #ff3b5c;
+  --color-danger-soft: rgba(255, 59, 92, 0.22);
+  --color-success: #00e0a0;
+  --shadow-soft: 0 12px 30px rgba(247, 36, 201, 0.28);
+  --shadow-card: 0 18px 44px rgba(0, 229, 240, 0.28);
 }

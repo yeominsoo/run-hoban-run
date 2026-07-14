@@ -1410,6 +1410,38 @@ test('hub: splits games into single-player and multiplayer categories', async ({
   await expect(page.locator('.game-card[data-slug="rps"] .game-card-start-btn')).toHaveAttribute('href', '/rps/');
 });
 
+test('theme: selecting a theme on the hub persists to localStorage and applies immediately', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.removeItem('rhh_theme'));
+  await page.reload();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);
+
+  await page.locator('#hub-theme-btn').click();
+  await expect(page.locator('#theme-overlay')).toBeVisible();
+  await expect(page.locator('.theme-option[data-theme-id="cloud"]')).toHaveClass(/selected/);
+
+  await page.locator('.theme-option[data-theme-id="cyberpunk"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'cyberpunk');
+  await expect(page.locator('.theme-option[data-theme-id="cyberpunk"]')).toHaveClass(/selected/);
+  expect(await page.evaluate(() => localStorage.getItem('rhh_theme'))).toBe('cyberpunk');
+
+  await page.locator('#theme-close-btn').click();
+  await expect(page.locator('#theme-overlay')).toBeHidden();
+});
+
+test('theme: a theme chosen on the hub is applied on the very first paint of a game page (no FOUC flash)', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('rhh_theme', 'casino'));
+
+  // 인라인 스크립트가 <head> 맨 앞에서 즉시 실행되므로, 페이지 스크립트가 로드되기 전에도
+  // data-theme가 이미 반영되어 있어야 한다(깜빡임 없이 첫 페인트부터 카지노 테마).
+  await page.goto('/idle-farm/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'casino');
+
+  await page.goto('/aim-trainer/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'casino');
+});
+
 test('color slider: moving sliders updates live accuracy and confirming advances rounds', async ({ page }) => {
   await page.goto('/color-slider/');
   await expect(page.locator('.game-title')).toHaveText('색 맞추기 슬라이더');
@@ -1718,6 +1750,33 @@ async function readSnakeState(page: Page): Promise<SnakeState> {
   });
 }
 
+// 먹이를 향한 "이상적인" 키가 현재 실제 진행 방향의 정반대라면 게임이 그 입력을 그냥
+// 무시해버린다(자기 몸쪽으로 순간 반전은 규칙상 금지). 그 사실을 모르고 계속 반대 키만
+// 누르면 방향이 전혀 안 바뀐 채 시간만 흘러(먹이를 못 먹거나 루프가 깨짐) 테스트가
+// 드물게 실패했다 — 정반대인 경우 수직 축으로 우회하도록 계산해야 한다.
+function nextSnakeKey(s: SnakeState): string | null {
+  const dx = s.foodX - s.headX;
+  const dy = s.foodY - s.headY;
+  let key: string | null = null;
+  if (Math.abs(dx) > Math.abs(dy) && dx !== 0) {
+    key = dx > 0 ? 'ArrowRight' : 'ArrowLeft';
+  } else if (dy !== 0) {
+    key = dy > 0 ? 'ArrowDown' : 'ArrowUp';
+  }
+  if (!key) return null;
+  const isOpposite =
+    (key === 'ArrowRight' && s.dirDx === -1) ||
+    (key === 'ArrowLeft' && s.dirDx === 1) ||
+    (key === 'ArrowDown' && s.dirDy === -1) ||
+    (key === 'ArrowUp' && s.dirDy === 1);
+  if (!isOpposite) return key;
+  // 원하는 축이 막혔으니 다른 축으로 우회(둘 다 0이면 이미 그 축에서는 도착한 것).
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dy !== 0 ? (dy > 0 ? 'ArrowDown' : 'ArrowUp') : null;
+  }
+  return dx !== 0 ? (dx > 0 ? 'ArrowRight' : 'ArrowLeft') : null;
+}
+
 test('snake: steering onto the food grows the snake and increases the score', async ({ page }) => {
   await page.goto('/snake/');
   await expect(page.locator('.game-title')).toHaveText('스네이크 비틀기');
@@ -1729,16 +1788,11 @@ test('snake: steering onto the food grows the snake and increases the score', as
 
   const startLength = (await readSnakeState(page)).length;
 
-  for (let i = 0; i < 60; i += 1) {
+  for (let i = 0; i < 90; i += 1) {
     const s = await readSnakeState(page);
     if (s.phase !== 'playing' || s.length > startLength) break;
-    const dx = s.foodX - s.headX;
-    const dy = s.foodY - s.headY;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      await page.keyboard.press(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
-    } else if (dy !== 0) {
-      await page.keyboard.press(dy > 0 ? 'ArrowDown' : 'ArrowUp');
-    }
+    const key = nextSnakeKey(s);
+    if (key) await page.keyboard.press(key);
     await page.waitForTimeout(60);
   }
 
@@ -1752,16 +1806,11 @@ async function driveSnakeToGameOver(page: Page) {
   // 몸길이를 5 이상(시작 3 + 먹이 2회)으로 늘려야 아래 2×2 루프에서 충돌이 수학적으로
   // 보장된다.
   for (let grownCount = 0; grownCount < 2; grownCount += 1) {
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 90; i += 1) {
       const s = await readSnakeState(page);
       if (s.phase !== 'playing') return;
-      const dx = s.foodX - s.headX;
-      const dy = s.foodY - s.headY;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        await page.keyboard.press(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
-      } else if (dy !== 0) {
-        await page.keyboard.press(dy > 0 ? 'ArrowDown' : 'ArrowUp');
-      }
+      const key = nextSnakeKey(s);
+      if (key) await page.keyboard.press(key);
       await page.waitForTimeout(60);
       const s2 = await readSnakeState(page);
       if (s2.length > s.length) break;
@@ -2261,109 +2310,3 @@ test('idle farm: saving a ranking entry shows it on revisit and can be exported 
   await verifyRankingSaveAndView(page, '/idle-farm/');
 });
 
-interface PinballState {
-  phase: string | undefined;
-  score: number;
-  round: number;
-  target: number;
-  lives: number;
-  ballsCount: number;
-}
-
-async function readPinballState(page: Page): Promise<PinballState> {
-  return page.locator('#pb-canvas').evaluate((el) => {
-    const canvas = el as HTMLElement;
-    return {
-      phase: canvas.dataset.phase,
-      score: Number(canvas.dataset.score ?? 0),
-      round: Number(canvas.dataset.round ?? 1),
-      target: Number(canvas.dataset.target ?? 0),
-      lives: Number(canvas.dataset.lives ?? 0),
-      ballsCount: Number(canvas.dataset.ballsCount ?? 0)
-    };
-  });
-}
-
-test('pinball rogue: holding both flippers keeps the ball in play and increases the score', async ({ page }) => {
-  await page.goto('/pinball-rogue/');
-  await expect(page.locator('.game-title')).toHaveText('핀볼 로그라이크');
-
-  await page.locator('#start-btn').click();
-  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'playing');
-
-  // 키보드는 두 플리퍼를 동시에 누른 채 유지할 수 있어(포인터는 멀티터치가 필요) 이
-  // "양쪽 다 든 채 방치" 전략을 결정론적으로 재현할 수 있다.
-  await page.keyboard.down('ArrowLeft');
-  await page.keyboard.down('ArrowRight');
-  await page.waitForTimeout(5000);
-  await page.keyboard.up('ArrowLeft');
-  await page.keyboard.up('ArrowRight');
-
-  const state = await readPinballState(page);
-  expect(state.score).toBeGreaterThan(0);
-  expect(['playing', 'round-clear']).toContain(state.phase);
-});
-
-test('pinball rogue: clearing the round target shows an upgrade choice and picking one continues the run', async ({ page }) => {
-  test.setTimeout(60_000);
-  await page.goto('/pinball-rogue/');
-  await page.locator('#start-btn').click();
-  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'playing');
-
-  await page.keyboard.down('ArrowLeft');
-  await page.keyboard.down('ArrowRight');
-
-  const deadline = Date.now() + 40_000;
-  let reachedRoundClear = false;
-  while (Date.now() < deadline) {
-    const state = await readPinballState(page);
-    if (state.phase === 'round-clear') {
-      reachedRoundClear = true;
-      break;
-    }
-    if (state.phase === 'ended') break; // 방치 중 드레인으로 게임이 끝나도 이 테스트의 실패로 취급하지 않고 아래에서 판정
-    await page.waitForTimeout(300);
-  }
-  await page.keyboard.up('ArrowLeft');
-  await page.keyboard.up('ArrowRight');
-
-  expect(reachedRoundClear).toBe(true);
-  await expect(page.locator('#upgrade-overlay')).toBeVisible();
-  const choices = page.locator('.upgrade-choice-btn');
-  await expect(choices).toHaveCount(3);
-
-  const roundBefore = (await readPinballState(page)).round;
-  await choices.first().click();
-  await expect(page.locator('#upgrade-overlay')).toBeHidden();
-  // canvas의 data-* 속성은 rAF 틱마다만 갱신되므로(내부 phase 변수는 클릭과 동시에
-  // 바뀌지만, dataset 반영은 다음 프레임을 기다려야 한다), 한 번만 읽지 않고 폴링하는
-  // toHaveAttribute로 확인해야 레이스 없이 안정적으로 통과한다.
-  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'playing');
-  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-round', String(roundBefore + 1));
-});
-
-test('pinball rogue: draining all balls ends the game and saves a ranking entry', async ({ page }) => {
-  test.setTimeout(60_000);
-  await page.goto('/pinball-rogue/');
-  await page.evaluate(() => localStorage.removeItem('rhh_pinball-rogue_ranking'));
-  await page.reload();
-
-  await page.locator('#start-btn').click();
-  // 아무 조작도 하지 않아도(플리퍼를 전혀 들지 않아도) 공은 떨어지는 길에 범퍼를 맞아
-  // 점수를 얻으므로, 세 번 드레인되기 전에 라운드 목표(300점)를 먼저 넘겨 업그레이드
-  // 선택 오버레이가 뜰 수도 있다 — 그때마다 아무 업그레이드나 골라 계속 진행하면서
-  // 최종적으로는 플리퍼를 전혀 조작하지 않았으니 결국 목숨 3개가 모두 소진되어야 한다.
-  const deadline = Date.now() + 40_000;
-  while (Date.now() < deadline) {
-    const phase = await page.locator('#pb-canvas').getAttribute('data-phase');
-    if (phase === 'ended') break;
-    if (phase === 'round-clear') {
-      await page.locator('.upgrade-choice-btn').first().click();
-    }
-    await page.waitForTimeout(200);
-  }
-  await expect(page.locator('#pb-canvas')).toHaveAttribute('data-phase', 'ended');
-  await expect(page.locator('#result-overlay')).toBeVisible();
-
-  await verifyRankingSaveAndView(page, '/pinball-rogue/');
-});
