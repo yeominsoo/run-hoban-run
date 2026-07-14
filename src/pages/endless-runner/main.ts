@@ -269,7 +269,18 @@ function triggerJump() {
 }
 
 function triggerSlide() {
-  if (phase !== 'playing' || playerState !== 'running') return;
+  if (phase !== 'playing') return;
+  if (playerState === 'jumping') {
+    // 점프 체공 시간(약 690ms)이 더블탭 판정 창(300ms)보다 길어서, "빠른 탭 2번"의
+    // 첫 탭이 이미 점프를 시작시켜버린 뒤 두 번째 탭이 도착하면 그 시점엔 항상
+    // playerState==='jumping'이다. 여기서 그냥 무시하면 더블탭 슬라이드가 실제로는
+    // 절대 발동할 수 없는 죽은 기능이 된다(실사용자 버그 리포트로 발견) — 대신 점프를
+    // 즉시 취소하고 착지시켜 슬라이드로 전환한다("다이빙" 느낌).
+    playerY = groundY;
+    playerVy = 0;
+  } else if (playerState !== 'running') {
+    return;
+  }
   playerState = 'sliding';
   slideEndAt = performance.now() + SLIDE_DURATION_MS;
   canvas.dataset.state = playerState;
