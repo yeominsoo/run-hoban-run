@@ -24,6 +24,7 @@ export default defineConfig({
         '2048-hex': resolve(__dirname, '2048-hex/index.html'),
         'endless-runner': resolve(__dirname, 'endless-runner/index.html'),
         'idle-farm': resolve(__dirname, 'idle-farm/index.html'),
+        'mole-hunt': resolve(__dirname, 'mole-hunt/index.html'),
       },
       output: {
         manualChunks(id) {

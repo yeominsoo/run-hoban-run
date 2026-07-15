@@ -697,6 +697,29 @@ body {
   box-shadow: 10px 2px 0 -3px var(--color-accent-strong);
 }
 
+.mole-hunt-mark::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 8px;
+  height: 12px;
+  border-radius: 50%;
+  background: #6b4a2f;
+}
+
+.mole-hunt-mark::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 8px;
+  bottom: 15px;
+  border-radius: 50%;
+  background: var(--color-secondary);
+  box-shadow: -6px 3px 0 -4px var(--color-accent-strong), 6px 3px 0 -4px var(--color-accent-strong);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

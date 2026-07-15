@@ -187,6 +187,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/mole-hunt/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -333,6 +342,14 @@
       {
         "source": "/idle-farm/**",
         "destination": "/idle-farm/index.html"
+      },
+      {
+        "source": "/mole-hunt",
+        "destination": "/mole-hunt/index.html"
+      },
+      {
+        "source": "/mole-hunt/**",
+        "destination": "/mole-hunt/index.html"
       }
     ]
   }

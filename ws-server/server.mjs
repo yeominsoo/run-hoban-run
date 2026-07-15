@@ -9,6 +9,7 @@ import { registerMafiaServer } from './mafia.mjs';
 import { registerHalliGalliServer } from './halligalli.mjs';
 import { registerYutnoriServer } from './yutnori.mjs';
 import { registerStrategyYutnoriServer } from './strategy-yutnori.mjs';
+import { registerMoleHuntServer } from './mole-hunt.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -787,12 +788,14 @@ const { wss: mafiaWss, getRanking: getMafiaRanking } = registerMafiaServer();
 const { wss: halliGalliWss, getRanking: getHalliGalliRanking } = registerHalliGalliServer();
 const { wss: yutnoriWss, getRanking: getYutnoriRanking } = registerYutnoriServer();
 const { wss: strategyYutnoriWss, getRanking: getStrategyYutnoriRanking } = registerStrategyYutnoriServer();
+const { wss: moleHuntWss, getRanking: getMoleHuntRanking } = registerMoleHuntServer();
 
 GAME_RANKING_HANDLERS.liar = getLiarRanking;
 GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
 GAME_RANKING_HANDLERS.halligalli = getHalliGalliRanking;
 GAME_RANKING_HANDLERS.yutnori = getYutnoriRanking;
 GAME_RANKING_HANDLERS['strategy-yutnori'] = getStrategyYutnoriRanking;
+GAME_RANKING_HANDLERS['mole-hunt'] = getMoleHuntRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -808,11 +811,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     yutnoriWss.handleUpgrade(req, socket, head, (ws) => yutnoriWss.emit('connection', ws, req));
   } else if (pathname === '/strategy-yutnori') {
     strategyYutnoriWss.handleUpgrade(req, socket, head, (ws) => strategyYutnoriWss.emit('connection', ws, req));
+  } else if (pathname === '/mole-hunt') {
+    moleHuntWss.handleUpgrade(req, socket, head, (ws) => moleHuntWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt)`);
 });
