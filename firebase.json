@@ -196,6 +196,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/memory-sequence/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -350,6 +359,14 @@
       {
         "source": "/mole-hunt/**",
         "destination": "/mole-hunt/index.html"
+      },
+      {
+        "source": "/memory-sequence",
+        "destination": "/memory-sequence/index.html"
+      },
+      {
+        "source": "/memory-sequence/**",
+        "destination": "/memory-sequence/index.html"
       }
     ]
   }

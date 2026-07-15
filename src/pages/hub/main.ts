@@ -30,7 +30,8 @@ const GAMES: GameEntry[] = [
   { slug: 'halligalli', icon: 'halligalli-mark', name: '할리갈리', desc: '2~6명이 참여하는 순발력 카드게임. 같은 과일이 5개가 되는 순간 누구보다 먼저 종을 쳐야 카드를 독식한다.', category: 'multi' },
   { slug: 'yutnori', icon: 'yutnori-mark', name: '윷놀이', desc: '2~4명이 실시간으로 즐기는 3D 윷놀이. 업기·잡기·갈라치기·지름길까지 표준 규칙 그대로.', category: 'multi' },
   { slug: 'strategy-yutnori', icon: 'strategy-yutnori-mark', name: '전략윷놀이', desc: '4명이 2:2로 겨루는 심리전 윷놀이. 앞면·뒷면을 비공개로 동시에 내 윷값을 정하고, 팀원마저 배신할 수 있다. &lt;더 지니어스&gt; 데스매치 변형.', category: 'multi' },
-  { slug: 'mole-hunt', icon: 'mole-hunt-mark', name: '두더지 사냥', desc: '2~8명이 실시간으로 겨루는 반응속도 게임. 구멍에서 튀어나오는 두더지를 누구보다 먼저 탭! 30초간 최다 명중자가 승리한다.', category: 'multi' }
+  { slug: 'mole-hunt', icon: 'mole-hunt-mark', name: '두더지 사냥', desc: '2~8명이 실시간으로 겨루는 반응속도 게임. 구멍에서 튀어나오는 두더지를 누구보다 먼저 탭! 30초간 최다 명중자가 승리한다.', category: 'multi' },
+  { slug: 'memory-sequence', icon: 'memory-sequence-mark', name: '순서 기억 챌린지', desc: '2~8명이 함께 도전하는 기억력 서바이벌. 타일이 켜지는 순서를 그대로 따라 탭하세요, 라운드마다 한 칸씩 길어지고 마지막까지 살아남으면 승리!', category: 'multi' }
 ];
 
 const CATEGORY_LABEL: Record<Category, string> = {

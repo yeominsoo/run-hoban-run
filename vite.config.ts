@@ -25,6 +25,7 @@ export default defineConfig({
         'endless-runner': resolve(__dirname, 'endless-runner/index.html'),
         'idle-farm': resolve(__dirname, 'idle-farm/index.html'),
         'mole-hunt': resolve(__dirname, 'mole-hunt/index.html'),
+        'memory-sequence': resolve(__dirname, 'memory-sequence/index.html'),
       },
       output: {
         manualChunks(id) {

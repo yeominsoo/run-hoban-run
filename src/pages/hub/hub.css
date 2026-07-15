@@ -720,6 +720,27 @@ body {
   box-shadow: -6px 3px 0 -4px var(--color-accent-strong), 6px 3px 0 -4px var(--color-accent-strong);
 }
 
+.memory-sequence-mark::before,
+.memory-sequence-mark::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+.memory-sequence-mark::before {
+  left: 8px;
+  top: 8px;
+  background: var(--color-accent);
+  box-shadow: 14px 0 0 0 var(--color-secondary);
+}
+.memory-sequence-mark::after {
+  left: 8px;
+  top: 22px;
+  background: var(--color-primary);
+  box-shadow: 14px 0 0 0 var(--color-lilac);
+}
+
 .game-card-name {
   min-width: 0;
   margin: 0;

@@ -56,6 +56,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/strategy-yutnori"
             - name: VITE_MOLE_HUNT_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/mole-hunt"
+            - name: VITE_MEMORY_SEQUENCE_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/memory-sequence"
           command:
             - /bin/bash
             - -lc
