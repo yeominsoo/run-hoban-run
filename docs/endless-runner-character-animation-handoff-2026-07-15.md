@@ -1,0 +1,126 @@
+# 무한 러너 체크 조끼 소년 8프레임 캐릭터 handoff (2026-07-15)
+
+## 요청과 최종 보정 기준
+
+동일한 남자아이가 나온 사진 3장을 정체성 참조로 사용해 기존 무한 러너 캐릭터와 같은
+플랫 스티커·동화책 페이퍼·소프트 3D 토이 3스타일을 추가한다. 첫 생성본에서 웃는 눈이
+너무 작거나 감긴 반달선처럼 표현된 문제는 세 번째 사진을 얼굴·눈의 최우선 참조로 삼아
+전면 재검수한다.
+
+- 비교적 크고 또렷하게 열린 짙은 무쌍 눈
+- 보이는 홍채와 동공, 자연스러운 위·아래 눈 윤곽
+- 쌍꺼풀 선, 작은 점눈, 상시 감긴 초승달 눈 금지
+- 얼굴에 비해 과장된 애니메이션 눈으로 키우지 않음
+- 짧은 검정 보울컷, 일자 앞머리, 둥근 볼, 작은 코, 밝은 치아 미소 유지
+
+대표 복장은 첫 번째 스튜디오 사진의 흰 반소매 칼라 셔츠, 별도 V넥 회색 윈도페인 체크
+조끼, 같은 체크의 무릎 위 반바지, 검은 발목 양말, 무브랜드 검정 러닝화와 미색 밑창이다.
+다른 사진의 검정 재킷, 숫자 풍선, 스튜디오 배경은 게임 캐릭터에 포함하지 않는다.
+
+## 최종 캐릭터
+
+| 스타일 | 캐릭터 ID | 디자인 참조 |
+|---|---|---|
+| 플랫 스티커 | `checkered-vest-boy-flat-sticker` | `checkered-vest-boy-flat-sticker-action-sheet.png` |
+| 동화책 페이퍼 | `checkered-vest-boy-storybook-paper` | `checkered-vest-boy-storybook-paper-action-sheet.png` |
+| 소프트 3D 토이 | `checkered-vest-boy-soft-3d-toy` | `checkered-vest-boy-soft-3d-toy-action-sheet.png` |
+
+기존 두 소녀의 6종을 포함한 제작 자산 9종은 재생성·비교용으로 그대로 보존한다. 최종
+게임 선택 UI에는 `pink-glasses-girl-flat-sticker`와
+`checkered-vest-boy-flat-sticker` 두 캐릭터만 사용하며 기본값은 분홍안경 소녀다.
+localStorage 키는 유지하고, 구형 소년 화풍 ID는 소년 플랫으로 이관하며 꽃모자 또는
+알 수 없는 값은 기본 분홍안경 소녀로 정규화한다.
+
+## 이미지 생성 계약
+
+- 모드: Codex 내장 `image_gen`; CLI/API 폴백 미사용
+- 디자인: 스타일당 달리기·점프·슬라이딩·넘어짐·회복을 보여 주는 6포즈 참조 1장
+- 애니메이션: 스타일당 4×4 시트 2장
+  - `*-run-jump-8frame-sheet.png`: 1~2행 RUN 1~8, 3~4행 JUMP 1~8
+  - `*-slide-fall-8frame-sheet.png`: 1~2행 SLIDE 1~8, 3~4행 FALL 1~8
+- 모든 포즈는 오른쪽을 향한 서로 다른 그림이며 이동·회전·스케일·미러·복제 보간을 금지
+- 프레임 시트 배경은 exact `#00ff00`, 인물·그림자·소품은 셀 안에 완전히 수용
+- 슬라이드 1~2는 진입, 3~6은 낮고 안정적인 반복 유지, 7은 일어남, 8은 달리기 복귀
+
+눈 보정 프롬프트의 핵심 계약은 다음과 같다.
+
+```text
+Use the third photo as the PRIMARY face and eye-shape reference. Preserve relatively large,
+clearly open dark monolid eyes with visible iris/pupil and natural upper/lower eye contours.
+There must be no double-eyelid crease, no tiny dot eyes, and no permanently squeezed crescent eyes.
+Even while smiling, keep enough eye opening that both pupils remain readable. Keep the size
+natural for this child and do not turn them into oversized anime eyes. Preserve the same boy,
+short dark bowl cut with blunt fringe, rounded cheeks, small nose and broad toothy smile in every pose.
+```
+
+## 자산·런타임 계약
+
+- manifest: v4, 인물군과 스타일별 source 분리
+- 디자인 참조: 6장
+- 4×4 프레임 시트: 18장
+- 정규화 PNG: 9캐릭터 × 4액션 × 8프레임 = 288장
+- 액션 미리보기 PNG: 36장
+- 8프레임 액션 GIF: 36개
+- 슬라이드 단계 GIF: 27개 (`enter`, `hold`, `exit`)
+- 프레임: `256×256` RGBA, 발 피벗 `(128, 232)`
+- 슬라이드: enter 2프레임, hold 4프레임 반복, exit 2프레임
+- 프로덕션 런타임: 분홍안경 소녀 플랫 + 체크 조끼 소년 플랫 2종
+- 프로덕션 번들: 위 두 디렉터리의 PNG/GIF 22개만 포함
+
+프로젝트에서 사용하는 최종 파일은 다음 경로에 있다.
+
+- 디자인 참조: `endless-runner/assets/characters/sources/`
+- 4×4 원화 시트: `endless-runner/assets/characters/frame-sheets/`
+- 캐릭터별 PNG/GIF: `endless-runner/assets/characters/checkered-vest-boy-*/`
+- 전체 계약과 경로: `endless-runner/assets/characters/manifest.json`
+- 이미지 생성 최종 입력: `output/imagegen/endless-runner-characters-2026-07-15/`,
+  `output/imagegen/endless-runner-8frame-2026-07-15/`
+
+생성·검증 명령은 다음과 같다.
+
+```bash
+python3 tools/build_endless_runner_character_assets.py
+python3 tools/verify_endless_runner_character_assets.py
+npm run build
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:<PORT> npx playwright test tests/render.spec.ts --grep "endless runner"
+npm run test:render
+```
+
+## 최종 검증 결과
+
+| 검증 | 결과 |
+|---|---|
+| 이미지 입력 인벤토리 | PASS — 최신 디자인 3장과 4×4 시트 6장만 두 2026-07-15 출력 폴더에 유지 |
+| 눈·정체성 시각 QA | PASS — 디자인 18/18포즈, 신규 프레임 96/96포즈에서 열린 무쌍 눈과 홍채·동공 확인 |
+| 프레임 시트 구조 | PASS — 6장 모두 1254×1254 RGB, exact `#00ff00` 외곽선, 시트당 연결 피사체 16개, 슬롯당 1개, 경계 접촉 0 |
+| 슬라이드·넘어짐 시각 QA | PASS — 세 스타일 모두 slide 1~2 진입, 3~6 저자세 유지, 7 일어남, 8 달리기 복귀 및 fall 1~8 변화 확인 |
+| 자산 정적 검증 | PASS — 디자인 6장, 프레임 시트 18장, PNG 288장, 액션 GIF 36개, 슬라이드 단계 GIF 27개 |
+| 최신-only 프로젝트 인벤토리 | PASS — manifest 포함 412개, 9캐릭터 폴더만 유지, 임시 staging·`__pycache__` 없음 |
+| `npm run build` | PASS — Vite 7.3.6, 111 modules transformed |
+| 런타임 번들 | PASS — 두 플랫 캐릭터 파일 22개, 꽃모자·동화책·소프트 3D 파일 0개 |
+| 무한 러너 Playwright | PASS — 5/5, 2종 선택·구형값 이관·새로고침 유지·GIF 로딩·점프·슬라이드 연장·복귀·넘어짐 확인 |
+| `npm run test:render` | 이전 기준 PASS — 103/103; 2종 축소 후에는 무한 러너 5/5만 재실행 |
+
+소프트 3D 슬라이드 2번은 최초 정적 검증에서 크로마 제거 후 저알파 신발 가장자리 때문에
+검증 기준선이 피벗보다 3px 높게 계산됐다. 빌더가 허용 범위 2px를 넘는 프레임만
+`alpha >= 96` 가시 기준선으로 재정렬하도록 보정했다. 기존에 통과하던 프레임은 이동하지
+않으며, 전체 자산 재빌드 후 정적 검증과 모든 테스트를 다시 통과했다.
+
+### 최종 생성 입력 SHA-256
+
+| 파일 | SHA-256 |
+|---|---|
+| `checkered-vest-boy-flat-sticker-action-sheet-v1.png` | `015f7cfc093a8524eeb6094720c93314f00c2ed1f1de1f60c3ffeac152c956f7` |
+| `checkered-vest-boy-flat-sticker-run-jump-8frame-sheet.png` | `b53b107b561762c0dcd2243da7ea023d98a5af8c6c52219874690f2a7c1e8fc8` |
+| `checkered-vest-boy-flat-sticker-slide-fall-8frame-sheet.png` | `78044b8f6dd900500b6d589b793e8617630c28fc884bedfd46588273d8d21789` |
+| `checkered-vest-boy-storybook-paper-action-sheet-v1.png` | `e8de11bd245e409afa16c1a1f20f32d3e2375c68005527606182277ae2a3d3de` |
+| `checkered-vest-boy-storybook-paper-run-jump-8frame-sheet.png` | `e122bae553401cfa5a897d0bb0ee91939765059504e30e46b449c970857e71da` |
+| `checkered-vest-boy-storybook-paper-slide-fall-8frame-sheet.png` | `926ce8355ba8c3aee3fd83f2991b49caf7557160b6a0baebdd09f549c3911fb6` |
+| `checkered-vest-boy-soft-3d-toy-action-sheet-v1.png` | `d590a3623d44bd474a35b7b19d378617748f92da057921e2a1d996364db6436d` |
+| `checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png` | `2248e12cace38608d2336474510e03109fc0716728e2a015c7ecd391cc5beaf0` |
+| `checkered-vest-boy-soft-3d-toy-slide-fall-8frame-sheet.png` | `ecb643aa1690965cdc3b79ea6ea049ce45fe43ee97b97de456aa1a36569204b4` |
+
+## Git 상태
+
+- 이 작업은 아직 커밋·푸시·배포하지 않았다.
+- 기존 작업 트리의 무한 러너 변경과 함께 검증하며, 사용자 요청 없이 Git 이력은 변경하지 않는다.

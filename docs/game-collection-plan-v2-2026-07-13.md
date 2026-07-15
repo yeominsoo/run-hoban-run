@@ -106,7 +106,9 @@ run-hoban-run/
 ├── snake/index.html              ← 신규
 ├── typing-survival/index.html    ← 신규
 ├── 2048-hex/index.html           ← 신규
-├── endless-runner/index.html     ← 신규
+├── endless-runner/
+│   ├── index.html                ← 신규
+│   └── assets/characters/        ← 승인 디자인 6장 + 4×4 원화 시트 18장 + 8프레임 PNG/GIF
 ├── idle-farm/index.html          ← 신규
 ├── pinball-rogue/index.html      ← 신규
 ├── mole-hunt/  memory-sequence/  updown-number/  multiplication-sprint/
@@ -352,6 +354,14 @@ env 추가 — 는 WS 서버가 필요한 게임에만 해당하므로 v1 유래
 ### Phase 2 — 중간 난이도 4종
 
 `feature/typing-survival`, `feature/2048-hex`, `feature/endless-runner`, `feature/idle-farm`
+
+무한 러너는 2026-07-14에 최신 v3 두 소녀 디자인 시트 3장을 채택했고, 2026-07-15에는
+동일 인물 사진 3장을 정체성 기준으로 삼은 체크 조끼 소년 디자인 3장을 추가했다. 세 인물 ×
+세 화풍의 9종 제작 자산은 재생성용으로 보존하되, 최종 게임 선택 UI는 플랫 스티커 화풍의
+분홍안경 소녀와 체크 조끼 소년 2종만 사용한다. 실제 자세가 달라지는 달리기·점프·슬라이딩·
+넘어짐 8프레임 GIF를 연동하고, 슬라이드는 진입·반복 유지·회복으로 분리해 추가 입력으로 유지
+구간을 연장한다. 생성·검증 절차는
+`docs/endless-runner-implementation-notes-2026-07-13.md`에 기록한다.
 
 ### Phase 3 — 핀볼 로그라이크
 

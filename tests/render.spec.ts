@@ -2052,6 +2052,147 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
   });
 }
 
+test('endless runner: selects one of two character GIF sets and reflects every action state', async ({ page }) => {
+  test.setTimeout(40_000);
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+  await page.goto('/endless-runner/');
+  await page.evaluate(() => {
+    localStorage.setItem('rhh_endless-runner_character', 'checkered-vest-boy-soft-3d-toy');
+  });
+  await page.reload();
+
+  const characterOptions = page.locator('.character-option[data-character-id]');
+  const characterPreviews = characterOptions.locator('img');
+  await expect(characterOptions).toHaveCount(2);
+  await expect(characterPreviews).toHaveCount(2);
+  const characterIds = await characterOptions.evaluateAll((options) => options.map((option) => (
+    (option as HTMLElement).dataset.characterId
+  )));
+  expect(characterIds).toEqual([
+    'pink-glasses-girl-flat-sticker',
+    'checkered-vest-boy-flat-sticker'
+  ]);
+  const boyOption = page.locator(
+    '.character-option[data-character-id="checkered-vest-boy-flat-sticker"]'
+  );
+  await expect(boyOption).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(
+    () => page.evaluate(() => localStorage.getItem('rhh_endless-runner_character'))
+  ).toBe('checkered-vest-boy-flat-sticker');
+
+  await page.evaluate(() => {
+    localStorage.setItem('rhh_endless-runner_character', 'floral-hat-girl-soft-3d-toy');
+  });
+  await page.reload();
+  const defaultOption = page.locator(
+    '.character-option[data-character-id="pink-glasses-girl-flat-sticker"]'
+  );
+  await expect(defaultOption).toHaveAttribute('aria-pressed', 'true');
+  await expect(defaultOption).toHaveClass(/selected/);
+  await expect(page.locator('.character-option[aria-pressed="true"]')).toHaveCount(1);
+  await expect.poll(
+    () => page.evaluate(() => localStorage.getItem('rhh_endless-runner_character'))
+  ).toBe('pink-glasses-girl-flat-sticker');
+  await expect.poll(
+    () => characterPreviews.evaluateAll((images) => images.every((image) => {
+      const preview = image as HTMLImageElement;
+      return preview.complete && preview.naturalWidth > 0 && preview.naturalHeight > 0;
+    })),
+    { timeout: 10_000 }
+  ).toBe(true);
+
+  const characterId = 'checkered-vest-boy-flat-sticker';
+  const selectedOption = page.locator(`.character-option[data-character-id="${characterId}"]`);
+  await selectedOption.click();
+  await expect(selectedOption).toHaveAttribute('aria-pressed', 'true');
+  await expect(selectedOption).toHaveClass(/selected/);
+  await expect(defaultOption).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.character-option[aria-pressed="true"]')).toHaveCount(1);
+  await expect.poll(
+    () => page.evaluate(() => localStorage.getItem('rhh_endless-runner_character'))
+  ).toBe(characterId);
+
+  await page.reload();
+  await expect(selectedOption).toHaveAttribute('aria-pressed', 'true');
+  await expect(selectedOption).toHaveClass(/selected/);
+  await expect(page.locator('.character-option[aria-pressed="true"]')).toHaveCount(1);
+
+  const canvas = page.locator('#er-canvas');
+  const player = page.locator('#runner-character');
+  await expect(canvas).toHaveAttribute('data-character', characterId);
+  await page.locator('#start-btn').click();
+  await expect(canvas).toHaveAttribute('data-phase', 'playing');
+  await expect(canvas).toHaveAttribute('data-character', characterId);
+  await expect(player).toHaveAttribute('data-character', characterId);
+  await expect(player).toHaveAttribute('data-action', 'run');
+
+  await expect.poll(() => player.evaluate((element) => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+  }), { timeout: 10_000 }).toBe(true);
+  const playerImageSource = await player.evaluate((element) => {
+    const image = element as HTMLImageElement;
+    return image.currentSrc || image.src;
+  });
+  expect(playerImageSource).toMatch(/(?:\.gif(?:$|[?#])|^data:image\/gif)/);
+  expect(playerImageSource).toContain('checkered-vest-boy-flat-sticker');
+
+  await page.keyboard.press('ArrowUp');
+  await expect(canvas).toHaveAttribute('data-state', 'jumping');
+  await expect(player).toHaveAttribute('data-action', 'jump');
+  await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 3_000 });
+  await expect(player).toHaveAttribute('data-action', 'run');
+
+  await page.keyboard.press('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+  await expect(player).toHaveAttribute('data-action', 'slide');
+  await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 3_000 });
+  await expect(player).toHaveAttribute('data-action', 'run');
+
+  await expect.poll(async () => ({
+    phase: await canvas.getAttribute('data-phase'),
+    state: await canvas.getAttribute('data-state'),
+    action: await player.getAttribute('data-action')
+  }), { timeout: 20_000 }).toEqual({
+    phase: 'falling',
+    state: 'falling',
+    action: 'fall'
+  });
+  await expect(canvas).toHaveAttribute('data-phase', 'ended', { timeout: 5_000 });
+  await expect(page.locator('#result-overlay')).toBeVisible();
+});
+
+test('endless runner: an eight-frame slide enters, loops low, extends, and exits upright', async ({ page }) => {
+  test.setTimeout(15_000);
+  // 첫 장애물을 높은 장애물로 고정해 슬라이드 단계 자체를 검증하는 동안 우발적인 구덩이 충돌을 막는다.
+  await page.addInitScript(() => {
+    Math.random = () => 0.5;
+  });
+  await page.goto('/endless-runner/');
+  await page.locator('#start-btn').click();
+
+  const canvas = page.locator('#er-canvas');
+  const player = page.locator('#runner-character');
+  await page.keyboard.press('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'enter');
+  await expect(player).toHaveAttribute('data-clip', 'slide-enter');
+
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'hold', { timeout: 1_000 });
+  await expect(player).toHaveAttribute('data-clip', 'slide-hold');
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(500);
+  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'hold');
+
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'exit', { timeout: 1_000 });
+  await expect(player).toHaveAttribute('data-clip', 'slide-exit');
+  await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 1_000 });
+  await expect(player).toHaveAttribute('data-clip', 'run');
+});
+
 test('endless runner: jumping/sliding at the right moment clears obstacles and pits', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/endless-runner/');
@@ -2309,4 +2450,3 @@ test('idle farm: saving a ranking entry shows it on revisit and can be exported 
 
   await verifyRankingSaveAndView(page, '/idle-farm/');
 });
-

@@ -1,0 +1,1826 @@
+{
+  "version": 4,
+  "generatedOn": "2026-07-15",
+  "canvas": {
+    "width": 256,
+    "height": 256,
+    "pivot": [
+      128,
+      232
+    ]
+  },
+  "frameCountPerAction": 8,
+  "method": "eight model-generated chronological poses from approved identity references; no transform tween",
+  "sourceSheets": [
+    {
+      "id": "two-girls-flat-sticker",
+      "identities": [
+        "floral-hat-girl",
+        "pink-glasses-girl"
+      ],
+      "style": "flat-sticker",
+      "label": "플랫 스티커",
+      "path": "endless-runner/assets/characters/sources/runner-flat-sticker-action-sheet.png",
+      "sha256": "ef7da9cd250d8dae3202c750f396c95303c9d760fa9b23c537225e0bcd45670a",
+      "designRevision": "v3-two-girls-dress-corrected"
+    },
+    {
+      "id": "checkered-vest-boy-flat-sticker",
+      "identities": [
+        "checkered-vest-boy"
+      ],
+      "style": "flat-sticker",
+      "label": "플랫 스티커",
+      "path": "endless-runner/assets/characters/sources/checkered-vest-boy-flat-sticker-action-sheet.png",
+      "sha256": "015f7cfc093a8524eeb6094720c93314f00c2ed1f1de1f60c3ffeac152c956f7",
+      "designRevision": "v1-checkered-vest-boy-large-monolid-eyes"
+    },
+    {
+      "id": "two-girls-storybook-paper",
+      "identities": [
+        "floral-hat-girl",
+        "pink-glasses-girl"
+      ],
+      "style": "storybook-paper",
+      "label": "동화책 페이퍼",
+      "path": "endless-runner/assets/characters/sources/runner-storybook-paper-action-sheet.png",
+      "sha256": "0813e5f1c813efe2eed1a9c847ec14ee7abe0d36cca0e21672be951fa5f1e48b",
+      "designRevision": "v3-two-girls-dress-corrected"
+    },
+    {
+      "id": "checkered-vest-boy-storybook-paper",
+      "identities": [
+        "checkered-vest-boy"
+      ],
+      "style": "storybook-paper",
+      "label": "동화책 페이퍼",
+      "path": "endless-runner/assets/characters/sources/checkered-vest-boy-storybook-paper-action-sheet.png",
+      "sha256": "e8de11bd245e409afa16c1a1f20f32d3e2375c68005527606182277ae2a3d3de",
+      "designRevision": "v1-checkered-vest-boy-large-monolid-eyes"
+    },
+    {
+      "id": "two-girls-soft-3d-toy",
+      "identities": [
+        "floral-hat-girl",
+        "pink-glasses-girl"
+      ],
+      "style": "soft-3d-toy",
+      "label": "소프트 3D 토이",
+      "path": "endless-runner/assets/characters/sources/runner-soft-3d-toy-action-sheet.png",
+      "sha256": "3c6f241064235f63193f7daa1d417952dd07c41ba9042fe7bf4f20a8c2ad3674",
+      "designRevision": "v3-two-girls-dress-corrected"
+    },
+    {
+      "id": "checkered-vest-boy-soft-3d-toy",
+      "identities": [
+        "checkered-vest-boy"
+      ],
+      "style": "soft-3d-toy",
+      "label": "소프트 3D 토이",
+      "path": "endless-runner/assets/characters/sources/checkered-vest-boy-soft-3d-toy-action-sheet.png",
+      "sha256": "d590a3623d44bd474a35b7b19d378617748f92da057921e2a1d996364db6436d",
+      "designRevision": "v1-checkered-vest-boy-large-monolid-eyes"
+    }
+  ],
+  "frameSheets": [
+    {
+      "characterId": "floral-hat-girl-flat-sticker",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/floral-hat-girl-flat-sticker-run-jump-8frame-sheet.png",
+      "sha256": "fccd63d14984ec9795acecc4fe02e5056c535b42a5897a192158761fc645c68a"
+    },
+    {
+      "characterId": "floral-hat-girl-flat-sticker",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/floral-hat-girl-flat-sticker-slide-fall-8frame-sheet.png",
+      "sha256": "2725b24645b09efb55feb8171d5310cafbe24e49b3efdd756775d73f83b3bbf4"
+    },
+    {
+      "characterId": "pink-glasses-girl-flat-sticker",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-flat-sticker-run-jump-8frame-sheet.png",
+      "sha256": "75a576e62fcf2b7001bea9c91c465b3998d1610fa904e2f565a08f7b85f444be"
+    },
+    {
+      "characterId": "pink-glasses-girl-flat-sticker",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-flat-sticker-slide-fall-8frame-sheet.png",
+      "sha256": "72cf3fb05f7e0b6a5d6b3e8f9733acfb0aac949de476a45588de6482a7da245d"
+    },
+    {
+      "characterId": "checkered-vest-boy-flat-sticker",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-flat-sticker-run-jump-8frame-sheet.png",
+      "sha256": "b53b107b561762c0dcd2243da7ea023d98a5af8c6c52219874690f2a7c1e8fc8"
+    },
+    {
+      "characterId": "checkered-vest-boy-flat-sticker",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-flat-sticker-slide-fall-8frame-sheet.png",
+      "sha256": "78044b8f6dd900500b6d589b793e8617630c28fc884bedfd46588273d8d21789"
+    },
+    {
+      "characterId": "floral-hat-girl-storybook-paper",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/floral-hat-girl-storybook-paper-run-jump-8frame-sheet.png",
+      "sha256": "0fdc5b65b2a317ce677d2c4807a64a8000e0c70fdc1eb4abf5091d73142e1c4a"
+    },
+    {
+      "characterId": "floral-hat-girl-storybook-paper",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/floral-hat-girl-storybook-paper-slide-fall-8frame-sheet.png",
+      "sha256": "3266662fe818b24095d036e6a6584a1721dae1b59257168114057403854f40ee"
+    },
+    {
+      "characterId": "pink-glasses-girl-storybook-paper",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-storybook-paper-run-jump-8frame-sheet.png",
+      "sha256": "695694970d5211abbafeb3a915d4a6c8b56c3afd3a8771a37b8dfa010afa1844"
+    },
+    {
+      "characterId": "pink-glasses-girl-storybook-paper",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-storybook-paper-slide-fall-8frame-sheet.png",
+      "sha256": "1c23d2779749abb35167ed41cca552f8a770a68e659052926b1cd9195934c370"
+    },
+    {
+      "characterId": "checkered-vest-boy-storybook-paper",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-storybook-paper-run-jump-8frame-sheet.png",
+      "sha256": "e122bae553401cfa5a897d0bb0ee91939765059504e30e46b449c970857e71da"
+    },
+    {
+      "characterId": "checkered-vest-boy-storybook-paper",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-storybook-paper-slide-fall-8frame-sheet.png",
+      "sha256": "926ce8355ba8c3aee3fd83f2991b49caf7557160b6a0baebdd09f549c3911fb6"
+    },
+    {
+      "characterId": "floral-hat-girl-soft-3d-toy",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/floral-hat-girl-soft-3d-toy-run-jump-8frame-sheet.png",
+      "sha256": "0d63505de2527857b9ec2ae8284b404ccbc5499a5a21400f50ce45b4bbbfbf00"
+    },
+    {
+      "characterId": "floral-hat-girl-soft-3d-toy",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/floral-hat-girl-soft-3d-toy-slide-fall-8frame-sheet.png",
+      "sha256": "7d9c61738d999f3209c0da0342b5b8e04ec1d56c7d13588719865d5fd1f239e2"
+    },
+    {
+      "characterId": "pink-glasses-girl-soft-3d-toy",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-soft-3d-toy-run-jump-8frame-sheet.png",
+      "sha256": "5691fd7bd82ab94bcb454a01769663b25c9a8ff98c290489855df2d1ba8cc545"
+    },
+    {
+      "characterId": "pink-glasses-girl-soft-3d-toy",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-soft-3d-toy-slide-fall-8frame-sheet.png",
+      "sha256": "69c8d9e0f43b1e83d59c5199469a1e637a345d7d2b89bdd0efad6df0c3717c4b"
+    },
+    {
+      "characterId": "checkered-vest-boy-soft-3d-toy",
+      "group": "run-jump",
+      "actions": [
+        "run",
+        "jump"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png",
+      "sha256": "2248e12cace38608d2336474510e03109fc0716728e2a015c7ecd391cc5beaf0"
+    },
+    {
+      "characterId": "checkered-vest-boy-soft-3d-toy",
+      "group": "slide-fall",
+      "actions": [
+        "slide",
+        "fall"
+      ],
+      "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-slide-fall-8frame-sheet.png",
+      "sha256": "ecb643aa1690965cdc3b79ea6ea049ce45fe43ee97b97de456aa1a36569204b4"
+    }
+  ],
+  "characters": [
+    {
+      "id": "floral-hat-girl-flat-sticker",
+      "label": "꽃모자 소녀 · 플랫 스티커",
+      "identity": "girl",
+      "style": "flat-sticker",
+      "source": "endless-runner/assets/characters/sources/runner-flat-sticker-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/floral-hat-girl-flat-sticker-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/floral-hat-girl-flat-sticker-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-run.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-jump.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-slide.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-fall.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-flat-sticker/floral-hat-girl-flat-sticker-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-flat-sticker/frames/floral-hat-girl-flat-sticker-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "pink-glasses-girl-flat-sticker",
+      "label": "분홍안경 소녀 · 플랫 스티커",
+      "identity": "girl",
+      "style": "flat-sticker",
+      "source": "endless-runner/assets/characters/sources/runner-flat-sticker-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-flat-sticker-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-flat-sticker-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-run.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-jump.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-slide.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-fall.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/pink-glasses-girl-flat-sticker-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-flat-sticker/frames/pink-glasses-girl-flat-sticker-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "checkered-vest-boy-flat-sticker",
+      "label": "체크 조끼 소년 · 플랫 스티커",
+      "identity": "boy",
+      "style": "flat-sticker",
+      "source": "endless-runner/assets/characters/sources/checkered-vest-boy-flat-sticker-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-flat-sticker-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-flat-sticker-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-run.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-jump.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-slide.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-fall.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/checkered-vest-boy-flat-sticker-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-flat-sticker/frames/checkered-vest-boy-flat-sticker-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "floral-hat-girl-storybook-paper",
+      "label": "꽃모자 소녀 · 동화책 페이퍼",
+      "identity": "girl",
+      "style": "storybook-paper",
+      "source": "endless-runner/assets/characters/sources/runner-storybook-paper-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/floral-hat-girl-storybook-paper-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/floral-hat-girl-storybook-paper-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-run.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-jump.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-slide.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-fall.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-storybook-paper/floral-hat-girl-storybook-paper-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-storybook-paper/frames/floral-hat-girl-storybook-paper-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "pink-glasses-girl-storybook-paper",
+      "label": "분홍안경 소녀 · 동화책 페이퍼",
+      "identity": "girl",
+      "style": "storybook-paper",
+      "source": "endless-runner/assets/characters/sources/runner-storybook-paper-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-storybook-paper-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-storybook-paper-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-run.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-jump.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-slide.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-fall.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/pink-glasses-girl-storybook-paper-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-storybook-paper/frames/pink-glasses-girl-storybook-paper-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "checkered-vest-boy-storybook-paper",
+      "label": "체크 조끼 소년 · 동화책 페이퍼",
+      "identity": "boy",
+      "style": "storybook-paper",
+      "source": "endless-runner/assets/characters/sources/checkered-vest-boy-storybook-paper-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-storybook-paper-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-storybook-paper-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-run.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-jump.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-slide.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-fall.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/checkered-vest-boy-storybook-paper-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-storybook-paper/frames/checkered-vest-boy-storybook-paper-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "floral-hat-girl-soft-3d-toy",
+      "label": "꽃모자 소녀 · 소프트 3D 토이",
+      "identity": "girl",
+      "style": "soft-3d-toy",
+      "source": "endless-runner/assets/characters/sources/runner-soft-3d-toy-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/floral-hat-girl-soft-3d-toy-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/floral-hat-girl-soft-3d-toy-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-run.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-jump.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-slide.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-fall.png",
+          "gif": "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/floral-hat-girl-soft-3d-toy-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-01.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-02.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-03.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-04.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-05.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-06.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-07.png",
+            "endless-runner/assets/characters/floral-hat-girl-soft-3d-toy/frames/floral-hat-girl-soft-3d-toy-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "pink-glasses-girl-soft-3d-toy",
+      "label": "분홍안경 소녀 · 소프트 3D 토이",
+      "identity": "girl",
+      "style": "soft-3d-toy",
+      "source": "endless-runner/assets/characters/sources/runner-soft-3d-toy-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-soft-3d-toy-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-soft-3d-toy-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-run.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-jump.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-slide.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-fall.png",
+          "gif": "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/pink-glasses-girl-soft-3d-toy-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-01.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-02.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-03.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-04.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-05.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-06.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-07.png",
+            "endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/pink-glasses-girl-soft-3d-toy-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "checkered-vest-boy-soft-3d-toy",
+      "label": "체크 조끼 소년 · 소프트 3D 토이",
+      "identity": "boy",
+      "style": "soft-3d-toy",
+      "source": "endless-runner/assets/characters/sources/checkered-vest-boy-soft-3d-toy-action-sheet.png",
+      "frameSheets": [
+        "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png",
+        "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-slide-fall-8frame-sheet.png"
+      ],
+      "actions": {
+        "run": {
+          "label": "달리기",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-run.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-run.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-run-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "durationMs": 640,
+          "loop": true
+        },
+        "jump": {
+          "label": "점프",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-jump.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-jump.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-jump-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            70,
+            70,
+            80,
+            90,
+            100,
+            90,
+            90,
+            100
+          ],
+          "durationMs": 690,
+          "loop": false
+        },
+        "slide": {
+          "label": "슬라이딩",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-slide.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-slide.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-slide-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            90,
+            200,
+            200,
+            200,
+            200,
+            90,
+            90
+          ],
+          "durationMs": 1160,
+          "loop": false,
+          "clips": {
+            "enter": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-slide-enter.gif",
+              "frameIndexes": [
+                1,
+                2
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            },
+            "hold": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-slide-hold.gif",
+              "frameIndexes": [
+                3,
+                4,
+                5,
+                6
+              ],
+              "frameCount": 4,
+              "durationsMs": [
+                100,
+                100,
+                100,
+                100
+              ],
+              "durationMs": 400,
+              "loop": true
+            },
+            "exit": {
+              "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-slide-exit.gif",
+              "frameIndexes": [
+                7,
+                8
+              ],
+              "frameCount": 2,
+              "durationsMs": [
+                90,
+                90
+              ],
+              "durationMs": 180,
+              "loop": false
+            }
+          }
+        },
+        "fall": {
+          "label": "넘어짐",
+          "png": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-fall.png",
+          "gif": "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-fall.gif",
+          "frames": [
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-01.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-02.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-03.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-04.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-05.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-06.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-07.png",
+            "endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/checkered-vest-boy-soft-3d-toy-fall-08.png"
+          ],
+          "frameCount": 8,
+          "durationsMs": [
+            90,
+            100,
+            110,
+            120,
+            130,
+            150,
+            180,
+            220
+          ],
+          "durationMs": 1100,
+          "loop": false
+        }
+      }
+    }
+  ]
+}

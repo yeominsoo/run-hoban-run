@@ -1,6 +1,14 @@
 import './endless-runner.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
 import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import {
+  DEFAULT_RUNNER_CHARACTER_ID,
+  RUNNER_CHARACTERS,
+  findRunnerCharacter,
+  type RunnerAction,
+  type RunnerCharacter,
+  type RunnerSlidePhase
+} from './character-assets';
 
 const GAME_SLUG = 'endless-runner';
 
@@ -11,7 +19,9 @@ const PLAYER_HEIGHT = 42;
 const SLIDE_HEIGHT = 22;
 const GRAVITY = 2200; // px/s^2
 const JUMP_VELOCITY = -760; // px/s
-const SLIDE_DURATION_MS = 500;
+const SLIDE_ENTER_MS = 180;
+const SLIDE_HOLD_MS = 800;
+const SLIDE_EXIT_MS = 180;
 const DOUBLE_TAP_WINDOW_MS = 300;
 const SWIPE_MIN_DISTANCE = 30;
 const BASE_SPEED = 260; // px/s
@@ -24,9 +34,11 @@ const GAP_SHRINK_DURATION_S = 60;
 const COIN_INTERVAL_S = 1.4;
 const PIT_MIN_WIDTH = 70;
 const PIT_MAX_WIDTH = 110;
+const FALL_ANIMATION_MS = 1100;
+const CHARACTER_STORAGE_KEY = 'rhh_endless-runner_character';
 
-type Phase = 'idle' | 'playing' | 'ended';
-type PlayerState = 'running' | 'jumping' | 'sliding';
+type Phase = 'idle' | 'playing' | 'falling' | 'ended';
+type PlayerState = 'running' | 'jumping' | 'sliding' | 'falling';
 type ObstacleType = 'low' | 'high' | 'pit';
 
 interface Obstacle {
@@ -41,6 +53,41 @@ interface Coin {
   collected: boolean;
 }
 
+function loadSelectedCharacter(): RunnerCharacter {
+  try {
+    const storedId = localStorage.getItem(CHARACTER_STORAGE_KEY);
+    const character = findRunnerCharacter(storedId ?? DEFAULT_RUNNER_CHARACTER_ID);
+    if (storedId !== null && storedId !== character.id) {
+      localStorage.setItem(CHARACTER_STORAGE_KEY, character.id);
+    }
+    return character;
+  } catch {
+    return findRunnerCharacter(DEFAULT_RUNNER_CHARACTER_ID);
+  }
+}
+
+const PLAYER_ACTIONS: Record<PlayerState, RunnerAction> = {
+  running: 'run',
+  jumping: 'jump',
+  sliding: 'slide',
+  falling: 'fall'
+};
+
+let selectedCharacter = loadSelectedCharacter();
+
+const characterPickerHtml = RUNNER_CHARACTERS.map((character) => `
+  <button
+    class="character-option${character.id === selectedCharacter.id ? ' selected' : ''}"
+    type="button"
+    aria-pressed="${character.id === selectedCharacter.id}"
+    aria-label="${character.label} 선택"
+    data-character-id="${character.id}"
+  >
+    <img src="${character.preview}" alt="" aria-hidden="true" draggable="false" />
+    <span>${character.shortLabel}</span>
+  </button>
+`).join('');
+
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="er-shell">
@@ -52,6 +99,7 @@ app.innerHTML = `
 
     <div class="game-stage" id="game-stage">
       <canvas id="er-canvas"></canvas>
+      <img id="runner-character" class="runner-character" alt="" aria-hidden="true" draggable="false" />
 
       <div class="hud" id="hud" hidden>
         <div class="hud-item"><span class="hud-label">점수</span><span class="hud-value" id="hud-score">0</span></div>
@@ -62,6 +110,12 @@ app.innerHTML = `
         <div class="overlay-card">
           <h2>무한 러너</h2>
           <p>탭하면 점프, 아래로 스와이프(또는 빠르게 2번 탭)하면 슬라이드!<br>낮은 장애물은 점프, 높은 장애물은 슬라이드, 구덩이는 타이밍 점프로 통과하세요. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <fieldset class="character-picker">
+            <legend>달릴 캐릭터 선택</legend>
+            <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
+              ${characterPickerHtml}
+            </div>
+          </fieldset>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
           <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
@@ -106,6 +160,8 @@ app.innerHTML = `
 const stage = document.getElementById('game-stage')!;
 const canvas = document.getElementById('er-canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
+let playerImage = document.getElementById('runner-character') as HTMLImageElement;
+const characterOptions = Array.from(document.querySelectorAll<HTMLButtonElement>('.character-option'));
 const hud = document.getElementById('hud')!;
 const hudScore = document.getElementById('hud-score')!;
 const hudCoins = document.getElementById('hud-coins')!;
@@ -131,7 +187,6 @@ const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') 
 // ── Theme colors ───────────────────────────────
 const rootStyle = getComputedStyle(document.documentElement);
 const cssVar = (name: string) => rootStyle.getPropertyValue(name).trim();
-const COLOR_PRIMARY = cssVar('--color-primary') || '#ff6f91';
 const COLOR_SECONDARY = cssVar('--color-secondary') || '#5ecfbc';
 const COLOR_ACCENT = cssVar('--color-accent') || '#ffc857';
 const COLOR_DANGER = cssVar('--color-danger') || '#e85d75';
@@ -148,7 +203,10 @@ let playerX = 0;
 let playerY = 0; // 캐릭터 하단(발) y좌표. groundY면 지면.
 let playerVy = 0;
 let playerState: PlayerState = 'running';
-let slideEndAt = 0;
+let slidePhase: RunnerSlidePhase | null = null;
+let slidePhaseEndAt = 0;
+let slideHoldEndAt = 0;
+let fallEndAt = 0;
 
 let speed = BASE_SPEED;
 let elapsedS = 0;
@@ -171,6 +229,8 @@ let lastTapAt = -Infinity;
 // ── Init ──────────────────────────────────────
 bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 canvas.dataset.phase = phase;
+canvas.dataset.state = playerState;
+canvas.dataset.character = selectedCharacter.id;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
@@ -203,9 +263,11 @@ function resizeCanvas() {
   canvas.style.width = `${stageWidth}px`;
   canvas.style.height = `${stageHeight}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (phase !== 'playing') {
+  if (phase === 'idle' || phase === 'ended') {
     playerY = groundY;
     draw();
+  } else {
+    syncPlayerVisual();
   }
 }
 
@@ -217,6 +279,53 @@ function currentMinGap(): number {
 
 function playerHeight(): number {
   return playerState === 'sliding' ? SLIDE_HEIGHT : PLAYER_HEIGHT;
+}
+
+function syncPlayerVisual(forceRestart = false) {
+  const action = PLAYER_ACTIONS[playerState];
+  const clip = playerState === 'sliding' ? `slide-${slidePhase ?? 'enter'}` : action;
+  const asset = playerState === 'sliding'
+    ? selectedCharacter.slideClips[slidePhase ?? 'enter']
+    : selectedCharacter.actions[action].animation;
+  const changed = playerImage.dataset.character !== selectedCharacter.id
+    || playerImage.dataset.clip !== clip;
+
+  if (changed || forceRestart) {
+    if (forceRestart) {
+      // 새 이미지 요소는 브라우저의 GIF 디코더 타임라인도 새로 만들어 첫 프레임부터 재생한다.
+      const replacement = playerImage.cloneNode(false) as HTMLImageElement;
+      replacement.removeAttribute('src');
+      playerImage.replaceWith(replacement);
+      playerImage = replacement;
+    }
+    playerImage.src = asset;
+    playerImage.dataset.character = selectedCharacter.id;
+    playerImage.dataset.action = action;
+    playerImage.dataset.clip = clip;
+  }
+
+  playerImage.style.left = `${playerX}px`;
+  playerImage.style.top = `${playerY}px`;
+  canvas.dataset.character = selectedCharacter.id;
+  canvas.dataset.action = action;
+  canvas.dataset.state = playerState;
+  canvas.dataset.slidePhase = slidePhase ?? 'none';
+}
+
+function selectCharacter(characterId: string) {
+  selectedCharacter = findRunnerCharacter(characterId);
+  try {
+    localStorage.setItem(CHARACTER_STORAGE_KEY, selectedCharacter.id);
+  } catch {
+    // 저장소 접근이 제한된 환경에서도 현재 세션의 선택은 유지한다.
+  }
+
+  for (const option of characterOptions) {
+    const isSelected = option.dataset.characterId === selectedCharacter.id;
+    option.classList.toggle('selected', isSelected);
+    option.setAttribute('aria-pressed', String(isSelected));
+  }
+  syncPlayerVisual(true);
 }
 
 function playerTopY(): number {
@@ -266,10 +375,26 @@ function triggerJump() {
   playerState = 'jumping';
   playerVy = JUMP_VELOCITY;
   canvas.dataset.state = playerState;
+  syncPlayerVisual();
 }
 
 function triggerSlide() {
   if (phase !== 'playing') return;
+  const now = performance.now();
+  if (playerState === 'sliding') {
+    // 반복 입력은 진입 포즈를 다시 재생하지 않고 낮은 유지 구간만 연장한다. 키를 누르고
+    // 있거나 스와이프를 다시 해도 일어났다 다시 눕는 부자연스러운 루프가 생기지 않는다.
+    if (slidePhase === 'exit') {
+      slidePhase = 'hold';
+      slideHoldEndAt = now + SLIDE_HOLD_MS;
+      slidePhaseEndAt = slideHoldEndAt;
+      syncPlayerVisual();
+    } else {
+      slideHoldEndAt = Math.max(slideHoldEndAt, now + SLIDE_HOLD_MS);
+    }
+    canvas.dataset.slidePhase = slidePhase ?? 'hold';
+    return;
+  }
   if (playerState === 'jumping') {
     // 점프 체공 시간(약 690ms)이 더블탭 판정 창(300ms)보다 길어서, "빠른 탭 2번"의
     // 첫 탭이 이미 점프를 시작시켜버린 뒤 두 번째 탭이 도착하면 그 시점엔 항상
@@ -282,8 +407,12 @@ function triggerSlide() {
     return;
   }
   playerState = 'sliding';
-  slideEndAt = performance.now() + SLIDE_DURATION_MS;
+  slidePhase = 'enter';
+  slidePhaseEndAt = now + SLIDE_ENTER_MS;
+  slideHoldEndAt = slidePhaseEndAt + SLIDE_HOLD_MS;
   canvas.dataset.state = playerState;
+  canvas.dataset.slidePhase = slidePhase;
+  syncPlayerVisual();
 }
 
 function updateHudNumbers() {
@@ -298,6 +427,9 @@ function updateTestAttrs() {
   canvas.dataset.playerY = String(Math.round(playerY));
   canvas.dataset.playerX = String(Math.round(playerX));
   canvas.dataset.state = playerState;
+  canvas.dataset.character = selectedCharacter.id;
+  canvas.dataset.action = PLAYER_ACTIONS[playerState];
+  canvas.dataset.slidePhase = slidePhase ?? 'none';
 }
 
 // ── Game flow ─────────────────────────────────
@@ -307,6 +439,10 @@ function startGame() {
   playerY = groundY;
   playerVy = 0;
   playerState = 'running';
+  slidePhase = null;
+  slidePhaseEndAt = 0;
+  slideHoldEndAt = 0;
+  fallEndAt = 0;
   speed = BASE_SPEED;
   elapsedS = 0;
   distancePx = 0;
@@ -322,10 +458,22 @@ function startGame() {
   hud.hidden = false;
   updateHudNumbers();
   updateTestAttrs();
+  syncPlayerVisual(true);
 
   lastFrameAt = performance.now();
   if (rafId !== null) cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(loop);
+}
+
+function beginFall(now: number) {
+  phase = 'falling';
+  playerState = 'falling';
+  slidePhase = null;
+  playerY = groundY;
+  fallEndAt = now + FALL_ANIMATION_MS;
+  canvas.dataset.phase = phase;
+  updateTestAttrs();
+  syncPlayerVisual(true);
 }
 
 function endGame() {
@@ -366,7 +514,18 @@ function updatePhysics(dt: number, now: number) {
       playerState = 'running';
     }
   } else if (playerState === 'sliding') {
-    if (now >= slideEndAt) playerState = 'running';
+    if (slidePhase === 'enter' && now >= slidePhaseEndAt) {
+      slidePhase = 'hold';
+      slidePhaseEndAt = slideHoldEndAt;
+      syncPlayerVisual();
+    } else if (slidePhase === 'hold' && now >= slideHoldEndAt) {
+      slidePhase = 'exit';
+      slidePhaseEndAt = now + SLIDE_EXIT_MS;
+      syncPlayerVisual();
+    } else if (slidePhase === 'exit' && now >= slidePhaseEndAt) {
+      playerState = 'running';
+      slidePhase = null;
+    }
   }
 }
 
@@ -556,55 +715,8 @@ function drawCoin(c: Coin, now: number) {
 }
 
 function drawPlayer(now: number) {
-  const pHeight = playerHeight();
-  const x = playerX - PLAYER_WIDTH / 2;
-  const y = playerTopY();
-  const facing = 1;
-
-  // 다리: 달리는 동안엔 번갈아 앞뒤로 움직이고, 점프 중엔 접히고, 슬라이드 중엔 뒤로 눕는다.
-  ctx.fillStyle = shadeColor(COLOR_PRIMARY, -0.3);
-  if (playerState === 'running') {
-    const cycle = Math.sin(distancePx / 9);
-    const legLen = pHeight * 0.32;
-    for (const sign of [-1, 1]) {
-      const swing = cycle * sign * (PLAYER_WIDTH * 0.16);
-      ctx.beginPath();
-      ctx.ellipse(playerX + swing * 0.3, y + pHeight - legLen * 0.3, 4, legLen * 0.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (playerState === 'sliding') {
-    ctx.beginPath();
-    ctx.ellipse(x - 2, y + pHeight - 4, 7, 4, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  drawRoundedRect(x, y, PLAYER_WIDTH, pHeight, playerState === 'sliding' ? 6 : 9);
-  const bodyGradient = ctx.createLinearGradient(x, y, x, y + pHeight);
-  bodyGradient.addColorStop(0, shadeColor(COLOR_PRIMARY, 0.12));
-  bodyGradient.addColorStop(1, COLOR_PRIMARY);
-  ctx.fillStyle = bodyGradient;
-  ctx.fill();
-
-  // 눈(항상 진행 방향인 오른쪽을 바라본다)
-  const eyeY = y + pHeight * (playerState === 'sliding' ? 0.42 : 0.32);
-  const eyeX = x + PLAYER_WIDTH * 0.66 * facing + (facing > 0 ? 0 : PLAYER_WIDTH * 0.34);
-  ctx.beginPath();
-  ctx.arc(eyeX, eyeY, 3.6, 0, Math.PI * 2);
-  ctx.fillStyle = '#fffdf8';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(eyeX + 1.2, eyeY, 1.9, 0, Math.PI * 2);
-  ctx.fillStyle = '#2a1f28';
-  ctx.fill();
-
-  // 점프 중엔 잔상을 살짝 남겨 속도감을 준다.
-  if (playerState === 'jumping') {
-    ctx.globalAlpha = 0.18;
-    drawRoundedRect(x - 8, y + 3, PLAYER_WIDTH, pHeight, 9);
-    ctx.fillStyle = COLOR_PRIMARY;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
+  // 물리 충돌 상자는 PLAYER_WIDTH/PLAYER_HEIGHT로 유지하고, 시각 요소만 DOM GIF로 교체한다.
+  syncPlayerVisual();
   void now;
 }
 
@@ -638,10 +750,21 @@ function draw() {
 }
 
 function loop(now: number) {
-  if (phase !== 'playing') return;
+  if (phase !== 'playing' && phase !== 'falling') return;
 
   const dt = Math.min(0.05, (now - lastFrameAt) / 1000);
   lastFrameAt = now;
+
+  if (phase === 'falling') {
+    updateTestAttrs();
+    draw();
+    if (now >= fallEndAt) {
+      endGame();
+      return;
+    }
+    rafId = requestAnimationFrame(loop);
+    return;
+  }
 
   updatePhysics(dt, now);
   updateWorld(dt);
@@ -651,7 +774,9 @@ function loop(now: number) {
   updateTestAttrs();
 
   if (collided) {
-    endGame();
+    beginFall(now);
+    draw();
+    rafId = requestAnimationFrame(loop);
     return;
   }
 
@@ -701,3 +826,6 @@ window.addEventListener('keydown', (ev) => {
 
 startBtn.addEventListener('click', startGame);
 retryBtn.addEventListener('click', startGame);
+for (const option of characterOptions) {
+  option.addEventListener('click', () => selectCharacter(option.dataset.characterId ?? DEFAULT_RUNNER_CHARACTER_ID));
+}
