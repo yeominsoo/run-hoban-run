@@ -146,6 +146,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="mh-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>9개 구멍 중 무작위로 두더지가 튀어나옵니다. 나오는 즉시 탭하세요.</li>
+          <li>다른 사람보다 먼저 맞혀야 점수가 올라갑니다.</li>
+          <li>30초 뒤 가장 많이 맞힌 사람이 우승이에요.</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="mh-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="mh-btn secondary">나가기</button>
@@ -154,7 +162,7 @@ app.innerHTML = `
     <!-- Countdown -->
     <div class="mh-panel hidden" id="countdown-panel">
       <p class="status-text">곧 두더지가 나타납니다!</p>
-      <div class="mh-countdown-number" id="countdown-number">3</div>
+      <div class="ws-countdown-number" id="countdown-number">3</div>
     </div>
 
     <!-- Playing -->

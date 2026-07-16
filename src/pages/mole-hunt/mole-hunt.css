@@ -1,4 +1,5 @@
 @import "../../shared/pastel-theme.css";
+@import "../../shared/ws-lobby-tip.css";
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -268,19 +269,6 @@ button { border: 0; cursor: pointer; }
 }
 .lobby-badge.host { background: rgba(246,196,69,0.2); border: 1px solid rgba(246,196,69,0.4); color: #ffd980; }
 .lobby-badge.offline { background: var(--color-danger-soft); border: 1px solid rgba(232, 93, 117, 0.34); color: var(--color-danger); }
-
-/* ── Countdown ────────────────────────────────── */
-.mh-countdown-number {
-  font-size: 4.4rem;
-  font-weight: 900;
-  line-height: 1;
-  color: var(--color-accent);
-  animation: mh-countdown-pop 620ms ease-out;
-}
-@keyframes mh-countdown-pop {
-  from { transform: scale(0.6); opacity: 0.2; }
-  to { transform: scale(1); opacity: 1; }
-}
 
 /* ── Playing: timer + scoreboard ───────────────── */
 .mh-timer-track {

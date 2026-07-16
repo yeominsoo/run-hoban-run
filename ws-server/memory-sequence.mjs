@@ -13,6 +13,7 @@ const START_LENGTH = 3;          // 1라운드 시퀀스 길이
 const TILE_ON_MS = 550;          // 타일 하나가 밝아져 있는 시간
 const TILE_GAP_MS = 220;         // 타일 사이 어두운 간격
 const REVEAL_LEAD_MS = 700;      // 라운드 시작 후 첫 타일이 뜨기까지의 준비 시간
+const COUNTDOWN_MS = 3000;       // 로비 "게임 시작" 클릭 후 1라운드가 실제로 시작되기까지의 카운트다운(두더지 사냥과 동일)
 const INPUT_PER_TILE_MS = 1800;  // 입력 제한시간 계산용(시퀀스 길이당)
 const INPUT_BUFFER_MS = 4000;
 const ROUND_ADVANCE_DELAY_MS = 2600; // 라운드 결과를 보여준 뒤 다음 라운드까지 대기
@@ -24,7 +25,7 @@ const ROUND_ADVANCE_DELAY_MS = 2600; // 라운드 결과를 보여준 뒤 다음
  *   players: [{ token, name, ws }],
  *   disconnectTimers: Map<token, timer>,
  *   started: boolean,
- *   phase: 'lobby' | 'reveal' | 'input' | 'round_over' | 'game_over',
+ *   phase: 'lobby' | 'countdown' | 'reveal' | 'input' | 'round_over' | 'game_over',
  *   alive: Set<token>,
  *   sequence: number[],          // 누적 시퀀스(라운드마다 1개씩 늘어남)
  *   round: number,
@@ -35,6 +36,7 @@ const ROUND_ADVANCE_DELAY_MS = 2600; // 라운드 결과를 보여준 뒤 다음
  *   revealTimers: Timeout[],
  *   inputTimer: Timeout | null,
  *   nextRoundTimer: Timeout | null,
+ *   countdownTimer: Timeout | null,
  * }
  */
 export function registerMemorySequenceServer() {
@@ -90,6 +92,7 @@ export function registerMemorySequenceServer() {
     room.revealTimers = [];
     if (room.inputTimer) { clearTimeout(room.inputTimer); room.inputTimer = null; }
     if (room.nextRoundTimer) { clearTimeout(room.nextRoundTimer); room.nextRoundTimer = null; }
+    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -117,6 +120,14 @@ export function registerMemorySequenceServer() {
   }
 
   // ── 게임 진행 ────────────────────────────────────────────────────
+  function startCountdown(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    room.phase = 'countdown';
+    broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
+    room.countdownTimer = setTimeout(() => startGame(roomCode), COUNTDOWN_MS);
+  }
+
   function startGame(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
@@ -309,6 +320,7 @@ export function registerMemorySequenceServer() {
           revealTimers: [],
           inputTimer: null,
           nextRoundTimer: null,
+          countdownTimer: null,
         });
         wsIdentity.set(ws, { roomCode, token });
         send(ws, { type: 'room_created', roomCode, token, capacity });
@@ -392,8 +404,7 @@ export function registerMemorySequenceServer() {
         if (room.started) return;
         if (room.players.filter(p => p.ws).length < MIN_PLAYERS) return;
 
-        broadcast(room, { type: 'game_starting' });
-        startGame(identity.roomCode);
+        startCountdown(identity.roomCode);
         return;
       }
 

@@ -177,6 +177,18 @@ app.innerHTML = `
       </section>
     </main>
 
+    <div class="overlay hidden" id="intro-overlay">
+      <div class="overlay-card">
+        <h2>🎮 게임 방법</h2>
+        <p class="farm-record-desc">
+          빈 밭을 탭해 작물을 심으세요. 창을 닫아도 실제 시간에 맞춰 계속 자라고, 다 자란
+          작물을 탭하면 수확해서 코인을 얻어요. 코인으로 수확량·성장 속도를 올리거나, 자동
+          수확기를 사면 다 자란 작물을 알아서 수확하고 다시 심어줘요.
+        </p>
+        <button id="intro-start-btn" class="primary-btn" type="button">시작하기</button>
+      </div>
+    </div>
+
     <div class="overlay hidden" id="crop-picker-overlay">
       <div class="overlay-card">
         <h2>어떤 작물을 심을까요?</h2>
@@ -214,6 +226,8 @@ const speedLevelEl = document.getElementById('speed-level')!;
 const yieldCostEl = document.getElementById('yield-cost')!;
 const speedCostEl = document.getElementById('speed-cost')!;
 const autoCostEl = document.getElementById('auto-cost')!;
+const introOverlay = document.getElementById('intro-overlay')!;
+const introStartBtn = document.getElementById('intro-start-btn') as HTMLButtonElement;
 const cropPickerOverlay = document.getElementById('crop-picker-overlay')!;
 const cropPickerList = document.getElementById('crop-picker-list')!;
 const cropPickerCancel = document.getElementById('crop-picker-cancel') as HTMLButtonElement;
@@ -429,6 +443,14 @@ function render(now: number) {
   testStateEl.dataset.speedLevel = String(state.speedLevel);
   testStateEl.dataset.autoHarvester = String(state.autoHarvester);
 }
+
+// ── 처음 방문 시 게임 방법 안내 ────────────────
+const TUTORIAL_SEEN_KEY = 'rhh_idle-farm_tutorial_seen';
+if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) introOverlay.classList.remove('hidden');
+introStartBtn.addEventListener('click', () => {
+  introOverlay.classList.add('hidden');
+  try { localStorage.setItem(TUTORIAL_SEEN_KEY, '1'); } catch { /* storage unavailable */ }
+});
 
 // ── 초기화 + 틱 루프 ────────────────────────
 const initNow = Date.now();

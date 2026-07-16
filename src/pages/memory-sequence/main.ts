@@ -5,7 +5,7 @@ import { createChatWidget } from '../../shared/chat-widget';
 import { setupWsRankingUI } from '../../shared/ws-ranking';
 
 type Phase =
-  | 'entry' | 'connecting' | 'lobby'
+  | 'entry' | 'connecting' | 'lobby' | 'countdown'
   | 'reveal' | 'input' | 'round_over' | 'game_over'
   | 'reconnecting' | 'error';
 
@@ -65,6 +65,7 @@ let myStatus: PlayerStatus | null = null;
 let currentRound = 0;
 let currentSequenceLength = 0;
 let revealTileTimeout: ReturnType<typeof setTimeout> | null = null;
+let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
@@ -147,9 +148,23 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="ms-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>타일 4개가 색깔 순서대로 켜집니다. 그 순서를 그대로 따라 탭하세요.</li>
+          <li>라운드마다 순서가 한 칸씩 늘어나고, 처음부터 다시 보여줍니다.</li>
+          <li>순서를 틀리면 그 라운드에서 탈락! 마지막까지 살아남은 사람이 우승이에요.</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="ms-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="ms-btn secondary">나가기</button>
+    </div>
+
+    <!-- Countdown -->
+    <div class="ms-panel hidden" id="countdown-panel">
+      <p class="status-text">곧 순서가 나타납니다! 화면에서 눈을 떼지 마세요.</p>
+      <div class="ws-countdown-number" id="countdown-number">3</div>
     </div>
 
     <!-- Playing (reveal + input share one panel) -->
@@ -201,6 +216,7 @@ const panels = {
   entry: document.getElementById('entry-panel')!,
   waiting: document.getElementById('waiting-panel')!,
   lobby: document.getElementById('lobby-panel')!,
+  countdown: document.getElementById('countdown-panel')!,
   playing: document.getElementById('playing-panel')!,
   gameOver: document.getElementById('game-over-panel')!,
   error: document.getElementById('error-panel')!,
@@ -230,6 +246,8 @@ const lobbyPlayers = document.getElementById('lobby-players')!;
 const lobbyStatus = document.getElementById('lobby-status')!;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButtonElement;
+
+const countdownNumber = document.getElementById('countdown-number')!;
 
 const roundBanner = document.getElementById('round-banner')!;
 const roundSub = document.getElementById('round-sub')!;
@@ -285,15 +303,21 @@ function clearRevealTimeout() {
   if (revealTileTimeout !== null) { clearTimeout(revealTileTimeout); revealTileTimeout = null; }
 }
 
+function clearCountdownInterval() {
+  if (countdownInterval !== null) { clearInterval(countdownInterval); countdownInterval = null; }
+}
+
 function setPhase(next: Phase) {
   phase = next;
   const vis = (el: HTMLElement, show: boolean) => el.classList.toggle('hidden', !show);
   vis(panels.entry, next === 'entry');
   vis(panels.waiting, next === 'connecting' || next === 'reconnecting');
   vis(panels.lobby, next === 'lobby');
+  vis(panels.countdown, next === 'countdown');
   vis(panels.playing, next === 'reveal' || next === 'input' || next === 'round_over');
   vis(panels.gameOver, next === 'game_over');
   vis(panels.error, next === 'error');
+  if (next !== 'countdown') clearCountdownInterval();
 }
 
 function showEntryError(msg: string) { entryError.textContent = msg; entryError.classList.remove('hidden'); }
@@ -339,7 +363,7 @@ function connect(action: PendingAction) {
 
   ws.addEventListener('close', () => {
     if (intentionalClose) return;
-    const inGame = ['lobby', 'reveal', 'input', 'round_over', 'reconnecting'].includes(phase);
+    const inGame = ['lobby', 'countdown', 'reveal', 'input', 'round_over', 'reconnecting'].includes(phase);
     if (inGame) beginReconnect();
     else if (phase !== 'entry') {
       showError('서버와의 연결이 끊어졌습니다.');
@@ -494,10 +518,19 @@ function handleServerMessage(msg: any) {
       break;
     }
 
-    case 'game_starting':
-      setPhase('connecting');
-      waitingStatus.textContent = '게임을 시작합니다…';
+    case 'game_starting': {
+      const seconds = Math.ceil((msg.countdownMs ?? 3000) / 1000);
+      let remaining = seconds;
+      countdownNumber.textContent = String(remaining);
+      setPhase('countdown');
+      clearCountdownInterval();
+      countdownInterval = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) { clearCountdownInterval(); return; }
+        countdownNumber.textContent = String(remaining);
+      }, 1000);
       break;
+    }
 
     case 'round_start': {
       currentRound = msg.round;

@@ -1,0 +1,43 @@
+/* 실시간(WS) 로비의 "게임 방법" 팁 카드 + 시작 카운트다운 숫자 공용 스타일.
+   두더지 사냥·순서 기억 챌린지에서 반복 확인되어 공용화했다(2026-07-16, 순서 기억 챌린지
+   접속 직후 라운드가 시작돼 룰을 읽을 새 없이 화면이 가려지던 문제 대응). 각 게임 CSS가
+   이 파일을 import하면 `.how-to-play` 카드와 `.ws-countdown-number`를 그대로 쓸 수 있다. */
+
+.how-to-play {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+.how-to-play-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--color-page-text);
+}
+.how-to-play-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--color-page-muted);
+}
+
+.ws-countdown-number {
+  font-size: 4.4rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--color-accent);
+  animation: ws-countdown-pop 620ms ease-out;
+}
+@keyframes ws-countdown-pop {
+  from { transform: scale(0.6); opacity: 0.2; }
+  to { transform: scale(1); opacity: 1; }
+}
