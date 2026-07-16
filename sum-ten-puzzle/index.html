@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('rhh_theme');
+          if (t === 'casino' || t === 'girlish' || t === 'cyberpunk' || t === 'cloud') {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>합이 10 퍼즐 — Toris Arcade</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/pages/sum-ten-puzzle/main.ts"></script>
+  </body>
+</html>

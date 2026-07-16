@@ -35,7 +35,8 @@ const GAMES: GameEntry[] = [
   { slug: 'updown-number', icon: 'updown-number-mark', name: '업다운 넘버', desc: '2~8명이 함께 추리하는 숫자 맞히기. 모두에게 같은 숨은 숫자가 주어지고, UP/DOWN 힌트로 가장 먼저 맞히는 사람이 1등!', category: 'multi' },
   { slug: 'multiplication-sprint', icon: 'multiplication-sprint-mark', name: '구구단 스퍼트', desc: '2~8명이 겨루는 암산 속도전. 모두에게 똑같은 구구단 문제가 동시에 나오고, 제한시간 안에 가장 많이·빠르게 맞힌 사람이 1등!', category: 'multi' },
   { slug: 'odd-even-math', icon: 'odd-even-math-mark', name: '홀짝 암산', desc: '2~8명이 겨루는 판단 속도전. 모두에게 똑같은 계산식이 동시에 나오고, 결과가 홀수인지 짝수인지 가장 빠르게 맞힌 사람이 1등!', category: 'multi' },
-  { slug: 'color-instruction', icon: 'color-instruction-mark', name: '컬러 지시 게임', desc: '2~8명이 겨루는 스트룹 효과 반응 게임. 글자의 뜻이 아니라 실제로 보이는 색을 가장 많이·빠르게 맞힌 사람이 1등!', category: 'multi' }
+  { slug: 'color-instruction', icon: 'color-instruction-mark', name: '컬러 지시 게임', desc: '2~8명이 겨루는 스트룹 효과 반응 게임. 글자의 뜻이 아니라 실제로 보이는 색을 가장 많이·빠르게 맞힌 사람이 1등!', category: 'multi' },
+  { slug: 'sum-ten-puzzle', icon: 'sum-ten-puzzle-mark', name: '합이 10 퍼즐', desc: '숫자 격자를 드래그로 묶어 합이 10이 되면 제거! 혼자 연습하거나, 2~8명이 같은 격자로 점수를 겨뤄보세요.', category: 'multi' }
 ];
 
 const CATEGORY_LABEL: Record<Category, string> = {

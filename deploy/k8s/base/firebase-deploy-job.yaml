@@ -66,6 +66,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/odd-even-math"
             - name: VITE_COLOR_INSTRUCTION_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/color-instruction"
+            - name: VITE_SUM_TEN_PUZZLE_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/sum-ten-puzzle"
           command:
             - /bin/bash
             - -lc

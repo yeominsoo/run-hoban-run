@@ -241,6 +241,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/sum-ten-puzzle/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -435,6 +444,14 @@
       {
         "source": "/color-instruction/**",
         "destination": "/color-instruction/index.html"
+      },
+      {
+        "source": "/sum-ten-puzzle",
+        "destination": "/sum-ten-puzzle/index.html"
+      },
+      {
+        "source": "/sum-ten-puzzle/**",
+        "destination": "/sum-ten-puzzle/index.html"
       }
     ]
   }

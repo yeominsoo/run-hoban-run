@@ -30,6 +30,7 @@ export default defineConfig({
         'multiplication-sprint': resolve(__dirname, 'multiplication-sprint/index.html'),
         'odd-even-math': resolve(__dirname, 'odd-even-math/index.html'),
         'color-instruction': resolve(__dirname, 'color-instruction/index.html'),
+        'sum-ten-puzzle': resolve(__dirname, 'sum-ten-puzzle/index.html'),
       },
       output: {
         manualChunks(id) {

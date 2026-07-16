@@ -808,6 +808,18 @@ body {
   box-shadow: 15px 0 0 0 #22c55e;
 }
 
+.sum-ten-puzzle-mark::before,
+.sum-ten-puzzle-mark::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--color-secondary);
+}
+.sum-ten-puzzle-mark::before { left: 7px; top: 9px; }
+.sum-ten-puzzle-mark::after { left: 21px; top: 21px; background: var(--color-accent); }
+
 .game-card-name {
   min-width: 0;
   margin: 0;

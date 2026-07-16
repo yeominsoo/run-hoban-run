@@ -15,6 +15,7 @@ import { registerUpdownNumberServer } from './updown-number.mjs';
 import { registerMultiplicationSprintServer } from './multiplication-sprint.mjs';
 import { registerOddEvenMathServer } from './odd-even-math.mjs';
 import { registerColorInstructionServer } from './color-instruction.mjs';
+import { registerSumTenPuzzleServer } from './sum-ten-puzzle.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -799,6 +800,7 @@ const { wss: updownNumberWss, getRanking: getUpdownNumberRanking } = registerUpd
 const { wss: multiplicationSprintWss, getRanking: getMultiplicationSprintRanking } = registerMultiplicationSprintServer();
 const { wss: oddEvenMathWss, getRanking: getOddEvenMathRanking } = registerOddEvenMathServer();
 const { wss: colorInstructionWss, getRanking: getColorInstructionRanking } = registerColorInstructionServer();
+const { wss: sumTenPuzzleWss, getRanking: getSumTenPuzzleRanking } = registerSumTenPuzzleServer();
 
 GAME_RANKING_HANDLERS.liar = getLiarRanking;
 GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
@@ -811,6 +813,7 @@ GAME_RANKING_HANDLERS['updown-number'] = getUpdownNumberRanking;
 GAME_RANKING_HANDLERS['multiplication-sprint'] = getMultiplicationSprintRanking;
 GAME_RANKING_HANDLERS['odd-even-math'] = getOddEvenMathRanking;
 GAME_RANKING_HANDLERS['color-instruction'] = getColorInstructionRanking;
+GAME_RANKING_HANDLERS['sum-ten-puzzle'] = getSumTenPuzzleRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -838,11 +841,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     oddEvenMathWss.handleUpgrade(req, socket, head, (ws) => oddEvenMathWss.emit('connection', ws, req));
   } else if (pathname === '/color-instruction') {
     colorInstructionWss.handleUpgrade(req, socket, head, (ws) => colorInstructionWss.emit('connection', ws, req));
+  } else if (pathname === '/sum-ten-puzzle') {
+    sumTenPuzzleWss.handleUpgrade(req, socket, head, (ws) => sumTenPuzzleWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math, /color-instruction)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math, /color-instruction, /sum-ten-puzzle)`);
 });
