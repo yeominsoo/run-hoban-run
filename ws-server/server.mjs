@@ -18,6 +18,7 @@ import { registerColorInstructionServer } from './color-instruction.mjs';
 import { registerSumTenPuzzleServer } from './sum-ten-puzzle.mjs';
 import { registerTugOfWarBattleServer } from './tug-of-war-battle.mjs';
 import { registerTerritoryClashServer } from './territory-clash.mjs';
+import { registerLightGuessServer } from './light-guess.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -805,6 +806,7 @@ const { wss: colorInstructionWss, getRanking: getColorInstructionRanking } = reg
 const { wss: sumTenPuzzleWss, getRanking: getSumTenPuzzleRanking } = registerSumTenPuzzleServer();
 const { wss: tugOfWarBattleWss, getRanking: getTugOfWarBattleRanking } = registerTugOfWarBattleServer();
 const { wss: territoryClashWss, getRanking: getTerritoryClashRanking } = registerTerritoryClashServer();
+const { wss: lightGuessWss, getRanking: getLightGuessRanking } = registerLightGuessServer();
 
 GAME_RANKING_HANDLERS.liar = getLiarRanking;
 GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
@@ -820,6 +822,7 @@ GAME_RANKING_HANDLERS['color-instruction'] = getColorInstructionRanking;
 GAME_RANKING_HANDLERS['sum-ten-puzzle'] = getSumTenPuzzleRanking;
 GAME_RANKING_HANDLERS['tug-of-war-battle'] = getTugOfWarBattleRanking;
 GAME_RANKING_HANDLERS['territory-clash'] = getTerritoryClashRanking;
+GAME_RANKING_HANDLERS['light-guess'] = getLightGuessRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -853,11 +856,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     tugOfWarBattleWss.handleUpgrade(req, socket, head, (ws) => tugOfWarBattleWss.emit('connection', ws, req));
   } else if (pathname === '/territory-clash') {
     territoryClashWss.handleUpgrade(req, socket, head, (ws) => territoryClashWss.emit('connection', ws, req));
+  } else if (pathname === '/light-guess') {
+    lightGuessWss.handleUpgrade(req, socket, head, (ws) => lightGuessWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math, /color-instruction, /sum-ten-puzzle, /tug-of-war-battle, /territory-clash)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math, /color-instruction, /sum-ten-puzzle, /tug-of-war-battle, /territory-clash, /light-guess)`);
 });

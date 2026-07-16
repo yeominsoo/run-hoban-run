@@ -854,6 +854,19 @@ body {
 .territory-clash-mark::before { left: 8px; background: #3b82f6; }
 .territory-clash-mark::after { right: 8px; background: #e5484d; }
 
+.light-guess-mark::before,
+.light-guess-mark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+.light-guess-mark::before { top: 6px; background: #4fae72; }
+.light-guess-mark::after { top: 22px; background: #e5484d; }
+
 .game-card-name {
   min-width: 0;
   margin: 0;

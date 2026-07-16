@@ -72,6 +72,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/tug-of-war-battle"
             - name: VITE_TERRITORY_CLASH_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/territory-clash"
+            - name: VITE_LIGHT_GUESS_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/light-guess"
           command:
             - /bin/bash
             - -lc

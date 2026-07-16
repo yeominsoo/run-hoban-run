@@ -33,6 +33,7 @@ export default defineConfig({
         'sum-ten-puzzle': resolve(__dirname, 'sum-ten-puzzle/index.html'),
         'tug-of-war-battle': resolve(__dirname, 'tug-of-war-battle/index.html'),
         'territory-clash': resolve(__dirname, 'territory-clash/index.html'),
+        'light-guess': resolve(__dirname, 'light-guess/index.html'),
       },
       output: {
         manualChunks(id) {
