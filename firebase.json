@@ -214,6 +214,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/multiplication-sprint/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -384,6 +393,14 @@
       {
         "source": "/updown-number/**",
         "destination": "/updown-number/index.html"
+      },
+      {
+        "source": "/multiplication-sprint",
+        "destination": "/multiplication-sprint/index.html"
+      },
+      {
+        "source": "/multiplication-sprint/**",
+        "destination": "/multiplication-sprint/index.html"
       }
     ]
   }

@@ -761,6 +761,20 @@ body {
   border-top: 10px solid var(--color-accent);
 }
 
+.multiplication-sprint-mark::before,
+.multiplication-sprint-mark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-secondary);
+}
+.multiplication-sprint-mark::before { transform: translate(-50%, -50%) rotate(45deg); }
+.multiplication-sprint-mark::after { transform: translate(-50%, -50%) rotate(-45deg); background: var(--color-accent); }
+
 .game-card-name {
   min-width: 0;
   margin: 0;

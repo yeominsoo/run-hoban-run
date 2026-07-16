@@ -27,6 +27,7 @@ export default defineConfig({
         'mole-hunt': resolve(__dirname, 'mole-hunt/index.html'),
         'memory-sequence': resolve(__dirname, 'memory-sequence/index.html'),
         'updown-number': resolve(__dirname, 'updown-number/index.html'),
+        'multiplication-sprint': resolve(__dirname, 'multiplication-sprint/index.html'),
       },
       output: {
         manualChunks(id) {
