@@ -250,6 +250,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/tug-of-war-battle/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -452,6 +461,14 @@
       {
         "source": "/sum-ten-puzzle/**",
         "destination": "/sum-ten-puzzle/index.html"
+      },
+      {
+        "source": "/tug-of-war-battle",
+        "destination": "/tug-of-war-battle/index.html"
+      },
+      {
+        "source": "/tug-of-war-battle/**",
+        "destination": "/tug-of-war-battle/index.html"
       }
     ]
   }

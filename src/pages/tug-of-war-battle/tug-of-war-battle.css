@@ -1,0 +1,329 @@
+@import "../../shared/pastel-theme.css";
+@import "../../shared/ws-lobby-tip.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh; min-height: 100dvh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background: var(--color-page-bg);
+  color: var(--color-page-text);
+}
+
+button, input { font: inherit; }
+button { border: 0; cursor: pointer; }
+.hidden { display: none !important; }
+
+.tw-shell {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+}
+
+/* ── Top bar ────────────────────────────────── */
+.tw-top-bar {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 18px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-page-muted);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.66);
+}
+.back-link:hover { color: var(--color-page-text); background: rgba(255, 255, 255, 0.82); }
+
+.tw-stage {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tw-title {
+  margin: 0;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-weight: 900;
+  text-align: center;
+  background: linear-gradient(135deg, var(--color-primary) 12%, var(--color-lilac) 58%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.tw-sub {
+  margin: 0 0 22px;
+  font-size: 0.82rem;
+  color: var(--color-page-faint);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+/* ── Panels ─────────────────────────────────── */
+.tw-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 28px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+}
+.tw-panel.wide { padding: 24px 18px; }
+
+.field-label {
+  align-self: flex-start;
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-page-muted);
+}
+
+.nickname-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-page-text);
+  font-size: 1rem;
+}
+.nickname-input:focus { outline: none; border-color: rgba(246,196,69,0.55); }
+.nickname-input::placeholder { color: rgba(75, 52, 71, 0.30); }
+
+.tw-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 11px;
+  font-weight: 800;
+  font-size: 0.94rem;
+  color: var(--color-page-text);
+}
+.tw-btn.primary { background: var(--color-secondary); color: #173d36; }
+.tw-btn.primary:hover:not(:disabled) { background: #70dec9; }
+.tw-btn.secondary {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--color-border);
+  color: var(--color-page-muted);
+}
+.tw-btn.secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.90); color: var(--color-page-text); }
+.tw-btn:disabled { opacity: 0.4; cursor: default; }
+
+.status-text {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--color-page-muted);
+  text-align: center;
+}
+
+.spinner {
+  width: 34px; height: 34px;
+  border: 4px solid rgba(246,196,69,0.22);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: tw-spin 850ms linear infinite;
+}
+@keyframes tw-spin { to { transform: rotate(360deg); } }
+
+/* ── Entry tabs ─────────────────────────────── */
+.entry-tabs {
+  width: 100%;
+  display: flex;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  padding: 3px;
+  gap: 3px;
+}
+.entry-tab {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-page-muted);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.entry-tab.active { background: rgba(246,196,69,0.18); color: var(--color-page-text); }
+
+.entry-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-code-input {
+  text-align: center;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.entry-error {
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--color-danger-soft);
+  border: 1px solid rgba(232, 93, 117, 0.36);
+  color: var(--color-danger);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+/* ── Resume-session banner ──────────────────── */
+.resume-banner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(246,196,69,0.08);
+  border: 1px solid rgba(246,196,69,0.24);
+}
+.resume-banner .status-text { margin: 0; text-align: left; color: var(--color-page-text); font-weight: 700; }
+.resume-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.resume-actions .tw-btn { min-height: 38px; font-size: 0.84rem; }
+
+/* ── Room share ─────────────────────────────── */
+.room-share {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  background: rgba(246,196,69,0.08);
+  border: 1px solid rgba(246,196,69,0.24);
+  border-radius: 12px;
+}
+.room-share-label {
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-page-muted);
+}
+.room-code-display {
+  font-size: 1.7rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: var(--color-page-text);
+}
+
+/* ── Playing: timer + names + rope + tap button ────── */
+.tw-timer-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.tw-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-secondary), var(--color-accent));
+  transition: width 220ms linear;
+}
+
+.tw-names-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+.tw-name-tag { color: var(--color-page-muted); }
+.tw-name-tag.me { color: var(--color-accent-strong, var(--color-page-text)); }
+
+.tw-rope-track {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(59,130,246,0.22), rgba(255,255,255,0.4) 48%, rgba(232,93,117,0.22));
+  border: 1px solid var(--color-border);
+  overflow: visible;
+}
+.tw-rope-track::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: rgba(75,52,71,0.3);
+  transform: translateX(-50%);
+}
+.tw-rope-marker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--color-secondary);
+  border: 3px solid #fff;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+  transform: translate(-50%, -50%);
+  transition: left 90ms linear;
+}
+
+.tw-tap-btn {
+  width: 100%;
+  min-height: 140px;
+  border-radius: 24px;
+  background: linear-gradient(155deg, var(--color-secondary), #70dec9);
+  color: #173d36;
+  font-size: 1.6rem;
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(94,207,188,0.4);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  transition: transform 60ms ease;
+}
+.tw-tap-btn:active { transform: scale(0.96); }
+
+/* ── Game over ─────────────────────────────────── */
+.set-over-result {
+  font-size: 1.4rem;
+  font-weight: 900;
+  margin: 0;
+  text-align: center;
+}
+.set-over-result.win { color: #8ff0b0; }
+.set-over-result.lose { color: var(--color-danger); }
+
+@media (max-width: 420px) {
+  .tw-panel { padding: 24px 18px; }
+  .tw-tap-btn { min-height: 120px; font-size: 1.4rem; }
+}

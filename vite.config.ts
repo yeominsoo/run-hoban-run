@@ -31,6 +31,7 @@ export default defineConfig({
         'odd-even-math': resolve(__dirname, 'odd-even-math/index.html'),
         'color-instruction': resolve(__dirname, 'color-instruction/index.html'),
         'sum-ten-puzzle': resolve(__dirname, 'sum-ten-puzzle/index.html'),
+        'tug-of-war-battle': resolve(__dirname, 'tug-of-war-battle/index.html'),
       },
       output: {
         manualChunks(id) {
