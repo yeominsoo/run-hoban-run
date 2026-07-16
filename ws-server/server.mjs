@@ -20,6 +20,7 @@ import { registerTugOfWarBattleServer } from './tug-of-war-battle.mjs';
 import { registerTerritoryClashServer } from './territory-clash.mjs';
 import { registerLightGuessServer } from './light-guess.mjs';
 import { registerReversiServer } from './reversi.mjs';
+import { registerGomokuServer } from './gomoku.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -809,6 +810,7 @@ const { wss: tugOfWarBattleWss, getRanking: getTugOfWarBattleRanking } = registe
 const { wss: territoryClashWss, getRanking: getTerritoryClashRanking } = registerTerritoryClashServer();
 const { wss: lightGuessWss, getRanking: getLightGuessRanking } = registerLightGuessServer();
 const { wss: reversiWss, getRanking: getReversiRanking } = registerReversiServer();
+const { wss: gomokuWss, getRanking: getGomokuRanking } = registerGomokuServer();
 
 GAME_RANKING_HANDLERS.liar = getLiarRanking;
 GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
@@ -826,6 +828,7 @@ GAME_RANKING_HANDLERS['tug-of-war-battle'] = getTugOfWarBattleRanking;
 GAME_RANKING_HANDLERS['territory-clash'] = getTerritoryClashRanking;
 GAME_RANKING_HANDLERS['light-guess'] = getLightGuessRanking;
 GAME_RANKING_HANDLERS['reversi'] = getReversiRanking;
+GAME_RANKING_HANDLERS['gomoku'] = getGomokuRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -863,11 +866,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     lightGuessWss.handleUpgrade(req, socket, head, (ws) => lightGuessWss.emit('connection', ws, req));
   } else if (pathname === '/reversi') {
     reversiWss.handleUpgrade(req, socket, head, (ws) => reversiWss.emit('connection', ws, req));
+  } else if (pathname === '/gomoku') {
+    gomokuWss.handleUpgrade(req, socket, head, (ws) => gomokuWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math, /color-instruction, /sum-ten-puzzle, /tug-of-war-battle, /territory-clash, /light-guess, /reversi)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math, /color-instruction, /sum-ten-puzzle, /tug-of-war-battle, /territory-clash, /light-guess, /reversi, /gomoku)`);
 });

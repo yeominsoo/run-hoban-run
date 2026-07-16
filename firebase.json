@@ -286,6 +286,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/gomoku/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -520,6 +529,14 @@
       {
         "source": "/reversi/**",
         "destination": "/reversi/index.html"
+      },
+      {
+        "source": "/gomoku",
+        "destination": "/gomoku/index.html"
+      },
+      {
+        "source": "/gomoku/**",
+        "destination": "/gomoku/index.html"
       }
     ]
   }

@@ -40,7 +40,8 @@ const GAMES: GameEntry[] = [
   { slug: 'tug-of-war-battle', icon: 'tug-of-war-battle-mark', name: '줄다리기 배틀', desc: '1:1 실시간 연타 대결. 상대보다 먼저 줄을 내 쪽으로 끝까지 당기면 승리!', category: 'multi' },
   { slug: 'territory-clash', icon: 'territory-clash-mark', name: '영역 쟁탈전', desc: '1:1 실시간 탭 대결. 빈 칸과 상대 칸을 탭해서 내 색으로 칠하고, 제한시간 뒤 더 넓게 차지한 사람이 승리!', category: 'multi' },
   { slug: 'light-guess', icon: 'light-guess-mark', name: '라이트 게스', desc: '2~8명이 함께하는 무궁화꽃이피었습니다 스타일 서바이벌. 초록불엔 계속 탭, 빨간불엔 정지! 마지막 생존자가 승리!', category: 'multi' },
-  { slug: 'reversi', icon: 'reversi-mark', name: '리버시', desc: '1:1 실시간 대결. 상대 돌을 내 돌 사이에 끼워 뒤집는 고전 보드게임, 더 많은 돌을 차지한 사람이 승리!', category: 'multi' }
+  { slug: 'reversi', icon: 'reversi-mark', name: '리버시', desc: '1:1 실시간 대결. 상대 돌을 내 돌 사이에 끼워 뒤집는 고전 보드게임, 더 많은 돌을 차지한 사람이 승리!', category: 'multi' },
+  { slug: 'gomoku', icon: 'gomoku-mark', name: '오목', desc: '1:1 실시간 대결. 가로·세로·대각선 어디든 내 돌을 5개 이상 먼저 이으면 승리하는 고전 보드게임!', category: 'multi' }
 ];
 
 const CATEGORY_LABEL: Record<Category, string> = {

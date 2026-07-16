@@ -35,6 +35,7 @@ export default defineConfig({
         'territory-clash': resolve(__dirname, 'territory-clash/index.html'),
         'light-guess': resolve(__dirname, 'light-guess/index.html'),
         reversi: resolve(__dirname, 'reversi/index.html'),
+        gomoku: resolve(__dirname, 'gomoku/index.html'),
       },
       output: {
         manualChunks(id) {
