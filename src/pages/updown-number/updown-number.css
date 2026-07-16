@@ -1,0 +1,398 @@
+@import "../../shared/pastel-theme.css";
+@import "../../shared/ws-lobby-tip.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh; min-height: 100dvh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background: var(--color-page-bg);
+  color: var(--color-page-text);
+}
+
+button, input { font: inherit; }
+button { border: 0; cursor: pointer; }
+.hidden { display: none !important; }
+
+.ud-shell {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+}
+
+/* ── Top bar ────────────────────────────────── */
+.ud-top-bar {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 18px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-page-muted);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.66);
+}
+.back-link:hover { color: var(--color-page-text); background: rgba(255, 255, 255, 0.82); }
+
+.ud-stage {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.ud-title {
+  margin: 0;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-weight: 900;
+  text-align: center;
+  background: linear-gradient(135deg, var(--color-primary) 12%, var(--color-lilac) 58%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ud-sub {
+  margin: 0 0 22px;
+  font-size: 0.82rem;
+  color: var(--color-page-faint);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+/* ── Panels ─────────────────────────────────── */
+.ud-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 28px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+}
+.ud-panel.wide { padding: 24px 18px; }
+
+.field-label {
+  align-self: flex-start;
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-page-muted);
+}
+
+.nickname-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-page-text);
+  font-size: 1rem;
+}
+.nickname-input:focus { outline: none; border-color: rgba(246,196,69,0.55); }
+.nickname-input::placeholder { color: rgba(75, 52, 71, 0.30); }
+
+.capacity-input { text-align: center; max-width: 120px; align-self: center; }
+
+.ud-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 11px;
+  font-weight: 800;
+  font-size: 0.94rem;
+  color: var(--color-page-text);
+}
+.ud-btn.primary { background: var(--color-secondary); color: #173d36; }
+.ud-btn.primary:hover:not(:disabled) { background: #70dec9; }
+.ud-btn.secondary {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--color-border);
+  color: var(--color-page-muted);
+}
+.ud-btn.secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.90); color: var(--color-page-text); }
+.ud-btn:disabled { opacity: 0.4; cursor: default; }
+
+.status-text {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--color-page-muted);
+  text-align: center;
+}
+.status-text.muted { font-size: 0.78rem; color: var(--color-page-faint); }
+
+.spinner {
+  width: 34px; height: 34px;
+  border: 4px solid rgba(246,196,69,0.22);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: ud-spin 850ms linear infinite;
+}
+@keyframes ud-spin { to { transform: rotate(360deg); } }
+
+/* ── Entry tabs ─────────────────────────────── */
+.entry-tabs {
+  width: 100%;
+  display: flex;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  padding: 3px;
+  gap: 3px;
+}
+.entry-tab {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-page-muted);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.entry-tab.active { background: rgba(246,196,69,0.18); color: var(--color-page-text); }
+
+.entry-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-code-input {
+  text-align: center;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.entry-error {
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--color-danger-soft);
+  border: 1px solid rgba(232, 93, 117, 0.36);
+  color: var(--color-danger);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+/* ── Resume-session banner ──────────────────── */
+.resume-banner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(246,196,69,0.08);
+  border: 1px solid rgba(246,196,69,0.24);
+}
+.resume-banner .status-text { margin: 0; text-align: left; color: var(--color-page-text); font-weight: 700; }
+.resume-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.resume-actions .ud-btn { min-height: 38px; font-size: 0.84rem; }
+
+/* ── Room share / lobby ─────────────────────── */
+.room-share {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  background: rgba(246,196,69,0.08);
+  border: 1px solid rgba(246,196,69,0.24);
+  border-radius: 12px;
+}
+.room-share-label {
+  font-size: 0.71rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-page-muted);
+}
+.room-code-display {
+  font-size: 1.7rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: var(--color-page-text);
+}
+
+.lobby-players {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.lobby-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.lobby-player.disconnected { opacity: 0.45; }
+.lobby-name { flex: 1; font-weight: 700; font-size: 0.9rem; }
+.lobby-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.lobby-badge.host { background: rgba(246,196,69,0.2); border: 1px solid rgba(246,196,69,0.4); color: #ffd980; }
+.lobby-badge.offline { background: var(--color-danger-soft); border: 1px solid rgba(232, 93, 117, 0.34); color: var(--color-danger); }
+
+/* ── Playing: timer + hint + guess form ────────── */
+.ud-timer-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.ud-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-secondary), var(--color-accent));
+  transition: width 220ms linear;
+}
+
+.ud-hint-display {
+  margin: 0;
+  padding: 14px;
+  width: 100%;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--color-border);
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-align: center;
+  color: var(--color-page-text);
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.ud-hint-display.up { background: rgba(59,130,246,0.14); border-color: rgba(59,130,246,0.35); color: #2563eb; }
+.ud-hint-display.down { background: rgba(232,93,117,0.14); border-color: rgba(232,93,117,0.35); color: var(--color-danger); }
+.ud-hint-display.correct { background: rgba(143,240,176,0.2); border-color: rgba(143,240,176,0.5); color: #1c7a44; }
+
+.ud-guess-form {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+}
+.ud-guess-input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-page-text);
+  font-size: 1.1rem;
+  font-weight: 800;
+  text-align: center;
+}
+.ud-guess-input:focus { outline: none; border-color: rgba(246,196,69,0.55); }
+.ud-guess-input:disabled { opacity: 0.5; }
+.ud-guess-form .ud-btn { width: auto; flex: 0 0 auto; padding: 0 20px; }
+
+.ud-my-stat {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-page-muted);
+}
+
+/* ── Live board ─────────────────────────────────── */
+.ud-board {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.ud-board-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+.ud-board-row.me { border-color: rgba(246,196,69,0.5); background: rgba(246,196,69,0.12); }
+.ud-board-row.solved { color: #1c7a44; }
+.ud-board-count { font-weight: 800; color: var(--color-page-muted); }
+
+/* ── Game over / final board ─────────────────── */
+.set-over-result {
+  font-size: 1.5rem;
+  font-weight: 900;
+  margin: 0;
+  text-align: center;
+}
+.set-over-result.win { color: #8ff0b0; }
+.set-over-result.lose { color: var(--color-danger); }
+
+.ud-secret-reveal {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--color-page-muted);
+  text-align: center;
+}
+
+.roles-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scores-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.scores-row.me { border-color: rgba(246,196,69,0.4); }
+.scores-row span:last-child { margin-left: auto; font-weight: 800; }
+
+@media (max-width: 420px) {
+  .ud-panel { padding: 24px 18px; }
+}

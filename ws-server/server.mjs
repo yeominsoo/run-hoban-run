@@ -11,6 +11,7 @@ import { registerYutnoriServer } from './yutnori.mjs';
 import { registerStrategyYutnoriServer } from './strategy-yutnori.mjs';
 import { registerMoleHuntServer } from './mole-hunt.mjs';
 import { registerMemorySequenceServer } from './memory-sequence.mjs';
+import { registerUpdownNumberServer } from './updown-number.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -791,6 +792,7 @@ const { wss: yutnoriWss, getRanking: getYutnoriRanking } = registerYutnoriServer
 const { wss: strategyYutnoriWss, getRanking: getStrategyYutnoriRanking } = registerStrategyYutnoriServer();
 const { wss: moleHuntWss, getRanking: getMoleHuntRanking } = registerMoleHuntServer();
 const { wss: memorySequenceWss, getRanking: getMemorySequenceRanking } = registerMemorySequenceServer();
+const { wss: updownNumberWss, getRanking: getUpdownNumberRanking } = registerUpdownNumberServer();
 
 GAME_RANKING_HANDLERS.liar = getLiarRanking;
 GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
@@ -799,6 +801,7 @@ GAME_RANKING_HANDLERS.yutnori = getYutnoriRanking;
 GAME_RANKING_HANDLERS['strategy-yutnori'] = getStrategyYutnoriRanking;
 GAME_RANKING_HANDLERS['mole-hunt'] = getMoleHuntRanking;
 GAME_RANKING_HANDLERS['memory-sequence'] = getMemorySequenceRanking;
+GAME_RANKING_HANDLERS['updown-number'] = getUpdownNumberRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -818,11 +821,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     moleHuntWss.handleUpgrade(req, socket, head, (ws) => moleHuntWss.emit('connection', ws, req));
   } else if (pathname === '/memory-sequence') {
     memorySequenceWss.handleUpgrade(req, socket, head, (ws) => memorySequenceWss.emit('connection', ws, req));
+  } else if (pathname === '/updown-number') {
+    updownNumberWss.handleUpgrade(req, socket, head, (ws) => updownNumberWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number)`);
 });

@@ -58,6 +58,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/mole-hunt"
             - name: VITE_MEMORY_SEQUENCE_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/memory-sequence"
+            - name: VITE_UPDOWN_NUMBER_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/updown-number"
           command:
             - /bin/bash
             - -lc

@@ -205,6 +205,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/updown-number/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -367,6 +376,14 @@
       {
         "source": "/memory-sequence/**",
         "destination": "/memory-sequence/index.html"
+      },
+      {
+        "source": "/updown-number",
+        "destination": "/updown-number/index.html"
+      },
+      {
+        "source": "/updown-number/**",
+        "destination": "/updown-number/index.html"
       }
     ]
   }

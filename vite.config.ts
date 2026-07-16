@@ -26,6 +26,7 @@ export default defineConfig({
         'idle-farm': resolve(__dirname, 'idle-farm/index.html'),
         'mole-hunt': resolve(__dirname, 'mole-hunt/index.html'),
         'memory-sequence': resolve(__dirname, 'memory-sequence/index.html'),
+        'updown-number': resolve(__dirname, 'updown-number/index.html'),
       },
       output: {
         manualChunks(id) {
