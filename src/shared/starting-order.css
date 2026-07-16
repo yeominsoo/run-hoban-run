@@ -1,0 +1,131 @@
+/* 선공/후공 결정전(가위바위보 + 팀 주사위 대표선출) 공용 스타일.
+ * reversi/gomoku/yutnori/strategy-yutnori가 함께 쓴다. */
+
+.decide-names {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.decide-name {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  color: var(--color-page-text);
+}
+.vs-mark {
+  font-weight: 900;
+  font-size: 0.82rem;
+  color: var(--color-page-faint);
+  letter-spacing: 0.06em;
+}
+
+.decide-hands {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 6px 0;
+  min-height: 96px;
+}
+.hand-slot {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+}
+.hand-slot svg { width: 100%; height: 100%; }
+
+.decide-status {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-page-muted);
+  text-align: center;
+}
+
+.decide-choice-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.decide-choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  color: var(--color-page-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: background 140ms, border-color 140ms, transform 140ms;
+}
+.decide-choice-btn svg { width: 42px; height: 42px; }
+.decide-choice-btn:hover:not(:disabled) {
+  background: var(--color-secondary-soft);
+  border-color: rgba(94, 207, 188, 0.38);
+  transform: translateY(-2px);
+}
+.decide-choice-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+/* ── 팀 주사위 대표 선출 ─────────────────────────── */
+.dice-off-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.dice-off-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+.dice-off-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--color-border);
+  min-width: 76px;
+}
+.dice-off-player.winner {
+  background: var(--color-secondary-soft);
+  border-color: rgba(94, 207, 188, 0.52);
+}
+.dice-off-name {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-page-muted);
+  text-align: center;
+}
+.dice-off-face {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: var(--color-page-text);
+}
+.dice-off-face.rolling { animation: dice-off-shake 120ms linear infinite; }
+@keyframes dice-off-shake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}

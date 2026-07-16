@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRankingStore } from './ranking-store.mjs';
+import { resolveRps, rollDiceOff } from './starting-order.mjs';
 import {
   createStrategyYutGame,
   currentMover,
@@ -18,6 +19,10 @@ const RECONNECT_GRACE_MS = 45000;
 const FACE_TIMEOUT_MS = 20000; // 라운드마다 20초 안에 앞/뒷면을 제출하지 않으면 자동으로 '앞면' 제출 처리
 const MOVE_TIMEOUT_MS = 20000; // 자기 차례에 20초 안에 말을 고르지 않으면 자동 이동 정책으로 말을 이동
 const MAX_CHAT_LEN = 120;
+const DICE_ROUND_ANIM_MS = 700; // 주사위 대표 선출 애니메이션 한 라운드당 재생 시간(클라이언트와 맞춤)
+const DECIDE_TIMEOUT_MS = 8000;  // 선공 결정 가위바위보 응답 제한시간
+const DECIDE_REVEAL_MS = 1800;   // 가위바위보 결과를 보여준 뒤 실제 대국 시작까지 대기 시간
+const DECIDE_TIE_PAUSE_MS = 900; // 비겼을 때 "다시!" 메시지를 보여주는 시간
 const REACTIONS = {
   tease: { id: 'tease', emoji: '😜', label: '놀림' },
   sad: { id: 'sad', emoji: '😭', label: '슬픔' },
@@ -97,6 +102,9 @@ export function registerStrategyYutnoriServer() {
     if (room.moveTimer) { clearTimeout(room.moveTimer); room.moveTimer = null; }
   }
   function clearAllGameTimers(room) { clearRoundTimer(room); clearMoveTimer(room); }
+  function clearDecideTimer(room) {
+    if (room.decideTimer) { clearTimeout(room.decideTimer); room.decideTimer = null; }
+  }
 
   function broadcastLobbyUpdate(room, roomCode) {
     const playerList = room.players.map(p => ({
@@ -207,13 +215,111 @@ export function registerStrategyYutnoriServer() {
     else armMoveTimer(roomCode, room);
   }
 
-  function startGame(roomCode) {
+  // ── 선공 결정전: 2:2 팀 각자 주사위로 대표 선출 → 대표끼리 가위바위보(단판) ──
+  function startDeciding(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
     const connected = room.players.filter(p => p.ws);
     if (connected.length !== PLAYERS_REQUIRED) return;
 
-    room.game = createStrategyYutGame(connected.map(p => p.token));
+    const tokens = connected.map(p => p.token);
+    room.pendingTokens = tokens;
+    room.phase = 'deciding';
+    room.decidingChoices = {};
+
+    const sides = [[tokens[0], tokens[1]], [tokens[2], tokens[3]]]; // createStrategyYutGame과 동일한 팀 구성
+    const diceA = rollDiceOff(sides[0], Math.random);
+    const diceB = rollDiceOff(sides[1], Math.random);
+    room.decideRepA = diceA.winnerToken;
+    room.decideRepB = diceB.winnerToken;
+
+    broadcast(room, {
+      type: 'decide_start',
+      sideA: sides[0].map(token => ({ token, name: nameOf(room, token) })),
+      sideB: sides[1].map(token => ({ token, name: nameOf(room, token) })),
+      diceRoundsA: diceA.rounds,
+      diceRoundsB: diceB.rounds,
+      repAToken: diceA.winnerToken, repAName: nameOf(room, diceA.winnerToken),
+      repBToken: diceB.winnerToken, repBName: nameOf(room, diceB.winnerToken),
+    });
+
+    const maxRounds = Math.max(diceA.rounds.length, diceB.rounds.length);
+    const diceAnimMs = maxRounds > 0 ? maxRounds * DICE_ROUND_ANIM_MS + 500 : 300;
+    room.decideTimer = setTimeout(() => armDecideRpsTimer(roomCode), diceAnimMs);
+  }
+
+  function armDecideRpsTimer(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    room.decidingChoices = {};
+    broadcast(room, {
+      type: 'decide_rps_ready',
+      repAToken: room.decideRepA, repAName: nameOf(room, room.decideRepA),
+      repBToken: room.decideRepB, repBName: nameOf(room, room.decideRepB),
+    });
+    clearDecideTimer(room);
+    room.decideTimer = setTimeout(() => decideAutoTimeout(roomCode), DECIDE_TIMEOUT_MS);
+  }
+
+  function decideAutoTimeout(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    const choices = ['rock', 'paper', 'scissors'];
+    for (const token of [room.decideRepA, room.decideRepB]) {
+      if (!room.decidingChoices[token]) {
+        room.decidingChoices[token] = choices[Math.floor(Math.random() * choices.length)];
+      }
+    }
+    resolveDeciding(roomCode);
+  }
+
+  function handleDecideChoice(roomCode, token, choice) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    if (!['rock', 'paper', 'scissors'].includes(choice)) return;
+    if (token !== room.decideRepA && token !== room.decideRepB) return;
+    room.decidingChoices[token] = choice;
+    if (room.decidingChoices[room.decideRepA] && room.decidingChoices[room.decideRepB]) resolveDeciding(roomCode);
+  }
+
+  function resolveDeciding(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    clearDecideTimer(room);
+
+    const choiceA = room.decidingChoices[room.decideRepA];
+    const choiceB = room.decidingChoices[room.decideRepB];
+    const result = resolveRps(choiceA, choiceB);
+
+    if (result === null) {
+      broadcast(room, { type: 'decide_tie', choiceA, choiceB });
+      room.decidingChoices = {};
+      setTimeout(() => {
+        if (rooms.get(roomCode)?.phase === 'deciding') armDecideRpsTimer(roomCode);
+      }, DECIDE_TIE_PAUSE_MS);
+      return;
+    }
+
+    const winnerToken = result === 'a' ? room.decideRepA : room.decideRepB;
+    broadcast(room, {
+      type: 'decide_result',
+      choiceA, choiceB,
+      winnerToken, winnerName: nameOf(room, winnerToken),
+    });
+    setTimeout(() => startGame(roomCode, winnerToken), DECIDE_REVEAL_MS);
+  }
+
+  function startGame(roomCode, startingToken) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    const tokens = room.pendingTokens;
+    if (!tokens || tokens.length !== PLAYERS_REQUIRED) return;
+
+    room.game = createStrategyYutGame(tokens);
+    if (startingToken) {
+      const idx = tokens.indexOf(startingToken);
+      if (idx >= 0) room.game.moveIndex = idx;
+    }
     room.started = true;
     room.phase = 'playing';
 
@@ -304,6 +410,7 @@ export function registerStrategyYutnoriServer() {
     if (!room) return;
     clearAllDisconnectTimers(room);
 
+    const leavingName = nameOf(room, leavingToken);
     const leavingIsHost = room.hostToken === leavingToken;
     const remaining = room.players.filter(p => p.token !== leavingToken);
     room.players = remaining;
@@ -313,6 +420,18 @@ export function registerStrategyYutnoriServer() {
       room.hostToken = newHost.token;
     }
     wsIdentity.forEach((id, ws) => { if (id.token === leavingToken) wsIdentity.delete(ws); });
+
+    if (room.phase === 'deciding') {
+      clearDecideTimer(room);
+      room.phase = 'lobby';
+      room.pendingTokens = null;
+      room.decideRepA = null;
+      room.decideRepB = null;
+      room.decidingChoices = {};
+      broadcast(room, { type: 'decide_aborted', reason: `${leavingName}님이 나가서 선공 결정을 다시 진행해요.` });
+      broadcastLobbyUpdate(room, roomCode);
+      return;
+    }
 
     if (!room.started) {
       broadcastLobbyUpdate(room, roomCode);
@@ -364,6 +483,11 @@ export function registerStrategyYutnoriServer() {
           phase: 'lobby',
           game: null,
           roundTimer: null, moveTimer: null,
+          decideTimer: null,
+          pendingTokens: null,
+          decideRepA: null,
+          decideRepB: null,
+          decidingChoices: {},
         });
         wsIdentity.set(ws, { roomCode, token });
         send(ws, { type: 'room_created', roomCode, token, capacity: PLAYERS_REQUIRED });
@@ -435,7 +559,15 @@ export function registerStrategyYutnoriServer() {
         if (room.players.filter(p => p.ws).length !== PLAYERS_REQUIRED) return;
 
         broadcast(room, { type: 'game_starting' });
-        startGame(identity.roomCode);
+        startDeciding(identity.roomCode);
+        return;
+      }
+
+      if (msg.type === 'decide_choice') {
+        const identity = wsIdentity.get(ws);
+        const room = identity && rooms.get(identity.roomCode);
+        if (!room) return;
+        handleDecideChoice(identity.roomCode, identity.token, msg.choice);
         return;
       }
 

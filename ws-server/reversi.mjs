@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { createRankingStore } from './ranking-store.mjs';
+import { resolveRps } from './starting-order.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const RECONNECT_GRACE_MS = 45000;
@@ -9,6 +10,9 @@ const MAX_CHAT_LEN = 120;
 const COUNTDOWN_MS = 3000;
 const SIZE = 8;                  // 표준 8x8 리버시(오델로) 보드
 const TURN_TIMEOUT_MS = 30000;   // 자기 차례 30초 안에 두지 않으면 서버가 무작위 합법수를 대신 둔다
+const DECIDE_TIMEOUT_MS = 8000;  // 선공 결정 가위바위보 응답 제한시간
+const DECIDE_REVEAL_MS = 1800;   // 가위바위보 결과를 보여준 뒤 실제 대국 시작까지 대기 시간
+const DECIDE_TIE_PAUSE_MS = 900; // 비겼을 때 "다시!" 메시지를 보여주는 시간
 
 const DIRS = [
   [-1, -1], [-1, 0], [-1, 1],
@@ -73,14 +77,17 @@ function countDiscs(board) {
 /**
  * Room:
  * {
- *   hostToken, players: [{ token, name, ws }],  // 정확히 2명, host=black(선공), guest=white
+ *   hostToken, players: [{ token, name, ws }],  // 정확히 2명
  *   disconnectTimers: Map<token, timer>,
  *   started: boolean,
- *   phase: 'lobby' | 'countdown' | 'playing' | 'game_over',
+ *   phase: 'lobby' | 'countdown' | 'deciding' | 'playing' | 'game_over',
  *   board: (string|null)[][],
  *   turn: 'black' | 'white',
+ *   blackToken/whiteToken: string | null,  // 가위바위보로 정해짐(호스트가 항상 흑이 아님)
+ *   decidingChoices: Record<token, 'rock'|'paper'|'scissors'>,
  *   turnTimer: Timeout | null,
  *   countdownTimer: Timeout | null,
+ *   decideTimer: Timeout | null,
  * }
  */
 export function registerReversiServer() {
@@ -123,8 +130,8 @@ export function registerReversiServer() {
 
   function playerByToken(room, token) { return room.players.find(p => p.token === token); }
   function otherPlayer(room, token) { return room.players.find(p => p.token !== token); }
-  function colorOf(room, token) { return room.players[0]?.token === token ? 'black' : 'white'; }
-  function tokenOfColor(room, color) { return color === 'black' ? room.players[0]?.token : room.players[1]?.token; }
+  function colorOf(room, token) { return room.blackToken === token ? 'black' : 'white'; }
+  function tokenOfColor(room, color) { return color === 'black' ? room.blackToken : room.whiteToken; }
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
@@ -136,6 +143,7 @@ export function registerReversiServer() {
   function clearRoundTimers(room) {
     if (room.turnTimer) { clearTimeout(room.turnTimer); room.turnTimer = null; }
     if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.decideTimer) { clearTimeout(room.decideTimer); room.decideTimer = null; }
   }
 
   // ── 게임 진행 ────────────────────────────────────────────────────
@@ -144,7 +152,81 @@ export function registerReversiServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startMatch(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = setTimeout(() => startDeciding(roomCode), COUNTDOWN_MS);
+  }
+
+  // ── 선공(흑) 결정전: 가위바위보 단판, 비기면 즉시 재도전 ──────────
+  function startDeciding(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    room.phase = 'deciding';
+    room.decidingChoices = {};
+    const [p1, p2] = room.players;
+    broadcast(room, {
+      type: 'decide_start',
+      playerAToken: p1?.token, playerAName: p1?.name ?? '?',
+      playerBToken: p2?.token, playerBName: p2?.name ?? '?',
+    });
+    armDecideTimer(roomCode);
+  }
+
+  function armDecideTimer(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    if (room.decideTimer) clearTimeout(room.decideTimer);
+    room.decideTimer = setTimeout(() => decideAutoTimeout(roomCode), DECIDE_TIMEOUT_MS);
+  }
+
+  function decideAutoTimeout(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    const choices = ['rock', 'paper', 'scissors'];
+    for (const p of room.players) {
+      if (!room.decidingChoices[p.token]) {
+        room.decidingChoices[p.token] = choices[Math.floor(Math.random() * choices.length)];
+      }
+    }
+    resolveDeciding(roomCode);
+  }
+
+  function handleDecideChoice(roomCode, token, choice) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    if (!['rock', 'paper', 'scissors'].includes(choice)) return;
+    if (!playerByToken(room, token)) return;
+    room.decidingChoices[token] = choice;
+    if (room.players.every(p => room.decidingChoices[p.token])) resolveDeciding(roomCode);
+  }
+
+  function resolveDeciding(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'deciding') return;
+    if (room.decideTimer) { clearTimeout(room.decideTimer); room.decideTimer = null; }
+
+    const [p1, p2] = room.players;
+    const choiceA = room.decidingChoices[p1.token];
+    const choiceB = room.decidingChoices[p2.token];
+    const result = resolveRps(choiceA, choiceB);
+
+    if (result === null) {
+      broadcast(room, { type: 'decide_tie', choiceA, choiceB });
+      room.decidingChoices = {};
+      setTimeout(() => {
+        if (rooms.get(roomCode)?.phase === 'deciding') armDecideTimer(roomCode);
+      }, DECIDE_TIE_PAUSE_MS);
+      return;
+    }
+
+    const winner = result === 'a' ? p1 : p2;
+    room.blackToken = winner.token;
+    room.whiteToken = winner.token === p1.token ? p2.token : p1.token;
+    broadcast(room, {
+      type: 'decide_result',
+      choiceA, choiceB,
+      winnerToken: winner.token,
+      winnerName: winner.name,
+    });
+    setTimeout(() => startMatch(roomCode), DECIDE_REVEAL_MS);
   }
 
   function startMatch(roomCode) {
@@ -162,8 +244,8 @@ export function registerReversiServer() {
       type: 'match_start',
       board: room.board,
       turn: room.turn,
-      blackName: room.players[0]?.name ?? '?',
-      whiteName: room.players[1]?.name ?? '?',
+      blackName: playerByToken(room, room.blackToken)?.name ?? '?',
+      whiteName: playerByToken(room, room.whiteToken)?.name ?? '?',
       blackCount: black,
       whiteCount: white,
       turnTimeoutMs: TURN_TIMEOUT_MS,
@@ -245,9 +327,7 @@ export function registerReversiServer() {
     room.started = false;
 
     const { black, white } = countDiscs(room.board);
-    const blackToken = room.players[0]?.token;
-    const whiteToken = room.players[1]?.token;
-    const winnerToken = black === white ? null : (black > white ? blackToken : whiteToken);
+    const winnerToken = black === white ? null : (black > white ? room.blackToken : room.whiteToken);
     const winner = winnerToken ? playerByToken(room, winnerToken) : null;
 
     recordResult(room, winnerToken);
@@ -266,7 +346,7 @@ export function registerReversiServer() {
     if (!room) return;
     clearAllDisconnectTimers(room);
 
-    if (room.phase === 'playing' || room.phase === 'countdown') {
+    if (room.phase === 'playing' || room.phase === 'countdown' || room.phase === 'deciding') {
       const opponent = otherPlayer(room, leavingToken);
       if (opponent?.ws) send(opponent.ws, { type: 'opponent_left' });
       clearRoundTimers(room);
@@ -315,8 +395,12 @@ export function registerReversiServer() {
           phase: 'lobby',
           board: emptyBoard(),
           turn: 'black',
+          blackToken: null,
+          whiteToken: null,
+          decidingChoices: {},
           turnTimer: null,
           countdownTimer: null,
+          decideTimer: null,
         });
         wsIdentity.set(ws, { roomCode, token });
         send(ws, { type: 'room_created', roomCode, token });
@@ -365,14 +449,21 @@ export function registerReversiServer() {
               myColor: colorOf(room, token),
               board: room.board,
               turn: room.turn,
-              blackName: room.players[0]?.name ?? '?',
-              whiteName: room.players[1]?.name ?? '?',
+              blackName: playerByToken(room, room.blackToken)?.name ?? '?',
+              whiteName: playerByToken(room, room.whiteToken)?.name ?? '?',
               blackCount: black,
               whiteCount: white,
             },
           });
         }
         if (opponent?.ws) send(opponent.ws, { type: 'opponent_reconnected' });
+        return;
+      }
+
+      // ── decide_choice (선공 결정 가위바위보) ─────────────────────────
+      if (msg.type === 'decide_choice') {
+        const identity = wsIdentity.get(ws);
+        if (identity) handleDecideChoice(identity.roomCode, identity.token, msg.choice);
         return;
       }
 

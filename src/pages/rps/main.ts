@@ -1,5 +1,5 @@
 import './rps.css';
-import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from './hand-icons';
+import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from '../../shared/hand-icons';
 import { shareRoomLink } from '../../shared/share';
 import { createChatWidget } from '../../shared/chat-widget';
 

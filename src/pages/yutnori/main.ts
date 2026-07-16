@@ -6,11 +6,14 @@ import { showCenterToast } from '../../shared/center-toast';
 import { createChatWidget, type ChatWidgetHandle } from '../../shared/chat-widget';
 import { buildYutBoardGraph, YUT_START_NODE_ID } from '../../game/yutnori-board';
 import { nodeScreenPos, stackOffsetPct, stagingSlotPos, YUT_PLAYER_COLORS } from '../../shared/yutnori-board-2d';
+import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from '../../shared/hand-icons';
 
 type Phase =
-  | 'entry' | 'connecting' | 'lobby'
+  | 'entry' | 'connecting' | 'lobby' | 'deciding'
   | 'playing' | 'game_over'
   | 'reconnecting' | 'error';
+
+const DICE_ROUND_ANIM_MS = 700; // 서버(ws-server/yutnori.mjs)의 DICE_ROUND_ANIM_MS와 맞춘다
 
 type PendingAction = { kind: 'create'; capacity: number } | { kind: 'join'; roomCode: string } | { kind: 'rejoin' };
 
@@ -88,6 +91,13 @@ let pendingThrows: PendingThrowEntry[] = [];
 let selectedThrowId: string | null = null;
 let isTossing = false;
 let tossTimer: ReturnType<typeof setTimeout> | null = null;
+
+// ── 선공 결정전(팀 주사위 대표선출 + 가위바위보) 상태 ────────────────
+let decideRepAToken = '';
+let decideRepAName = '';
+let decideRepBToken = '';
+let decideRepBName = '';
+let myDecideChoice: Choice | null = null;
 
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
@@ -173,6 +183,7 @@ app.innerHTML = `
       <div class="how-to-play">
         <p class="how-to-play-title">🎮 게임 방법</p>
         <ul class="how-to-play-list">
+          <li>시작 전 가위바위보(팀전이면 팀 내 주사위로 대표를 뽑아 대표끼리)로 선공을 정해요.</li>
           <li>윷을 던져 나온 결과(도/개/걸/윷/모/백도)만큼 말을 이동해요. 윷·모가 나오면 한 번 더 던져요.</li>
           <li>상대 말을 잡으면 한 번 더 던지고, 잡힌 말은 처음부터 다시 시작해요. 내 말끼리는 업어서 함께 이동할 수 있어요.</li>
           <li>내 말 4개를 모두 완주시키면 승리!</li>
@@ -181,6 +192,27 @@ app.innerHTML = `
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="yn-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="yn-btn secondary">나가기</button>
+    </div>
+
+    <!-- 선공 결정전 -->
+    <div class="yn-panel hidden" id="deciding-panel">
+      <p class="status-text">선공(첫 차례)을 가리는 중이에요!</p>
+      <div class="dice-off-row hidden" id="dice-off-row"></div>
+      <div class="decide-names hidden" id="decide-names-row">
+        <span class="decide-name" id="decide-a-name"></span>
+        <span class="vs-mark">VS</span>
+        <span class="decide-name" id="decide-b-name"></span>
+      </div>
+      <div class="decide-hands hidden" id="decide-hands-row">
+        <div class="hand-slot mine" id="decide-my-hand"></div>
+        <div class="hand-slot theirs" id="decide-opp-hand"></div>
+      </div>
+      <p class="decide-status" id="decide-status">대표를 뽑는 중…</p>
+      <div class="decide-choice-row hidden" id="decide-choice-row">
+        <button class="decide-choice-btn" data-choice="rock" type="button">${handIcon('rock', true)}<span>${CHOICE_LABEL.rock}</span></button>
+        <button class="decide-choice-btn" data-choice="scissors" type="button">${handIcon('scissors', true)}<span>${CHOICE_LABEL.scissors}</span></button>
+        <button class="decide-choice-btn" data-choice="paper" type="button">${handIcon('paper', true)}<span>${CHOICE_LABEL.paper}</span></button>
+      </div>
     </div>
 
     <!-- Playing -->
@@ -267,6 +299,7 @@ const panels = {
   entry: document.getElementById('entry-panel')!,
   waiting: document.getElementById('waiting-panel')!,
   lobby: document.getElementById('lobby-panel')!,
+  deciding: document.getElementById('deciding-panel')!,
   playing: document.getElementById('playing-panel')!,
   gameOver: document.getElementById('game-over-panel')!,
   error: document.getElementById('error-panel')!,
@@ -295,6 +328,17 @@ const lobbyCodeDisplay = document.getElementById('lobby-code-display')!;
 const lobbyPlayers = document.getElementById('lobby-players')!;
 const lobbyStatus = document.getElementById('lobby-status')!;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
+
+const diceOffRow = document.getElementById('dice-off-row')!;
+const decideNamesRow = document.getElementById('decide-names-row')!;
+const decideANameEl = document.getElementById('decide-a-name')!;
+const decideBNameEl = document.getElementById('decide-b-name')!;
+const decideHandsRow = document.getElementById('decide-hands-row')!;
+const decideMyHand = document.getElementById('decide-my-hand')!;
+const decideOppHand = document.getElementById('decide-opp-hand')!;
+const decideStatus = document.getElementById('decide-status')!;
+const decideChoiceRow = document.getElementById('decide-choice-row')!;
+const decideChoiceBtns = Array.from(decideChoiceRow.querySelectorAll<HTMLButtonElement>('.decide-choice-btn'));
 const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButtonElement;
 
 const turnStatus = document.getElementById('yn-turn-status')!;
@@ -356,6 +400,7 @@ function setPhase(next: Phase) {
   vis(panels.entry, next === 'entry');
   vis(panels.waiting, next === 'connecting' || next === 'reconnecting');
   vis(panels.lobby, next === 'lobby');
+  vis(panels.deciding, next === 'deciding');
   vis(panels.playing, next === 'playing');
   vis(panels.gameOver, next === 'game_over');
   vis(panels.error, next === 'error');
@@ -363,6 +408,96 @@ function setPhase(next: Phase) {
 
 function showEntryError(msg: string) { entryError.textContent = msg; entryError.classList.remove('hidden'); }
 function hideEntryError() { entryError.classList.add('hidden'); }
+
+// ── 선공 결정전(팀 주사위 대표선출 + 가위바위보) ─────────────────────
+function setDecideButtonsEnabled(enabled: boolean) {
+  decideChoiceBtns.forEach((btn) => { btn.disabled = !enabled; });
+}
+decideChoiceBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (phase !== 'deciding' || myDecideChoice) return;
+    const choice = btn.dataset.choice as Choice;
+    myDecideChoice = choice;
+    setDecideButtonsEnabled(false);
+    decideMyHand.innerHTML = handIcon(choice, true);
+    decideStatus.textContent = '선택 완료! 상대를 기다리는 중…';
+    send({ type: 'decide_choice', choice });
+  });
+});
+
+function renderDiceOffSide(members: { token: string; name: string }[], rounds: Record<string, number>[], repToken: string): HTMLElement {
+  const group = document.createElement('div');
+  group.className = 'dice-off-group';
+  const cardByToken = new Map<string, HTMLElement>();
+  for (const m of members) {
+    const card = document.createElement('div');
+    card.className = 'dice-off-player';
+    card.innerHTML = `<span class="dice-off-name">${m.name}</span><span class="dice-off-face rolling">?</span>`;
+    group.appendChild(card);
+    cardByToken.set(m.token, card);
+  }
+  let i = 0;
+  const tick = () => {
+    const round = rounds[i];
+    for (const [token, val] of Object.entries(round)) {
+      const card = cardByToken.get(token);
+      const face = card?.querySelector('.dice-off-face');
+      if (face) face.textContent = String(val);
+    }
+    i += 1;
+    if (i < rounds.length) {
+      setTimeout(tick, DICE_ROUND_ANIM_MS);
+    } else {
+      cardByToken.forEach((card, token) => {
+        card.querySelector('.dice-off-face')?.classList.remove('rolling');
+        card.classList.toggle('winner', token === repToken);
+      });
+    }
+  };
+  if (rounds.length > 0) tick();
+  return group;
+}
+
+function renderDeciding(msg: any) {
+  diceOffRow.innerHTML = '';
+  const sideA = msg.sideA as { token: string; name: string }[];
+  const sideB = msg.sideB as { token: string; name: string }[];
+  const diceRoundsA = msg.diceRoundsA as Record<string, number>[];
+  const diceRoundsB = msg.diceRoundsB as Record<string, number>[];
+
+  const needsDiceUi = diceRoundsA.length > 0 || diceRoundsB.length > 0;
+  diceOffRow.classList.toggle('hidden', !needsDiceUi);
+  if (diceRoundsA.length > 0) diceOffRow.appendChild(renderDiceOffSide(sideA, diceRoundsA, msg.repAToken));
+  if (diceRoundsB.length > 0) diceOffRow.appendChild(renderDiceOffSide(sideB, diceRoundsB, msg.repBToken));
+
+  decideNamesRow.classList.add('hidden');
+  decideHandsRow.classList.add('hidden');
+  decideChoiceRow.classList.add('hidden');
+  decideStatus.textContent = needsDiceUi ? '주사위로 팀 대표를 뽑는 중…' : '대표가 정해졌어요…';
+}
+
+function renderDecideRpsReady(msg: any) {
+  decideRepAToken = msg.repAToken;
+  decideRepAName = msg.repAName;
+  decideRepBToken = msg.repBToken;
+  decideRepBName = msg.repBName;
+  myDecideChoice = null;
+
+  diceOffRow.classList.add('hidden');
+  decideANameEl.textContent = decideRepAName;
+  decideBNameEl.textContent = decideRepBName;
+  decideNamesRow.classList.remove('hidden');
+  decideHandsRow.classList.remove('hidden');
+  decideMyHand.innerHTML = hiddenHandIcon();
+  decideOppHand.innerHTML = hiddenHandIcon();
+
+  const amRep = myToken === decideRepAToken || myToken === decideRepBToken;
+  decideChoiceRow.classList.toggle('hidden', !amRep);
+  setDecideButtonsEnabled(amRep);
+  decideStatus.textContent = amRep
+    ? '가위바위보를 선택하세요!'
+    : `${decideRepAName}님과 ${decideRepBName}님이 가위바위보로 선공을 정하는 중…`;
+}
 
 async function copyLink(code: string, btn: HTMLButtonElement) {
   const link = `${location.origin}/yutnori/?room=${code}`;
@@ -404,7 +539,7 @@ function connect(action: PendingAction) {
 
   ws.addEventListener('close', () => {
     if (intentionalClose) return;
-    const inGame = ['lobby', 'playing', 'reconnecting'].includes(phase);
+    const inGame = ['lobby', 'deciding', 'playing', 'reconnecting'].includes(phase);
     if (inGame) beginReconnect();
     else if (phase !== 'entry') showError('서버와의 연결이 끊어졌습니다.');
   });
@@ -880,6 +1015,50 @@ function handleServerMessage(msg: any) {
     case 'game_starting':
       setPhase('connecting');
       waitingStatus.textContent = '게임을 시작합니다…';
+      break;
+
+    case 'decide_start':
+      setPhase('deciding');
+      renderDeciding(msg);
+      break;
+
+    case 'decide_rps_ready':
+      renderDecideRpsReady(msg);
+      break;
+
+    case 'decide_tie': {
+      const myChoice = myToken === decideRepAToken ? msg.choiceA : msg.choiceB;
+      const oppChoice = myToken === decideRepAToken ? msg.choiceB : msg.choiceA;
+      decideMyHand.innerHTML = handIcon(myChoice, true);
+      decideOppHand.innerHTML = handIcon(oppChoice, true);
+      decideStatus.textContent = '비겼어요! 다시 선택하세요.';
+      setTimeout(() => {
+        if (phase !== 'deciding') return;
+        myDecideChoice = null;
+        decideMyHand.innerHTML = hiddenHandIcon();
+        decideOppHand.innerHTML = hiddenHandIcon();
+        const amRep = myToken === decideRepAToken || myToken === decideRepBToken;
+        decideStatus.textContent = amRep
+          ? '가위바위보를 선택하세요!'
+          : `${decideRepAName}님과 ${decideRepBName}님이 가위바위보로 선공을 정하는 중…`;
+        setDecideButtonsEnabled(amRep);
+      }, 900);
+      break;
+    }
+
+    case 'decide_result': {
+      const myChoice = myToken === decideRepAToken ? msg.choiceA : msg.choiceB;
+      const oppChoice = myToken === decideRepAToken ? msg.choiceB : msg.choiceA;
+      decideMyHand.innerHTML = handIcon(myChoice, true);
+      decideOppHand.innerHTML = handIcon(oppChoice, true);
+      decideStatus.textContent = `🏆 ${msg.winnerName}님 팀이 선공이에요!`;
+      setDecideButtonsEnabled(false);
+      break;
+    }
+
+    case 'decide_aborted':
+      setPhase('lobby');
+      lobbyStatus.textContent = msg.reason ?? '선공 결정이 취소됐어요. 다시 시작해주세요.';
       break;
 
     case 'game_update': {

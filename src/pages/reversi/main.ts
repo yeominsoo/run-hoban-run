@@ -3,10 +3,11 @@ import '../../shared/ws-ranking.css';
 import { shareRoomLink } from '../../shared/share';
 import { createChatWidget } from '../../shared/chat-widget';
 import { setupWsRankingUI } from '../../shared/ws-ranking';
+import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from '../../shared/hand-icons';
 
 type Phase =
   | 'entry' | 'connecting' | 'waiting-opponent' | 'countdown'
-  | 'playing' | 'game_over'
+  | 'deciding' | 'playing' | 'game_over'
   | 'reconnecting' | 'error';
 
 type PendingAction = { kind: 'create' } | { kind: 'join'; roomCode: string } | { kind: 'rejoin' };
@@ -76,6 +77,12 @@ let turnDeadlineClient = 0;
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
 let turnTimerInterval: ReturnType<typeof setInterval> | null = null;
 
+// ── 선공(흑) 결정전 상태 ──────────────────────────────────────────
+let decideAToken = '';
+let decideAName = '';
+let decideBName = '';
+let myDecideChoice: Choice | null = null;
+
 // ── HTML ──────────────────────────────────────────────────────────
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -140,7 +147,7 @@ app.innerHTML = `
       <div class="how-to-play">
         <p class="how-to-play-title">🎮 게임 방법</p>
         <ul class="how-to-play-list">
-          <li>방을 만들거나 참가하면 상대가 들어오는 즉시 대결이 시작돼요. 방을 만든 쪽이 흑(선공)이에요.</li>
+          <li>방을 만들거나 참가하면 상대가 들어오는 즉시 대결이 시작돼요. 가위바위보(단판)로 흑(선공)을 정해요.</li>
           <li>내 돌로 상대 돌을 일직선으로 감싸면 그 사이 돌이 전부 내 색으로 뒤집혀요.</li>
           <li>둘 곳이 없으면 자동으로 차례가 넘어가고, 양쪽 다 둘 곳이 없으면 게임 종료 — 더 많은 돌을 가진 사람이 승리!</li>
         </ul>
@@ -172,6 +179,26 @@ app.innerHTML = `
     <div class="rv-panel hidden" id="countdown-panel">
       <p class="status-text">곧 대결이 시작됩니다!</p>
       <div class="ws-countdown-number" id="countdown-number">3</div>
+    </div>
+
+    <!-- 선공(흑) 결정전 -->
+    <div class="rv-panel hidden" id="deciding-panel">
+      <p class="status-text">선공(흑)을 가리는 가위바위보! 단판승부예요.</p>
+      <div class="decide-names">
+        <span class="decide-name" id="decide-a-name"></span>
+        <span class="vs-mark">VS</span>
+        <span class="decide-name" id="decide-b-name"></span>
+      </div>
+      <div class="decide-hands">
+        <div class="hand-slot mine" id="decide-my-hand">${hiddenHandIcon()}</div>
+        <div class="hand-slot theirs" id="decide-opp-hand">${hiddenHandIcon()}</div>
+      </div>
+      <p class="decide-status" id="decide-status">가위바위보를 선택하세요!</p>
+      <div class="decide-choice-row" id="decide-choice-row">
+        <button class="decide-choice-btn" data-choice="rock" type="button">${handIcon('rock', true)}<span>${CHOICE_LABEL.rock}</span></button>
+        <button class="decide-choice-btn" data-choice="scissors" type="button">${handIcon('scissors', true)}<span>${CHOICE_LABEL.scissors}</span></button>
+        <button class="decide-choice-btn" data-choice="paper" type="button">${handIcon('paper', true)}<span>${CHOICE_LABEL.paper}</span></button>
+      </div>
     </div>
 
     <!-- Playing -->
@@ -223,6 +250,7 @@ const panels = {
   waiting: document.getElementById('waiting-panel')!,
   waitingOpponent: document.getElementById('waiting-opponent-panel')!,
   countdown: document.getElementById('countdown-panel')!,
+  deciding: document.getElementById('deciding-panel')!,
   playing: document.getElementById('playing-panel')!,
   gameOver: document.getElementById('game-over-panel')!,
   error: document.getElementById('error-panel')!,
@@ -250,6 +278,14 @@ const lobbyCodeDisplay = document.getElementById('lobby-code-display')!;
 const waitingOpponentCancelBtn = document.getElementById('waiting-opponent-cancel-btn') as HTMLButtonElement;
 
 const countdownNumber = document.getElementById('countdown-number')!;
+
+const decideANameEl = document.getElementById('decide-a-name')!;
+const decideBNameEl = document.getElementById('decide-b-name')!;
+const decideMyHand = document.getElementById('decide-my-hand')!;
+const decideOppHand = document.getElementById('decide-opp-hand')!;
+const decideStatus = document.getElementById('decide-status')!;
+const decideChoiceRow = document.getElementById('decide-choice-row')!;
+const decideChoiceBtns = Array.from(decideChoiceRow.querySelectorAll<HTMLButtonElement>('.decide-choice-btn'));
 
 const blackScoreTag = document.getElementById('black-score-tag')!;
 const whiteScoreTag = document.getElementById('white-score-tag')!;
@@ -341,12 +377,28 @@ function setPhase(next: Phase) {
   vis(panels.waiting, next === 'connecting' || next === 'reconnecting');
   vis(panels.waitingOpponent, next === 'waiting-opponent');
   vis(panels.countdown, next === 'countdown');
+  vis(panels.deciding, next === 'deciding');
   vis(panels.playing, next === 'playing');
   vis(panels.gameOver, next === 'game_over');
   vis(panels.error, next === 'error');
   if (next !== 'countdown') clearCountdownInterval();
   if (next !== 'playing') clearTurnTimerInterval();
 }
+
+function setDecideButtonsEnabled(enabled: boolean) {
+  decideChoiceBtns.forEach((btn) => { btn.disabled = !enabled; });
+}
+decideChoiceBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (phase !== 'deciding' || myDecideChoice) return;
+    const choice = btn.dataset.choice as Choice;
+    myDecideChoice = choice;
+    setDecideButtonsEnabled(false);
+    decideMyHand.innerHTML = handIcon(choice, true);
+    decideStatus.textContent = '선택 완료! 상대를 기다리는 중…';
+    send({ type: 'decide_choice', choice });
+  });
+});
 
 function showEntryError(msg: string) { entryError.textContent = msg; entryError.classList.remove('hidden'); }
 function hideEntryError() { entryError.classList.add('hidden'); }
@@ -391,7 +443,7 @@ function connect(action: PendingAction) {
 
   ws.addEventListener('close', () => {
     if (intentionalClose) return;
-    const inGame = ['waiting-opponent', 'countdown', 'playing', 'reconnecting'].includes(phase);
+    const inGame = ['waiting-opponent', 'countdown', 'deciding', 'playing', 'reconnecting'].includes(phase);
     if (inGame) beginReconnect();
     else if (phase !== 'entry') {
       showError('서버와의 연결이 끊어졌습니다.');
@@ -541,6 +593,49 @@ function handleServerMessage(msg: any) {
         if (remaining <= 0) { clearCountdownInterval(); return; }
         countdownNumber.textContent = String(remaining);
       }, 1000);
+      break;
+    }
+
+    case 'decide_start': {
+      decideAToken = msg.playerAToken;
+      decideAName = msg.playerAName;
+      decideBName = msg.playerBName;
+      myDecideChoice = null;
+      decideANameEl.textContent = decideAName;
+      decideBNameEl.textContent = decideBName;
+      decideMyHand.innerHTML = hiddenHandIcon();
+      decideOppHand.innerHTML = hiddenHandIcon();
+      decideStatus.textContent = '가위바위보를 선택하세요!';
+      setDecideButtonsEnabled(true);
+      setPhase('deciding');
+      break;
+    }
+
+    case 'decide_tie': {
+      const myChoice = myToken === decideAToken ? msg.choiceA : msg.choiceB;
+      const oppChoice = myToken === decideAToken ? msg.choiceB : msg.choiceA;
+      decideMyHand.innerHTML = handIcon(myChoice, true);
+      decideOppHand.innerHTML = handIcon(oppChoice, true);
+      decideStatus.textContent = '비겼어요! 다시 선택하세요.';
+      setTimeout(() => {
+        if (phase !== 'deciding') return;
+        myDecideChoice = null;
+        decideMyHand.innerHTML = hiddenHandIcon();
+        decideOppHand.innerHTML = hiddenHandIcon();
+        decideStatus.textContent = '가위바위보를 선택하세요!';
+        setDecideButtonsEnabled(true);
+      }, 900);
+      break;
+    }
+
+    case 'decide_result': {
+      const myChoice = myToken === decideAToken ? msg.choiceA : msg.choiceB;
+      const oppChoice = myToken === decideAToken ? msg.choiceB : msg.choiceA;
+      decideMyHand.innerHTML = handIcon(myChoice, true);
+      decideOppHand.innerHTML = handIcon(oppChoice, true);
+      const iWon = msg.winnerToken === myToken;
+      decideStatus.textContent = iWon ? `🏆 ${msg.winnerName}님 승리! 흑(선공)이에요.` : `${msg.winnerName}님 승리 — 흑(선공)이에요.`;
+      setDecideButtonsEnabled(false);
       break;
     }
 
