@@ -223,6 +223,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/odd-even-math/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -401,6 +410,14 @@
       {
         "source": "/multiplication-sprint/**",
         "destination": "/multiplication-sprint/index.html"
+      },
+      {
+        "source": "/odd-even-math",
+        "destination": "/odd-even-math/index.html"
+      },
+      {
+        "source": "/odd-even-math/**",
+        "destination": "/odd-even-math/index.html"
       }
     ]
   }

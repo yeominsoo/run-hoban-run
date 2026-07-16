@@ -13,6 +13,7 @@ import { registerMoleHuntServer } from './mole-hunt.mjs';
 import { registerMemorySequenceServer } from './memory-sequence.mjs';
 import { registerUpdownNumberServer } from './updown-number.mjs';
 import { registerMultiplicationSprintServer } from './multiplication-sprint.mjs';
+import { registerOddEvenMathServer } from './odd-even-math.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -795,6 +796,7 @@ const { wss: moleHuntWss, getRanking: getMoleHuntRanking } = registerMoleHuntSer
 const { wss: memorySequenceWss, getRanking: getMemorySequenceRanking } = registerMemorySequenceServer();
 const { wss: updownNumberWss, getRanking: getUpdownNumberRanking } = registerUpdownNumberServer();
 const { wss: multiplicationSprintWss, getRanking: getMultiplicationSprintRanking } = registerMultiplicationSprintServer();
+const { wss: oddEvenMathWss, getRanking: getOddEvenMathRanking } = registerOddEvenMathServer();
 
 GAME_RANKING_HANDLERS.liar = getLiarRanking;
 GAME_RANKING_HANDLERS.mafia = getMafiaRanking;
@@ -805,6 +807,7 @@ GAME_RANKING_HANDLERS['mole-hunt'] = getMoleHuntRanking;
 GAME_RANKING_HANDLERS['memory-sequence'] = getMemorySequenceRanking;
 GAME_RANKING_HANDLERS['updown-number'] = getUpdownNumberRanking;
 GAME_RANKING_HANDLERS['multiplication-sprint'] = getMultiplicationSprintRanking;
+GAME_RANKING_HANDLERS['odd-even-math'] = getOddEvenMathRanking;
 
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = req.url.split('?')[0];
@@ -828,11 +831,13 @@ httpServer.on('upgrade', (req, socket, head) => {
     updownNumberWss.handleUpgrade(req, socket, head, (ws) => updownNumberWss.emit('connection', ws, req));
   } else if (pathname === '/multiplication-sprint') {
     multiplicationSprintWss.handleUpgrade(req, socket, head, (ws) => multiplicationSprintWss.emit('connection', ws, req));
+  } else if (pathname === '/odd-even-math') {
+    oddEvenMathWss.handleUpgrade(req, socket, head, (ws) => oddEvenMathWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint)`);
+  console.log(`[rps-server] listening on :${PORT} (ws paths: /rps, /liar, /mafia, /halligalli, /yutnori, /strategy-yutnori, /mole-hunt, /memory-sequence, /updown-number, /multiplication-sprint, /odd-even-math)`);
 });

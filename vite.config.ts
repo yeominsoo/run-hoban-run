@@ -28,6 +28,7 @@ export default defineConfig({
         'memory-sequence': resolve(__dirname, 'memory-sequence/index.html'),
         'updown-number': resolve(__dirname, 'updown-number/index.html'),
         'multiplication-sprint': resolve(__dirname, 'multiplication-sprint/index.html'),
+        'odd-even-math': resolve(__dirname, 'odd-even-math/index.html'),
       },
       output: {
         manualChunks(id) {

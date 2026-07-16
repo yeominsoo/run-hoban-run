@@ -62,6 +62,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/updown-number"
             - name: VITE_MULTIPLICATION_SPRINT_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/multiplication-sprint"
+            - name: VITE_ODD_EVEN_MATH_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/odd-even-math"
           command:
             - /bin/bash
             - -lc

@@ -775,6 +775,18 @@ body {
 .multiplication-sprint-mark::before { transform: translate(-50%, -50%) rotate(45deg); }
 .multiplication-sprint-mark::after { transform: translate(-50%, -50%) rotate(-45deg); background: var(--color-accent); }
 
+.odd-even-math-mark::before,
+.odd-even-math-mark::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+.odd-even-math-mark::before { left: 6px; background: var(--color-secondary); }
+.odd-even-math-mark::after { right: 6px; background: transparent; border: 2px solid var(--color-accent); }
+
 .game-card-name {
   min-width: 0;
   margin: 0;

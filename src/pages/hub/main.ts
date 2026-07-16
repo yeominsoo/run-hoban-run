@@ -33,7 +33,8 @@ const GAMES: GameEntry[] = [
   { slug: 'mole-hunt', icon: 'mole-hunt-mark', name: '두더지 사냥', desc: '2~8명이 실시간으로 겨루는 반응속도 게임. 구멍에서 튀어나오는 두더지를 누구보다 먼저 탭! 30초간 최다 명중자가 승리한다.', category: 'multi' },
   { slug: 'memory-sequence', icon: 'memory-sequence-mark', name: '순서 기억 챌린지', desc: '2~8명이 함께 도전하는 기억력 서바이벌. 타일이 켜지는 순서를 그대로 따라 탭하세요, 라운드마다 한 칸씩 길어지고 마지막까지 살아남으면 승리!', category: 'multi' },
   { slug: 'updown-number', icon: 'updown-number-mark', name: '업다운 넘버', desc: '2~8명이 함께 추리하는 숫자 맞히기. 모두에게 같은 숨은 숫자가 주어지고, UP/DOWN 힌트로 가장 먼저 맞히는 사람이 1등!', category: 'multi' },
-  { slug: 'multiplication-sprint', icon: 'multiplication-sprint-mark', name: '구구단 스퍼트', desc: '2~8명이 겨루는 암산 속도전. 모두에게 똑같은 구구단 문제가 동시에 나오고, 제한시간 안에 가장 많이·빠르게 맞힌 사람이 1등!', category: 'multi' }
+  { slug: 'multiplication-sprint', icon: 'multiplication-sprint-mark', name: '구구단 스퍼트', desc: '2~8명이 겨루는 암산 속도전. 모두에게 똑같은 구구단 문제가 동시에 나오고, 제한시간 안에 가장 많이·빠르게 맞힌 사람이 1등!', category: 'multi' },
+  { slug: 'odd-even-math', icon: 'odd-even-math-mark', name: '홀짝 암산', desc: '2~8명이 겨루는 판단 속도전. 모두에게 똑같은 계산식이 동시에 나오고, 결과가 홀수인지 짝수인지 가장 빠르게 맞힌 사람이 1등!', category: 'multi' }
 ];
 
 const CATEGORY_LABEL: Record<Category, string> = {
