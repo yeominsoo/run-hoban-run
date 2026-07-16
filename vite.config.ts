@@ -34,6 +34,7 @@ export default defineConfig({
         'tug-of-war-battle': resolve(__dirname, 'tug-of-war-battle/index.html'),
         'territory-clash': resolve(__dirname, 'territory-clash/index.html'),
         'light-guess': resolve(__dirname, 'light-guess/index.html'),
+        reversi: resolve(__dirname, 'reversi/index.html'),
       },
       output: {
         manualChunks(id) {

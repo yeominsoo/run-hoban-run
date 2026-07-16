@@ -74,6 +74,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/territory-clash"
             - name: VITE_LIGHT_GUESS_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/light-guess"
+            - name: VITE_REVERSI_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/reversi"
           command:
             - /bin/bash
             - -lc

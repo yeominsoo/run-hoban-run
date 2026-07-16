@@ -277,6 +277,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/reversi/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -503,6 +512,14 @@
       {
         "source": "/light-guess/**",
         "destination": "/light-guess/index.html"
+      },
+      {
+        "source": "/reversi",
+        "destination": "/reversi/index.html"
+      },
+      {
+        "source": "/reversi/**",
+        "destination": "/reversi/index.html"
       }
     ]
   }

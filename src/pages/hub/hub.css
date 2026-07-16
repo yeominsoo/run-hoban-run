@@ -867,6 +867,18 @@ body {
 .light-guess-mark::before { top: 6px; background: #4fae72; }
 .light-guess-mark::after { top: 22px; background: #e5484d; }
 
+.reversi-mark::before,
+.reversi-mark::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.reversi-mark::before { left: 7px; background: #16161c; }
+.reversi-mark::after { right: 7px; background: #fff; border: 1px solid rgba(0,0,0,0.2); }
+
 .game-card-name {
   min-width: 0;
   margin: 0;
