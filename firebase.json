@@ -232,6 +232,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/color-instruction/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -418,6 +427,14 @@
       {
         "source": "/odd-even-math/**",
         "destination": "/odd-even-math/index.html"
+      },
+      {
+        "source": "/color-instruction",
+        "destination": "/color-instruction/index.html"
+      },
+      {
+        "source": "/color-instruction/**",
+        "destination": "/color-instruction/index.html"
       }
     ]
   }

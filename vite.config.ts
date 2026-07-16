@@ -29,6 +29,7 @@ export default defineConfig({
         'updown-number': resolve(__dirname, 'updown-number/index.html'),
         'multiplication-sprint': resolve(__dirname, 'multiplication-sprint/index.html'),
         'odd-even-math': resolve(__dirname, 'odd-even-math/index.html'),
+        'color-instruction': resolve(__dirname, 'color-instruction/index.html'),
       },
       output: {
         manualChunks(id) {
