@@ -160,6 +160,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="yn-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>4명이 2:2 팀으로 진행해요. 매 턴 앞면/뒷면 중 하나를 비공개로 골라 동시에 제출하면 던지기 값이 정해져요.</li>
+          <li>짝에게만 보이는 시그널 카드로 몰래 신호를 주고받을 수 있어요(배신도 가능!).</li>
+          <li>내 말 2개를 먼저 완주시키면 승리 — 팀원 상태와 무관하게 개인 우승이에요.</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중… (정확히 4명 필요)</p>
       <button id="start-btn" type="button" class="yn-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="yn-btn secondary">나가기</button>

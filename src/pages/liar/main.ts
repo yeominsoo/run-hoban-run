@@ -150,6 +150,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="liar-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>라이어 한 명만 제시어를 모른 채 카테고리만 알아요. 나머지는 제시어를 알고 있어요.</li>
+          <li>순서대로 한마디씩 설명한 뒤, 투표로 라이어를 찾아내세요.</li>
+          <li>라이어가 걸려도 제시어를 맞히면 라이어가 역전승해요!</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="liar-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="liar-btn secondary">나가기</button>

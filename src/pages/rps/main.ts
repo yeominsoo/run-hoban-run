@@ -183,6 +183,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="rps-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>배틀로얄은 여러 명이 동시에 겨루고, 토너먼트는 대진표를 따라 올라가는 방식이에요.</li>
+          <li>매 라운드 가위바위보로 승부를 가려요. 진 사람은 탈락하고, 이긴 사람은 다음 라운드로 진출해요.</li>
+          <li>호스트가 "시작하기"를 누르면 게임이 시작돼요.</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">호스트가 시작하기를 기다리는 중…</p>
       <button id="start-btn" type="button" class="rps-btn primary hidden">시작하기</button>
       <button id="lobby-cancel-btn" type="button" class="rps-btn secondary">나가기</button>

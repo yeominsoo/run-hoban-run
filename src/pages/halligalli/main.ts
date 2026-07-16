@@ -151,6 +151,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="hg-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>각자 자기 카드를 한 장씩 뒤집어 쌓아요. 같은 과일의 보이는 개수 합이 정확히 5가 되면 종을 치세요!</li>
+          <li>누구보다 먼저 치면 그 라운드에 보이는 카드를 전부 가져가요. 잘못 치면 내 카드를 한 장씩 나눠줘야 해요.</li>
+          <li>카드를 다 잃으면 탈락, 마지막까지 카드를 가진 사람이 승리!</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="hg-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="hg-btn secondary">나가기</button>

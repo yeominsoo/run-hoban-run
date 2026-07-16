@@ -148,6 +148,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="mafia-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>인원수에 따라 마피아·경찰·의사·시민 역할이 자동으로 배정돼요.</li>
+          <li>밤에는 마피아가 죽일 대상을, 경찰은 조사 대상을, 의사는 보호 대상을 몰래 정해요.</li>
+          <li>낮에는 전원이 토론하고 투표로 처형할 사람을 정해요. 마피아를 모두 찾아내면 시민 승리!</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="mafia-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="mafia-btn secondary">나가기</button>

@@ -170,6 +170,14 @@ app.innerHTML = `
         <button id="lobby-copy-btn" type="button" class="yn-btn secondary">공유하기</button>
       </div>
       <div class="lobby-players" id="lobby-players"></div>
+      <div class="how-to-play">
+        <p class="how-to-play-title">🎮 게임 방법</p>
+        <ul class="how-to-play-list">
+          <li>윷을 던져 나온 결과(도/개/걸/윷/모/백도)만큼 말을 이동해요. 윷·모가 나오면 한 번 더 던져요.</li>
+          <li>상대 말을 잡으면 한 번 더 던지고, 잡힌 말은 처음부터 다시 시작해요. 내 말끼리는 업어서 함께 이동할 수 있어요.</li>
+          <li>내 말 4개를 모두 완주시키면 승리!</li>
+        </ul>
+      </div>
       <p class="status-text" id="lobby-status">참가자를 기다리는 중…</p>
       <button id="start-btn" type="button" class="yn-btn primary hidden">게임 시작</button>
       <button id="lobby-cancel-btn" type="button" class="yn-btn secondary">나가기</button>

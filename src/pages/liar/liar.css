@@ -1,4 +1,5 @@
 @import "../../shared/pastel-theme.css";
+@import "../../shared/ws-lobby-tip.css";
 
 *, *::before, *::after { box-sizing: border-box; }
 
