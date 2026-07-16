@@ -70,6 +70,8 @@ spec:
               value: "wss://toris-arcade.duckdns.org:30080/sum-ten-puzzle"
             - name: VITE_TUG_OF_WAR_BATTLE_WS_URL
               value: "wss://toris-arcade.duckdns.org:30080/tug-of-war-battle"
+            - name: VITE_TERRITORY_CLASH_WS_URL
+              value: "wss://toris-arcade.duckdns.org:30080/territory-clash"
           command:
             - /bin/bash
             - -lc

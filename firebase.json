@@ -259,6 +259,15 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "source": "/territory-clash/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -469,6 +478,14 @@
       {
         "source": "/tug-of-war-battle/**",
         "destination": "/tug-of-war-battle/index.html"
+      },
+      {
+        "source": "/territory-clash",
+        "destination": "/territory-clash/index.html"
+      },
+      {
+        "source": "/territory-clash/**",
+        "destination": "/territory-clash/index.html"
       }
     ]
   }
