@@ -3,7 +3,7 @@ import '../../shared/ws-ranking.css';
 import { onDrag, type PointerPos } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
 import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
-import { shareRoomLink } from '../../shared/share';
+import { prepareRoomInviteEntry, ROOM_SHARE_RETURN_EVENT, shareRoomLink } from '../../shared/share';
 import { createChatWidget } from '../../shared/chat-widget';
 import { setupWsRankingUI } from '../../shared/ws-ranking';
 
@@ -339,6 +339,7 @@ const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
   roomCodeInput.value = roomFromUrl.trim().toUpperCase().slice(0, 6);
   setEntryTab('join');
+  prepareRoomInviteEntry(roomCodeInput, joinBtn, roomFromUrl);
 }
 
 const resumableSession = loadSession();
@@ -899,6 +900,15 @@ gameOverLeaveBtn.addEventListener('click', () => {
 });
 
 lobbyCopyBtn.addEventListener('click', () => copyLink(roomCode, lobbyCopyBtn));
+
+window.addEventListener(ROOM_SHARE_RETURN_EVENT, () => {
+  if (!myToken || !roomCode || intentionalClose || reconnectTimer) return;
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.close(4000, 'resume-after-share');
+  } else if (socket?.readyState !== WebSocket.CONNECTING) {
+    beginReconnect();
+  }
+});
 
 startBtn.addEventListener('click', () => { send({ type: 'start' }); });
 

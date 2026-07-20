@@ -1,0 +1,116 @@
+.room-invite-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 24, 36, 0.58);
+  backdrop-filter: blur(5px);
+}
+
+.room-invite-dialog {
+  width: min(100%, 390px);
+  max-height: min(720px, calc(100dvh - 40px));
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 24px;
+  background: #fff8fc;
+  background: color-mix(in srgb, var(--color-panel, #fff8fc) 94%, white);
+  box-shadow: 0 24px 70px rgba(39, 23, 45, 0.28);
+  color: var(--color-page-text, #4b3447);
+  text-align: center;
+}
+
+.room-invite-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.room-invite-description {
+  margin: 8px 0 18px;
+  color: var(--color-muted-text, #776773);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.room-invite-qr-frame {
+  display: inline-grid;
+  place-items: center;
+  padding: 12px;
+  border: 1px solid rgba(75, 52, 71, 0.13);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(75, 52, 71, 0.1);
+}
+
+.room-invite-qr {
+  display: block;
+  width: min(58vw, 240px);
+  height: min(58vw, 240px);
+}
+
+.room-invite-code {
+  display: block;
+  margin-top: 12px;
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+}
+
+.room-invite-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.room-invite-action {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid rgba(75, 52, 71, 0.16);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.78);
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.room-invite-action.primary {
+  border-color: transparent;
+  background: var(--color-primary, #ff8fb6);
+  color: #3f2939;
+}
+
+.room-invite-action.close {
+  grid-column: 1 / -1;
+}
+
+.room-invite-actions.copy-only [data-action='copy'] {
+  grid-column: 1 / -1;
+}
+
+.room-invite-action:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary, #ff8fb6) 52%, transparent);
+  outline-offset: 2px;
+}
+
+.room-invite-entry-note {
+  margin: 4px 0 14px;
+  padding: 11px 14px;
+  border: 1px solid rgba(75, 52, 71, 0.13);
+  border-radius: 13px;
+  background: var(--color-secondary-soft, #e9fbf6);
+  color: var(--color-page-text, #4b3447);
+  font-weight: 800;
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .room-invite-dialog {
+    padding: 20px 16px;
+    border-radius: 20px;
+  }
+}

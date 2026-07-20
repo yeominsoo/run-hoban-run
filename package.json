@@ -8,15 +8,18 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test:render": "playwright test",
+    "test:room-invite": "ROOM_INVITE_E2E=1 playwright test --config=playwright.room-invite.config.ts",
     "firebase:login": "npx firebase-tools login --no-localhost",
     "firebase:projects": "npx firebase-tools projects:list",
     "deploy:firebase": "npm run build && npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19"
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "three": "^0.181.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@types/qrcode": "^1.5.6",
     "@types/three": "^0.181.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.4"

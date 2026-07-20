@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { getReconnectGraceMs } from './reconnect-policy.mjs';
 import { WebSocketServer } from 'ws';
 import { createRankingStore } from './ranking-store.mjs';
 import { resolveRps, rollDiceOff } from './starting-order.mjs';
@@ -15,7 +16,6 @@ import {
 } from './strategy-yutnori-rules.mjs';
 
 const ROOM_CODE_LENGTH = 6;
-const RECONNECT_GRACE_MS = 45000;
 const FACE_TIMEOUT_MS = 20000; // 라운드마다 20초 안에 앞/뒷면을 제출하지 않으면 자동으로 '앞면' 제출 처리
 const MOVE_TIMEOUT_MS = 20000; // 자기 차례에 20초 안에 말을 고르지 않으면 자동 이동 정책으로 말을 이동
 const MAX_CHAT_LEN = 120;
@@ -460,7 +460,7 @@ export function registerStrategyYutnoriServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), RECONNECT_GRACE_MS);
+    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 

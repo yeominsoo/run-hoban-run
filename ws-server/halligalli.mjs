@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { getReconnectGraceMs } from './reconnect-policy.mjs';
 import { WebSocketServer } from 'ws';
 import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
-const RECONNECT_GRACE_MS = 45000; // rps/liar/mafia와 동일한 재접속 유예 시간
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 const FLIP_TIMEOUT_MS = 20000; // 차례인 사람이 20초간 뒤집지 않으면 다음 사람에게 순서를 넘긴다
@@ -373,7 +373,7 @@ export function registerHalliGalliServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), RECONNECT_GRACE_MS);
+    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 

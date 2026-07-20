@@ -1,6 +1,6 @@
 import './rps.css';
 import { handIcon, hiddenHandIcon, CHOICE_LABEL, type Choice } from '../../shared/hand-icons';
-import { shareRoomLink } from '../../shared/share';
+import { prepareRoomInviteEntry, ROOM_SHARE_RETURN_EVENT, shareRoomLink } from '../../shared/share';
 import { createChatWidget } from '../../shared/chat-widget';
 
 type Mode = '1v1' | 'battle' | 'tournament';
@@ -429,6 +429,7 @@ const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
   roomCodeInput.value = roomFromUrl.trim().toUpperCase().slice(0, 6);
   setTab('join');
+  prepareRoomInviteEntry(roomCodeInput, joinBtn, roomFromUrl);
 }
 
 // 실수로 탭을 새로고침/닫아서 소켓이 끊긴 경우, 토큰이 메모리에서만 있으면 사라져서
@@ -1096,6 +1097,15 @@ lobbyCancelBtn.addEventListener('click', leaveRoom);
 
 copyLinkBtn.addEventListener('click', () => copyLink(roomCode, copyLinkBtn));
 lobbyCopyBtn.addEventListener('click', () => copyLink(roomCode, lobbyCopyBtn));
+
+window.addEventListener(ROOM_SHARE_RETURN_EVENT, () => {
+  if (!myToken || !roomCode || intentionalClose || reconnectTimer) return;
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.close(4000, 'resume-after-share');
+  } else if (socket?.readyState !== WebSocket.CONNECTING) {
+    beginReconnect();
+  }
+});
 
 startBtn.addEventListener('click', () => { send({ type: 'start' }); });
 

@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { getReconnectGraceMs } from './reconnect-policy.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -28,7 +29,6 @@ const MOVES = new Set(['rock', 'paper', 'scissors']);
 const BEATS = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 const ROOM_CODE_LENGTH = 6;
 const MAX_CHAT_LEN = 120;
-const RECONNECT_GRACE_MS = 45000;
 const WINS_TO_SET = 2;    // best-of-3 within a set: 2 wins
 const WINS_TO_BATTLE = 3; // battle royale: first to 3 round wins (or last survivor) wins
 
@@ -545,7 +545,7 @@ function scheduleDisconnectCleanup(roomCode, token) {
   const room = rooms.get(roomCode);
   if (!room) return;
   clearDisconnectTimer(room, token);
-  const timer = setTimeout(() => finalizeLeave(roomCode, token), RECONNECT_GRACE_MS);
+  const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
   room.disconnectTimers.set(token, timer);
 }
 

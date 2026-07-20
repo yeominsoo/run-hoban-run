@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { getReconnectGraceMs } from './reconnect-policy.mjs';
 import { WebSocketServer } from 'ws';
 import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
-const RECONNECT_GRACE_MS = 45000; // 다른 파티게임과 동일한 재접속 유예 시간
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 8;
 const MAX_CHAT_LEN = 120;
@@ -246,7 +246,7 @@ export function registerMoleHuntServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), RECONNECT_GRACE_MS);
+    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 

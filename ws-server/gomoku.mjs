@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { getReconnectGraceMs } from './reconnect-policy.mjs';
 import { WebSocketServer } from 'ws';
 import { createRankingStore } from './ranking-store.mjs';
 import { resolveRps } from './starting-order.mjs';
 
 const ROOM_CODE_LENGTH = 6;
-const RECONNECT_GRACE_MS = 45000;
 const MAX_CHAT_LEN = 120;
 
 const COUNTDOWN_MS = 3000;
@@ -330,7 +330,7 @@ export function registerGomokuServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), RECONNECT_GRACE_MS);
+    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
