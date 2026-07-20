@@ -9,6 +9,7 @@ const YIELD_BASE_COST = 50;
 const SPEED_BASE_COST = 60;
 const AUTO_HARVESTER_COST = 500;
 const TOAST_DURATION_MS = 4000;
+const FARM_BACKGROUND_ASSET_URL = '/assets/game-art/idle-farm/farm-background.webp';
 
 type CropId = 'carrot' | 'tomato' | 'watermelon';
 
@@ -145,7 +146,9 @@ app.innerHTML = `
         <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
       </div>
 
-      <section class="farm-plots" id="farm-plots" aria-label="농장 밭"></section>
+      <section class="farm-scene" id="farm-scene" aria-label="농장 밭">
+        <div class="farm-plots" id="farm-plots"></div>
+      </section>
 
       <section class="farm-upgrades">
         <h2>업그레이드</h2>
@@ -216,6 +219,7 @@ app.innerHTML = `
 
 // ── Refs ──────────────────────────────
 const plotsContainer = document.getElementById('farm-plots')!;
+const farmScene = document.getElementById('farm-scene')!;
 const totalEarnedEl = document.getElementById('total-earned')!;
 const coinBalanceEl = document.getElementById('coin-balance')!;
 const upgradeYieldBtn = document.getElementById('upgrade-yield') as HTMLButtonElement;
@@ -242,6 +246,13 @@ const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as
 const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 const toastEl = document.getElementById('farm-toast')!;
 const testStateEl = document.getElementById('farm-state')!;
+
+farmScene.dataset.assetState = 'loading';
+const farmBackgroundImage = new Image();
+farmBackgroundImage.decoding = 'async';
+farmBackgroundImage.addEventListener('load', () => { farmScene.dataset.assetState = 'ready'; });
+farmBackgroundImage.addEventListener('error', () => { farmScene.dataset.assetState = 'fallback'; });
+farmBackgroundImage.src = FARM_BACKGROUND_ASSET_URL;
 
 // ── 작물 선택 팝업 ──────────────────────────
 cropPickerList.innerHTML = CROPS.map(

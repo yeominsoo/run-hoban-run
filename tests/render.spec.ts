@@ -2366,8 +2366,13 @@ function emptyFarmState(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function skipIdleFarmTutorial(page: Page) {
+  await page.addInitScript(() => localStorage.setItem('rhh_idle-farm_tutorial_seen', '1'));
+}
+
 test('idle farm: planting via the crop picker grows to a harvestable state and pays out on tap', async ({ page }) => {
   const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await skipIdleFarmTutorial(page);
   await page.clock.install({ time: start });
   await page.goto('/idle-farm/');
   await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState());
@@ -2396,6 +2401,7 @@ test('idle farm: planting via the crop picker grows to a harvestable state and p
 
 test('idle farm: buying the yield upgrade increases coins earned per harvest', async ({ page }) => {
   const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await skipIdleFarmTutorial(page);
   await page.clock.install({ time: start });
   await page.goto('/idle-farm/');
   await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState({ coins: 1000 }));
@@ -2419,6 +2425,7 @@ test('idle farm: buying the yield upgrade increases coins earned per harvest', a
 
 test('idle farm: buying the growth speed upgrade shortens the time until a plot is ready', async ({ page }) => {
   const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await skipIdleFarmTutorial(page);
   await page.clock.install({ time: start });
   await page.goto('/idle-farm/');
   await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState({ coins: 1000 }));
@@ -2439,6 +2446,7 @@ test('idle farm: buying the growth speed upgrade shortens the time until a plot 
 
 test('idle farm: the auto harvester automatically re-harvests and replants while the page stays open', async ({ page }) => {
   const start = new Date('2026-01-01T00:00:00Z').getTime();
+  await skipIdleFarmTutorial(page);
   await page.clock.install({ time: start });
   await page.goto('/idle-farm/');
   await page.evaluate((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), emptyFarmState({ coins: 1000 }));
@@ -2465,6 +2473,7 @@ test('idle farm: reopening after time away catches up multiple auto-harvest cycl
   const start = new Date('2026-01-01T00:00:00Z').getTime();
   const seeded = emptyFarmState({ autoHarvester: true });
   (seeded as { plots: unknown[] }).plots[0] = { crop: 'carrot', plantedAt: start };
+  await skipIdleFarmTutorial(page);
 
   // 옛 페이지가 살아있는 채로 localStorage를 직접 덮어쓰고 시계만 돌리면, 그 옛 페이지의
   // 자동 저장 틱이 먼저 깨어나 방금 덮어쓴 값을 기본값으로 되돌려버리는 레이스가 있었다
@@ -2490,6 +2499,7 @@ test('idle farm: without the auto harvester, time away only makes a plot ready f
   const start = new Date('2026-01-01T00:00:00Z').getTime();
   const seeded = emptyFarmState();
   (seeded as { plots: unknown[] }).plots[0] = { crop: 'carrot', plantedAt: start };
+  await skipIdleFarmTutorial(page);
 
   await page.clock.install({ time: start });
   await page.addInitScript((state) => localStorage.setItem('rhh_idle-farm_state', JSON.stringify(state)), seeded);
@@ -2506,6 +2516,7 @@ test('idle farm: without the auto harvester, time away only makes a plot ready f
 });
 
 test('idle farm: saving a ranking entry shows it on revisit and can be exported as an image', async ({ page }) => {
+  await skipIdleFarmTutorial(page);
   await page.goto('/idle-farm/');
   await page.evaluate(() => localStorage.removeItem('rhh_idle-farm_ranking'));
   await page.reload();

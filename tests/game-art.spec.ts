@@ -231,3 +231,45 @@ test('light-guess: failed playground request preserves the signal and CSS track 
   await expect(page.locator('#lg-light')).toHaveAttribute('aria-label', '신호 대기');
   await expect(page.locator('#tap-area-btn')).toBeVisible();
 });
+
+test('idle-farm: farm background loads while planting remains DOM-driven', async ({ page }) => {
+  let farmResponseOk = false;
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/assets/game-art/idle-farm/farm-background.webp') {
+      farmResponseOk = response.ok();
+    }
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('rhh_idle-farm_tutorial_seen', '1');
+    localStorage.removeItem('rhh_idle-farm_state');
+  });
+  await page.goto('/idle-farm/');
+
+  await expect(page.locator('#farm-scene')).toHaveAttribute('data-asset-state', 'ready');
+  expect(farmResponseOk).toBe(true);
+  await expect(page.locator('#farm-scene')).toHaveCSS('background-image', /farm-background\.webp/);
+  await expect(page.locator('.plot')).toHaveCount(6);
+
+  await page.locator('.plot').first().click();
+  await expect(page.locator('#crop-picker-overlay')).toBeVisible();
+  await page.locator('[data-crop-id="carrot"]').click();
+  await expect(page.locator('.plot').first()).toHaveAttribute('data-crop', 'carrot');
+  await expect(page.locator('.plot').first()).toHaveAttribute('data-ready', 'false');
+  await expect(page.locator('.plot').first().locator('.plot-label')).toContainText('당근 성장 중');
+});
+
+test('idle-farm: failed farm background keeps plots and crop picker usable', async ({ page }) => {
+  await page.route('**/assets/game-art/idle-farm/farm-background.webp', (route) => route.abort());
+  await page.addInitScript(() => {
+    localStorage.setItem('rhh_idle-farm_tutorial_seen', '1');
+    localStorage.removeItem('rhh_idle-farm_state');
+  });
+  await page.goto('/idle-farm/');
+
+  await expect(page.locator('#farm-scene')).toHaveAttribute('data-asset-state', 'fallback');
+  await expect(page.locator('#farm-scene')).toHaveCSS('background-image', /gradient/);
+  await expect(page.locator('.plot')).toHaveCount(6);
+  await page.locator('.plot').nth(5).click();
+  await expect(page.locator('#crop-picker-overlay')).toBeVisible();
+  await expect(page.locator('[data-crop-id="watermelon"]')).toBeVisible();
+});
