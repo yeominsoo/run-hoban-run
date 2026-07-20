@@ -15,6 +15,13 @@ const MAX_HP = 3;
 const INVINCIBLE_MS = 1_000;
 const BASE_BALL_SPEED = 90; // px/sec
 const MIN_SPAWN_DIST_FROM_PLAYER = 70;
+const PLAYER_SPRITE_SIZE = 64;
+const BALL_SPRITE_SIZE = 34;
+const SPRITE_URLS = {
+  player: '/assets/game-art/ball-dodge/player-rabbit.webp',
+  red: '/assets/game-art/ball-dodge/hazard-meteor.webp',
+  green: '/assets/game-art/ball-dodge/collectible-star.webp'
+} as const;
 
 type Phase = 'idle' | 'playing' | 'ended';
 type BallKind = 'red' | 'green';
@@ -48,7 +55,7 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>볼 피하기 + 수집</h2>
-          <p>드래그로 캐릭터를 움직여 빨간 볼을 피하고 초록 볼을 모으세요.<br>HP 3, 초록 볼 하나당 +10점. 30초마다 더 빨라지고 볼이 늘어납니다.</p>
+          <p>드래그로 토끼 비행선을 움직여 가시 운석을 피하고 별을 모으세요.<br>HP 3, 별 하나당 +10점. 30초마다 더 빨라지고 오브젝트가 늘어납니다.</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
           <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
@@ -113,6 +120,37 @@ const rankingList = document.getElementById('ranking-list')!;
 const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButtonElement;
 const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
 const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
+
+// ── Sprite assets ─────────────────────────────
+const spriteImages = {
+  player: new Image(),
+  red: new Image(),
+  green: new Image()
+};
+let loadedSpriteCount = 0;
+let failedSpriteCount = 0;
+
+function updateSpriteState() {
+  canvas.dataset.assetState = failedSpriteCount > 0
+    ? 'fallback'
+    : loadedSpriteCount === Object.keys(spriteImages).length
+      ? 'ready'
+      : 'loading';
+}
+
+for (const [key, image] of Object.entries(spriteImages) as Array<[keyof typeof spriteImages, HTMLImageElement]>) {
+  image.decoding = 'async';
+  image.addEventListener('load', () => {
+    loadedSpriteCount += 1;
+    updateSpriteState();
+  }, { once: true });
+  image.addEventListener('error', () => {
+    failedSpriteCount += 1;
+    updateSpriteState();
+  }, { once: true });
+  image.src = SPRITE_URLS[key];
+}
+updateSpriteState();
 
 // ── Theme colors ───────────────────────────────
 const rootStyle = getComputedStyle(document.documentElement);
@@ -305,7 +343,27 @@ function checkCollisions(now: number) {
 }
 
 // ── Render ────────────────────────────────────
+function isSpriteReady(image: HTMLImageElement): boolean {
+  return image.complete && image.naturalWidth > 0;
+}
+
+function drawSprite(image: HTMLImageElement, x: number, y: number, size: number) {
+  ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+}
+
 function drawBall(ball: Ball) {
+  const image = spriteImages[ball.kind];
+  if (isSpriteReady(image)) {
+    ctx.save();
+    ctx.shadowColor = ball.kind === 'red'
+      ? 'rgba(232, 93, 117, 0.3)'
+      : 'rgba(245, 184, 61, 0.32)';
+    ctx.shadowBlur = 8;
+    drawSprite(image, ball.x, ball.y, BALL_SPRITE_SIZE);
+    ctx.restore();
+    return;
+  }
+
   const color = ball.kind === 'red' ? COLOR_DANGER : COLOR_SUCCESS;
   const gradient = ctx.createRadialGradient(
     ball.x - BALL_RADIUS * 0.3, ball.y - BALL_RADIUS * 0.3, BALL_RADIUS * 0.1,
@@ -325,6 +383,15 @@ function drawPlayer(now: number) {
   const isInvincible = now < invincibleUntil;
   const blinking = isInvincible && Math.floor(now / 100) % 2 === 0;
   if (blinking) return;
+
+  if (isSpriteReady(spriteImages.player)) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(89, 207, 191, 0.42)';
+    ctx.shadowBlur = isInvincible ? 22 : 12;
+    drawSprite(spriteImages.player, player.x, player.y, PLAYER_SPRITE_SIZE);
+    ctx.restore();
+    return;
+  }
 
   const gradient = ctx.createRadialGradient(
     player.x - PLAYER_RADIUS * 0.3, player.y - PLAYER_RADIUS * 0.35, PLAYER_RADIUS * 0.1,

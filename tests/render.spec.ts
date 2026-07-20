@@ -1535,6 +1535,33 @@ async function chaseBall(page: Page, kind: 'green' | 'red', maxIterations: numbe
   }
 }
 
+test('ball dodge: dedicated player, hazard, and collectible sprites load before play', async ({ page }) => {
+  const loadedAssetPaths = new Set<string>();
+  page.on('response', (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.startsWith('/assets/game-art/ball-dodge/') && response.ok()) {
+      loadedAssetPaths.add(path);
+    }
+  });
+
+  await page.goto('/ball-dodge/');
+  await expect(page.locator('#bd-canvas')).toHaveAttribute('data-asset-state', 'ready');
+  expect([...loadedAssetPaths].sort()).toEqual([
+    '/assets/game-art/ball-dodge/collectible-star.webp',
+    '/assets/game-art/ball-dodge/hazard-meteor.webp',
+    '/assets/game-art/ball-dodge/player-rabbit.webp'
+  ]);
+});
+
+test('ball dodge: a failed sprite request keeps the Canvas fallback playable', async ({ page }) => {
+  await page.route('**/assets/game-art/ball-dodge/hazard-meteor.webp', (route) => route.abort());
+  await page.goto('/ball-dodge/');
+
+  await expect(page.locator('#bd-canvas')).toHaveAttribute('data-asset-state', 'fallback');
+  await page.locator('#start-btn').click();
+  await expect(page.locator('#bd-canvas')).toHaveAttribute('data-phase', 'playing');
+});
+
 test('ball dodge: dragging onto a green ball scores points, red ball costs HP', async ({ page }) => {
   await page.goto('/ball-dodge/');
   await expect(page.locator('.game-title')).toHaveText('볼 피하기 + 수집');
