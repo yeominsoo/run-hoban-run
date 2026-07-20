@@ -264,23 +264,45 @@ button { border: 0; cursor: pointer; }
 .tw-name-tag { color: var(--color-page-muted); }
 .tw-name-tag.me { color: var(--color-accent-strong, var(--color-page-text)); }
 
-.tw-rope-track {
+.tw-arena {
   position: relative;
   width: 100%;
-  height: 22px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(59,130,246,0.22), rgba(255,255,255,0.4) 48%, rgba(232,93,117,0.22));
+  height: 190px;
+  overflow: hidden;
+  border-radius: 18px;
   border: 1px solid var(--color-border);
+  background-color: #edf5cc;
+  background-image: url("/assets/game-art/tug-of-war-battle/arena.webp");
+  background-position: center 55%;
+  background-repeat: no-repeat;
+  background-size: 100% auto;
+  box-shadow: inset 0 -18px 30px rgba(46, 94, 75, 0.08);
+}
+.tw-arena[data-asset-state="fallback"] {
+  background-image:
+    radial-gradient(circle at 20% 66%, rgba(94, 207, 188, 0.36) 0 38px, transparent 39px),
+    radial-gradient(circle at 80% 66%, rgba(240, 125, 137, 0.34) 0 38px, transparent 39px),
+    linear-gradient(#dff5ef 0 54%, #dbeaaf 55% 100%);
+}
+.tw-rope-track {
+  position: absolute;
+  left: 14%;
+  top: 55%;
+  width: 72%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(126, 79, 46, 0.82);
+  box-shadow: 0 2px 0 rgba(255, 255, 255, 0.45), 0 3px 7px rgba(75, 52, 35, 0.26);
   overflow: visible;
 }
 .tw-rope-track::before {
   content: "";
   position: absolute;
   left: 50%;
-  top: -4px;
-  bottom: -4px;
+  top: -11px;
+  height: 30px;
   width: 2px;
-  background: rgba(75,52,71,0.3);
+  background: rgba(75, 52, 71, 0.24);
   transform: translateX(-50%);
 }
 .tw-rope-marker {
@@ -288,13 +310,32 @@ button { border: 0; cursor: pointer; }
   top: 50%;
   left: 50%;
   width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--color-secondary);
-  border: 3px solid #fff;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-  transform: translate(-50%, -50%);
+  height: 44px;
+  background: transparent;
+  transform: translate(-50%, -29%);
   transition: left 90ms linear;
+  filter: drop-shadow(0 3px 2px rgba(75, 52, 35, 0.25));
+}
+.tw-rope-marker::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 0;
+  width: 3px;
+  height: 44px;
+  border-radius: 999px;
+  background: #7d5432;
+}
+.tw-rope-marker::after {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 1px;
+  width: 0;
+  height: 0;
+  border-top: 10px solid #f6c445;
+  border-right: 15px solid transparent;
+  border-bottom: 10px solid #f6c445;
 }
 
 .tw-tap-btn {
@@ -325,5 +366,6 @@ button { border: 0; cursor: pointer; }
 
 @media (max-width: 420px) {
   .tw-panel { padding: 24px 18px; }
-  .tw-tap-btn { min-height: 120px; font-size: 1.4rem; }
+  .tw-arena { height: 150px; }
+  .tw-tap-btn { min-height: 108px; font-size: 1.4rem; }
 }

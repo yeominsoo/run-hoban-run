@@ -100,3 +100,68 @@ test('halligalli: a failed fruit asset switches cards to the text fallback', asy
   await expect(page.locator('.hg-fruit-fallback').first()).toBeVisible();
   await expect(page.locator('.hg-fruit-fallback').first()).toHaveText('포');
 });
+
+test('tug-of-war: mascot arena loads and a real match moves the accessible flag', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+  let arenaResponseOk = false;
+
+  host.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/assets/game-art/tug-of-war-battle/arena.webp') {
+      arenaResponseOk = response.ok();
+    }
+  });
+
+  try {
+    await host.goto('/tug-of-war-battle/');
+    await expect(host.locator('#tw-arena')).toHaveAttribute('data-asset-state', 'ready');
+    expect(arenaResponseOk).toBe(true);
+
+    await host.locator('#nickname').fill('줄다리기호스트');
+    await host.locator('#create-btn').click();
+    await expect(host.locator('#waiting-opponent-panel')).toBeVisible();
+    const roomCode = (await host.locator('#lobby-code-display').textContent())?.trim() ?? '';
+    expect(roomCode).toMatch(/^[A-Z0-9]{6}$/);
+
+    await guest.goto('/tug-of-war-battle/');
+    await guest.locator('#nickname').fill('줄다리기게스트');
+    await guest.locator('#tab-join').click();
+    await guest.locator('#room-code-input').fill(roomCode);
+    await guest.locator('#join-btn').click();
+
+    await expect(host.locator('#playing-panel')).toBeVisible({ timeout: 8_000 });
+    await expect(guest.locator('#playing-panel')).toBeVisible({ timeout: 8_000 });
+    await expect(host.locator('#tw-arena')).toBeVisible();
+    await expect(host.locator('#rope-track')).toHaveAttribute('aria-valuenow', '50');
+
+    await host.locator('#tap-btn').click();
+    await expect.poll(
+      async () => Number(await host.locator('#rope-track').getAttribute('aria-valuenow')),
+      { timeout: 3_000 },
+    ).not.toBe(50);
+
+    const markerLeft = Number.parseFloat(await host.locator('#rope-marker').evaluate(
+      (marker) => (marker as HTMLElement).style.left,
+    ));
+    expect(markerLeft).toBeGreaterThanOrEqual(0);
+    expect(markerLeft).toBeLessThanOrEqual(100);
+    await expect(host.locator('#rope-track')).toHaveAttribute('aria-valuetext', /(왼쪽|오른쪽) \d+/);
+  } finally {
+    await hostContext.close();
+    await guestContext.close();
+  }
+});
+
+test('tug-of-war: failed arena request keeps the CSS fallback and rope semantics', async ({ page }) => {
+  await page.route('**/assets/game-art/tug-of-war-battle/arena.webp', (route) => route.abort());
+  await page.goto('/tug-of-war-battle/');
+  await expect(page.locator('#tw-arena')).toHaveAttribute('data-asset-state', 'fallback');
+
+  await showPanel(page, 'tw', 'playing-panel');
+  await expect(page.locator('#tw-arena')).toBeVisible();
+  await expect(page.locator('#tw-arena')).toHaveCSS('background-image', /gradient/);
+  await expect(page.locator('#rope-track')).toHaveAttribute('role', 'progressbar');
+  await expect(page.locator('#rope-track')).toHaveAttribute('aria-valuenow', '50');
+});

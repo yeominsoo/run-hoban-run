@@ -21,6 +21,7 @@ const NAME_KEY = 'run-hoban-run:tug-of-war-battle-nickname';
 const SESSION_KEY = 'run-hoban-run:tug-of-war-battle-session';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX = 24;
+const ARENA_ASSET_URL = '/assets/game-art/tug-of-war-battle/arena.webp';
 
 interface SavedSession { roomCode: string; token: string; name: string; }
 
@@ -170,8 +171,10 @@ app.innerHTML = `
         <span class="tw-name-tag" id="left-name-tag">호스트</span>
         <span class="tw-name-tag" id="right-name-tag">게스트</span>
       </div>
-      <div class="tw-rope-track">
-        <div class="tw-rope-marker" id="rope-marker"></div>
+      <div class="tw-arena" id="tw-arena">
+        <div class="tw-rope-track" id="rope-track" role="progressbar" aria-label="줄 위치" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <div class="tw-rope-marker" id="rope-marker" aria-hidden="true"></div>
+        </div>
       </div>
       <button id="tap-btn" type="button" class="tw-tap-btn">당기기!</button>
     </div>
@@ -242,6 +245,8 @@ const countdownNumber = document.getElementById('countdown-number')!;
 const timerFill = document.getElementById('timer-fill')!;
 const leftNameTag = document.getElementById('left-name-tag')!;
 const rightNameTag = document.getElementById('right-name-tag')!;
+const arena = document.getElementById('tw-arena')!;
+const ropeTrack = document.getElementById('rope-track')!;
 const ropeMarker = document.getElementById('rope-marker')!;
 const tapBtn = document.getElementById('tap-btn') as HTMLButtonElement;
 
@@ -253,6 +258,13 @@ const errorText = document.getElementById('error-text')!;
 
 // ── Init ──────────────────────────────────────────────────────────
 nicknameInput.value = localStorage.getItem(NAME_KEY) ?? '';
+
+arena.dataset.assetState = 'loading';
+const arenaImage = new Image();
+arenaImage.decoding = 'async';
+arenaImage.addEventListener('load', () => { arena.dataset.assetState = 'ready'; });
+arenaImage.addEventListener('error', () => { arena.dataset.assetState = 'fallback'; });
+arenaImage.src = ARENA_ASSET_URL;
 
 const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
@@ -399,7 +411,12 @@ function resetGameState() {
 
 function renderRope() {
   const pct = ((position + winThreshold) / (winThreshold * 2)) * 100;
-  ropeMarker.style.left = `${Math.max(0, Math.min(100, pct))}%`;
+  const clampedPct = Math.max(0, Math.min(100, pct));
+  ropeMarker.style.left = `${clampedPct}%`;
+  ropeMarker.dataset.position = String(position);
+  ropeTrack.setAttribute('aria-valuenow', String(Math.round(clampedPct)));
+  const direction = position > 0 ? '오른쪽' : position < 0 ? '왼쪽' : '중앙';
+  ropeTrack.setAttribute('aria-valuetext', `${direction} ${Math.abs(position)}`);
 }
 
 function startTimerDisplay() {
