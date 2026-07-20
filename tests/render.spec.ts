@@ -1865,19 +1865,30 @@ test('snake: steering onto the food grows the snake and increases the score', as
 });
 
 async function driveSnakeToGameOver(page: Page) {
-  // 몸길이를 5 이상(시작 3 + 먹이 2회)으로 늘려야 아래 2×2 루프에서 충돌이 수학적으로
-  // 보장된다.
-  for (let grownCount = 0; grownCount < 2; grownCount += 1) {
-    for (let i = 0; i < 90; i += 1) {
-      const s = await readSnakeState(page);
-      if (s.phase !== 'playing') return;
-      const key = nextSnakeKey(s);
-      if (key) await page.keyboard.press(key);
-      await page.waitForTimeout(60);
-      const s2 = await readSnakeState(page);
-      if (s2.length > s.length) break;
-    }
+  // 키 입력을 60ms 간격으로 쌓으면 220ms 게임 틱 사이에 pendingDirection이 여러 번
+  // 덮어써져 경로가 비결정적으로 변한다. 머리가 실제로 한 칸 이동할 때까지 기다린 뒤
+  // 다음 키를 보내 테스트 입력을 게임 틱과 동기화한다.
+  const advanceOneTick = async (key: string | null) => {
+    const before = await readSnakeState(page);
+    if (key) await page.keyboard.press(key);
+    await expect.poll(async () => {
+      const after = await readSnakeState(page);
+      return after.phase !== 'playing'
+        || after.headX !== before.headX
+        || after.headY !== before.headY;
+    }, { timeout: 1_000 }).toBe(true);
+  };
+
+  // 몸길이 5 이상(시작 3 + 먹이 2회)이 될 때까지 실제 틱 단위로 먹이를 추적한다.
+  // 길이 4에서는 2×2 루프의 마지막 칸과 동시에 꼬리가 비워져 충돌이 보장되지 않는다.
+  for (let step = 0; step < 360; step += 1) {
+    const state = await readSnakeState(page);
+    if (state.phase !== 'playing') return;
+    if (state.length >= 5) break;
+    await advanceOneTick(nextSnakeKey(state));
   }
+  const grown = await readSnakeState(page);
+  expect(grown.length).toBeGreaterThanOrEqual(5);
 
   // 현재 실제 진행 방향을 90도씩 같은 방향으로 4번 회전시키면 정확히 한 바퀴 돌아
   // 시작점으로 돌아온다. 몸길이가 5 이상이면 그 칸은 아직 몸통이 차지하고 있어(길이 5 >
@@ -1891,7 +1902,7 @@ async function driveSnakeToGameOver(page: Page) {
   };
   const rotate90 = ({ dx, dy }: { dx: number; dy: number }) => ({ dx: -dy, dy: dx });
 
-  for (let cycle = 0; cycle < 3; cycle += 1) {
+  for (let cycle = 0; cycle < 2; cycle += 1) {
     const state = await readSnakeState(page);
     if (state.phase === 'ended') return;
     let dir = { dx: state.dirDx, dy: state.dirDy };
@@ -1903,8 +1914,7 @@ async function driveSnakeToGameOver(page: Page) {
     for (const key of loopKeys) {
       const phaseNow = (await readSnakeState(page)).phase;
       if (phaseNow === 'ended') return;
-      await page.keyboard.press(key);
-      await page.waitForTimeout(250);
+      await advanceOneTick(key);
     }
   }
 }
