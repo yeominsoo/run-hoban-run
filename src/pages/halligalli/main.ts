@@ -23,7 +23,19 @@ const SESSION_KEY = 'run-hoban-run:halligalli-session';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX = 24;
 
-const FRUIT_EMOJI: Record<string, string> = { strawberry: '🍓', lime: '🍋', banana: '🍌', grape: '🍇' };
+const FRUIT_ASSET: Record<string, string> = {
+  strawberry: '/assets/game-art/halligalli/twemoji/strawberry.svg',
+  lime: '/assets/game-art/halligalli/twemoji/lime.svg',
+  banana: '/assets/game-art/halligalli/twemoji/banana.svg',
+  grape: '/assets/game-art/halligalli/twemoji/grape.svg'
+};
+const FRUIT_LABEL: Record<string, string> = {
+  strawberry: '딸기',
+  lime: '라임',
+  banana: '바나나',
+  grape: '포도'
+};
+const BELL_ASSET = '/assets/game-art/halligalli/twemoji/bell.svg';
 
 interface SavedSession { roomCode: string; token: string; name: string; }
 
@@ -169,8 +181,12 @@ app.innerHTML = `
       <p class="status-text" id="turn-status"></p>
       <div class="hg-board" id="hg-board"></div>
       <div class="hg-controls">
-        <button id="flip-btn" type="button" class="hg-btn primary flip-btn" disabled>🂠 뒤집기</button>
-        <button id="ring-btn" type="button" class="hg-btn bell-btn">🔔 종 치기!</button>
+        <button id="flip-btn" type="button" class="hg-btn primary flip-btn" disabled>
+          <span class="hg-card-back-icon" aria-hidden="true"></span>뒤집기
+        </button>
+        <button id="ring-btn" type="button" class="hg-btn bell-btn">
+          <img class="hg-bell-icon" src="${BELL_ASSET}" alt="" aria-hidden="true" />종 치기!
+        </button>
       </div>
     </div>
 
@@ -252,6 +268,27 @@ const retryBtn = document.getElementById('retry-btn') as HTMLButtonElement;
 const errorText = document.getElementById('error-text')!;
 
 // ── Init ──────────────────────────────────────────────────────────
+const halligalliAssetUrls = [...Object.values(FRUIT_ASSET), BELL_ASSET];
+let loadedAssetCount = 0;
+hgBoard.dataset.assetState = 'loading';
+for (const url of halligalliAssetUrls) {
+  const image = new Image();
+  image.decoding = 'async';
+  image.addEventListener('load', () => {
+    loadedAssetCount += 1;
+    if (loadedAssetCount === halligalliAssetUrls.length) {
+      hgBoard.dataset.assetState = 'ready';
+    }
+  }, { once: true });
+  image.addEventListener('error', () => {
+    hgBoard.dataset.assetState = 'fallback';
+    if (url === BELL_ASSET) {
+      document.querySelector('.hg-bell-icon')?.classList.add('hidden');
+    }
+  }, { once: true });
+  image.src = url;
+}
+
 nicknameInput.value = localStorage.getItem(NAME_KEY) ?? '';
 
 const roomFromUrl = new URLSearchParams(location.search).get('room');
@@ -401,7 +438,13 @@ function renderLobbyPlayers(players: { name: string; isHost: boolean; connected:
 
 function cardLabel(card: { fruit: string; count: number } | null): string {
   if (!card) return '';
-  return `${FRUIT_EMOJI[card.fruit] ?? '❓'}`.repeat(card.count);
+  const asset = FRUIT_ASSET[card.fruit];
+  const label = FRUIT_LABEL[card.fruit] ?? '과일';
+  const count = Math.min(Math.max(Number(card.count) || 1, 1), 5);
+  return Array.from({ length: count }, () => asset
+    ? `<span class="hg-fruit-item"><img class="hg-fruit-icon" src="${asset}" alt="" aria-hidden="true" /><span class="hg-fruit-fallback" aria-hidden="true">${label.slice(0, 1)}</span></span>`
+    : `<span class="hg-fruit-item"><span class="hg-fruit-fallback visible" aria-hidden="true">?</span></span>`
+  ).join('');
 }
 
 function renderBoard(justFlippedToken?: string) {
@@ -410,7 +453,7 @@ function renderBoard(justFlippedToken?: string) {
     const isTurn = p.token === currentTurnToken;
     const flipCls = p.token === justFlippedToken ? ' flip-in' : '';
     const topCardHtml = p.topCard
-      ? `<div class="hg-top-card${flipCls}"><span class="hg-fruit-count">${p.topCard.count}</span><span class="hg-fruit-icons">${cardLabel(p.topCard)}</span></div>`
+      ? `<div class="hg-top-card${flipCls}"><span class="hg-fruit-count">${p.topCard.count}</span><span class="hg-fruit-icons count-${p.topCard.count}" aria-label="${FRUIT_LABEL[p.topCard.fruit] ?? '과일'} ${p.topCard.count}개">${cardLabel(p.topCard)}</span></div>`
       : `<div class="hg-top-card empty">-</div>`;
     return `
       <div class="hg-pile${isMe ? ' me' : ''}${isTurn ? ' active-turn' : ''}${p.connected ? '' : ' disconnected'}">
@@ -540,7 +583,7 @@ function handleServerMessage(msg: any) {
 
       if (event) {
         if (event.kind === 'flip') {
-          showToastAfterFlipAnim(`${event.name}님이 ${FRUIT_EMOJI[event.fruit] ?? ''}${event.count}장 카드를 뒤집었어요`, 'flip');
+          showToastAfterFlipAnim(`${event.name}님이 ${FRUIT_LABEL[event.fruit] ?? '과일'} ${event.count}개 카드를 뒤집었어요`, 'flip');
         } else if (event.kind === 'ring_correct') {
           showToast(`🔔 ${event.name}님 정답! 카드 ${event.cardsWon}장 획득!`, 'correct');
         } else if (event.kind === 'ring_wrong') {

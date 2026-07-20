@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test:render": "playwright test",
+    "test:game-art": "GAME_ART_E2E=1 playwright test --config=playwright.game-art.config.ts",
     "test:room-invite": "ROOM_INVITE_E2E=1 playwright test --config=playwright.room-invite.config.ts",
     "firebase:login": "npx firebase-tools login --no-localhost",
     "firebase:projects": "npx firebase-tools projects:list",
