@@ -165,3 +165,69 @@ test('tug-of-war: failed arena request keeps the CSS fallback and rope semantics
   await expect(page.locator('#rope-track')).toHaveAttribute('role', 'progressbar');
   await expect(page.locator('#rope-track')).toHaveAttribute('aria-valuenow', '50');
 });
+
+test('light-guess: playground loads and a real match keeps the signal as semantic DOM', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+  let playgroundResponseOk = false;
+
+  host.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/assets/game-art/light-guess/playground.webp') {
+      playgroundResponseOk = response.ok();
+    }
+  });
+
+  try {
+    await host.goto('/light-guess/');
+    await expect(host.locator('#playing-panel')).toHaveAttribute('data-asset-state', 'ready');
+    expect(playgroundResponseOk).toBe(true);
+
+    await host.locator('#nickname').fill('불빛호스트');
+    await host.locator('#capacity-input').fill('2');
+    await host.locator('#create-btn').click();
+    await expect(host.locator('#lobby-panel')).toBeVisible();
+    const roomCode = (await host.locator('#lobby-code-display').textContent())?.trim() ?? '';
+    expect(roomCode).toMatch(/^[A-Z0-9]{6}$/);
+
+    await guest.goto('/light-guess/');
+    await guest.locator('#nickname').fill('불빛게스트');
+    await guest.locator('#tab-join').click();
+    await guest.locator('#room-code-input').fill(roomCode);
+    await guest.locator('#join-btn').click();
+    await expect(host.locator('#start-btn')).toBeVisible();
+    await host.locator('#start-btn').click();
+
+    await expect(host.locator('#playing-panel')).toBeVisible({ timeout: 8_000 });
+    await expect(guest.locator('#playing-panel')).toBeVisible({ timeout: 8_000 });
+    await expect(host.locator('#lg-status-msg')).toHaveText('초록불! 계속 탭하세요!');
+    await expect(host.locator('#lg-light')).toHaveAttribute('aria-label', '초록불, 계속 탭하세요');
+    await expect(host.locator('#lg-light')).toHaveCSS('background-color', 'rgb(57, 71, 75)');
+    await expect(host.locator('#playing-panel')).toHaveCSS('background-image', /playground\.webp/);
+    await host.locator('#tap-area-btn').dispatchEvent('pointerdown');
+    await guest.locator('#tap-area-btn').dispatchEvent('pointerdown');
+    await expect(host.locator('#lg-light')).toHaveAttribute(
+      'aria-label',
+      '빨간불, 멈추세요',
+      { timeout: 6_000 },
+    );
+    await expect(host.locator('#lg-status-msg')).toHaveText('빨간불! 손을 멈추세요!');
+  } finally {
+    await hostContext.close();
+    await guestContext.close();
+  }
+});
+
+test('light-guess: failed playground request preserves the signal and CSS track fallback', async ({ page }) => {
+  await page.route('**/assets/game-art/light-guess/playground.webp', (route) => route.abort());
+  await page.goto('/light-guess/');
+  await expect(page.locator('#playing-panel')).toHaveAttribute('data-asset-state', 'fallback');
+
+  await showPanel(page, 'lg', 'playing-panel');
+  await expect(page.locator('#playing-panel')).toBeVisible();
+  await expect(page.locator('#playing-panel')).toHaveCSS('background-image', /gradient/);
+  await expect(page.locator('#lg-light')).toHaveAttribute('role', 'img');
+  await expect(page.locator('#lg-light')).toHaveAttribute('aria-label', '신호 대기');
+  await expect(page.locator('#tap-area-btn')).toBeVisible();
+});

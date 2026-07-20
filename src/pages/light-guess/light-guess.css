@@ -93,6 +93,27 @@ button { border: 0; cursor: pointer; }
   border-radius: 20px;
 }
 .lg-panel.wide { padding: 24px 18px; }
+#playing-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #fff7e6;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.26), rgba(255, 252, 245, 0.58)),
+    url("/assets/game-art/light-guess/playground.webp");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+#playing-panel[data-asset-state="fallback"] {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.22), rgba(255, 252, 245, 0.62)),
+    repeating-linear-gradient(100deg, #f8dba3 0 26px, #fff2d1 27px 30px);
+}
+#playing-panel > * {
+  position: relative;
+  z-index: 1;
+}
 
 .field-label {
   align-self: flex-start;
@@ -275,14 +296,24 @@ button { border: 0; cursor: pointer; }
   font-weight: 800;
   color: var(--color-page-text);
   margin: 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 2px 8px rgba(75, 52, 71, 0.08);
 }
 
 /* ── Light ─────────────────────────────────────── */
 .lg-light {
-  width: 100%;
+  width: 124px;
+  height: 124px;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 10px 0;
+  padding: 16px;
+  border: 4px solid rgba(255, 255, 255, 0.84);
+  border-radius: 34px;
+  background: #39474b;
+  box-shadow: 0 8px 18px rgba(48, 56, 60, 0.28);
 }
 .lg-light-bulb {
   width: 90px;
@@ -299,6 +330,10 @@ button { border: 0; cursor: pointer; }
 
 .lg-status-msg {
   margin: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 2px 8px rgba(75, 52, 71, 0.08);
   font-size: 1.05rem;
   font-weight: 800;
   text-align: center;
@@ -320,7 +355,7 @@ button { border: 0; cursor: pointer; }
   gap: 6px;
   padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid var(--color-border);
   font-size: 0.74rem;
   font-weight: 700;
@@ -377,5 +412,7 @@ button { border: 0; cursor: pointer; }
 
 @media (max-width: 420px) {
   .lg-panel { padding: 24px 18px; }
+  .lg-light { width: 104px; height: 104px; padding: 12px; border-radius: 28px; }
   .lg-light-bulb { width: 72px; height: 72px; }
+  .lg-tap-btn { min-height: 108px; }
 }

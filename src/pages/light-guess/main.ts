@@ -21,6 +21,7 @@ const NAME_KEY = 'run-hoban-run:light-guess-nickname';
 const SESSION_KEY = 'run-hoban-run:light-guess-session';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX = 24;
+const PLAYGROUND_ASSET_URL = '/assets/game-art/light-guess/playground.webp';
 
 interface SavedSession { roomCode: string; token: string; name: string; }
 
@@ -168,7 +169,7 @@ app.innerHTML = `
     <!-- Playing (green/red/round_over share one panel) -->
     <div class="lg-panel wide hidden" id="playing-panel">
       <p class="lg-round-banner" id="round-banner"></p>
-      <div class="lg-light" id="lg-light">
+      <div class="lg-light" id="lg-light" role="img" aria-live="polite" aria-label="신호 대기">
         <div class="lg-light-bulb" id="light-bulb"></div>
       </div>
       <p class="lg-status-msg" id="lg-status-msg"></p>
@@ -245,6 +246,7 @@ const lobbyCancelBtn = document.getElementById('lobby-cancel-btn') as HTMLButton
 const countdownNumber = document.getElementById('countdown-number')!;
 
 const roundBanner = document.getElementById('round-banner')!;
+const light = document.getElementById('lg-light')!;
 const lightBulb = document.getElementById('light-bulb')!;
 const lgStatusMsg = document.getElementById('lg-status-msg')!;
 const lgSurvivors = document.getElementById('lg-survivors')!;
@@ -259,6 +261,13 @@ const errorText = document.getElementById('error-text')!;
 
 // ── Init ──────────────────────────────────────────────────────────
 nicknameInput.value = localStorage.getItem(NAME_KEY) ?? '';
+
+panels.playing.dataset.assetState = 'loading';
+const playgroundImage = new Image();
+playgroundImage.decoding = 'async';
+playgroundImage.addEventListener('load', () => { panels.playing.dataset.assetState = 'ready'; });
+playgroundImage.addEventListener('error', () => { panels.playing.dataset.assetState = 'fallback'; });
+playgroundImage.src = PLAYGROUND_ASSET_URL;
 
 const roomFromUrl = new URLSearchParams(location.search).get('room');
 if (roomFromUrl) {
@@ -399,6 +408,7 @@ function resetGameState() {
   currentRound = 0;
   chatWidget.clearAll();
   lightBulb.classList.remove('on');
+  light.setAttribute('aria-label', '신호 대기');
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────
@@ -482,6 +492,7 @@ function handleServerMessage(msg: any) {
         ? '다시 접속했어요 — 신호를 확인하세요!'
         : '이번 게임에서 탈락했어요 — 결과를 지켜보는 중…';
       lightBulb.classList.toggle('on', game?.phase === 'red');
+      light.setAttribute('aria-label', game?.phase === 'red' ? '빨간불, 멈추세요' : '신호 대기');
       renderSurvivors();
       setPhase(game?.phase === 'red' ? 'red' : 'round_over');
       break;
@@ -509,6 +520,7 @@ function handleServerMessage(msg: any) {
       lgStatusMsg.textContent = '초록불! 계속 탭하세요!';
       lgStatusMsg.className = 'lg-status-msg green';
       lightBulb.classList.remove('on');
+      light.setAttribute('aria-label', '초록불, 계속 탭하세요');
       renderSurvivors();
       setPhase('green');
       break;
@@ -517,6 +529,7 @@ function handleServerMessage(msg: any) {
     case 'light_on': {
       aliveEntries = msg.alive ?? [];
       lightBulb.classList.add('on');
+      light.setAttribute('aria-label', '빨간불, 멈추세요');
       lgStatusMsg.textContent = '빨간불! 손을 멈추세요!';
       lgStatusMsg.className = 'lg-status-msg red';
       const stopped = (msg.eliminatedForStopping as { token: string; name: string }[]) ?? [];
@@ -544,6 +557,7 @@ function handleServerMessage(msg: any) {
         : '이번 게임에서 탈락했어요 — 결과를 지켜보는 중…';
       lgStatusMsg.className = 'lg-status-msg';
       lightBulb.classList.remove('on');
+      light.setAttribute('aria-label', '신호 대기');
       renderSurvivors();
       setPhase('round_over');
       break;
