@@ -22,6 +22,7 @@ const SESSION_KEY = 'run-hoban-run:mole-hunt-session';
 const RECONNECT_RETRY_MS = 2000;
 const RECONNECT_MAX = 24;
 const HOLE_COUNT = 9;
+const MOLE_SPRITE_URL = '/assets/game-art/mole-hunt/mole.webp';
 
 interface SavedSession { roomCode: string; token: string; name: string; }
 
@@ -269,9 +270,22 @@ if (resumableSession) {
 
 // 홀 9개를 미리 그려둔다(구멍 자체는 게임 내내 고정, 두더지만 상태가 바뀐다).
 mhGrid.innerHTML = Array.from({ length: HOLE_COUNT }, (_, i) =>
-  `<div class="mh-hole" data-hole="${i}"><span class="mh-mole">🐹</span></div>`
+  `<div class="mh-hole" data-hole="${i}">
+    <span class="mh-mole" aria-hidden="true"><span class="mh-mole-fallback"></span></span>
+  </div>`
 ).join('');
 const holeEls = Array.from(mhGrid.querySelectorAll<HTMLElement>('.mh-hole'));
+const moleSprite = new Image();
+mhGrid.dataset.assetState = 'loading';
+moleSprite.decoding = 'async';
+moleSprite.addEventListener('load', () => {
+  mhGrid.dataset.assetState = 'ready';
+}, { once: true });
+moleSprite.addEventListener('error', () => {
+  mhGrid.dataset.assetState = 'fallback';
+}, { once: true });
+moleSprite.src = MOLE_SPRITE_URL;
+
 holeEls.forEach((el) => {
   el.addEventListener('click', () => {
     const hole = Number(el.dataset.hole);

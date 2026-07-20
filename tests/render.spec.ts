@@ -1647,6 +1647,41 @@ test('ball dodge: saving a ranking entry shows it on revisit and can be exported
   await verifyRankingSaveAndView(page, '/ball-dodge/');
 });
 
+test('mole hunt: dedicated sprite loads and appears in an active hole', async ({ page }) => {
+  let spriteResponseOk = false;
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/assets/game-art/mole-hunt/mole.webp') {
+      spriteResponseOk = response.ok();
+    }
+  });
+
+  await page.goto('/mole-hunt/');
+  await expect(page.locator('#mh-grid')).toHaveAttribute('data-asset-state', 'ready');
+  expect(spriteResponseOk).toBe(true);
+
+  await page.evaluate(() => {
+    document.querySelectorAll('.mh-panel').forEach((el) => el.classList.add('hidden'));
+    document.querySelector('#playing-panel')?.classList.remove('hidden');
+    document.querySelectorAll('.mh-hole')[4]?.classList.add('active');
+  });
+  const activeMole = page.locator('.mh-hole.active .mh-mole');
+  await expect(activeMole).toBeVisible();
+  await expect(activeMole).toHaveCSS('background-image', /mole\.webp/);
+});
+
+test('mole hunt: a failed sprite request shows the CSS target fallback', async ({ page }) => {
+  await page.route('**/assets/game-art/mole-hunt/mole.webp', (route) => route.abort());
+  await page.goto('/mole-hunt/');
+  await expect(page.locator('#mh-grid')).toHaveAttribute('data-asset-state', 'fallback');
+
+  await page.evaluate(() => {
+    document.querySelectorAll('.mh-panel').forEach((el) => el.classList.add('hidden'));
+    document.querySelector('#playing-panel')?.classList.remove('hidden');
+    document.querySelectorAll('.mh-hole')[4]?.classList.add('active');
+  });
+  await expect(page.locator('.mh-hole.active .mh-mole-fallback')).toBeVisible();
+});
+
 /**
  * 정렬 감지와 탭을 Node↔브라우저 왕복 없이 같은 requestAnimationFrame 틱 안에서 처리한다.
  * (Node 쪽에서 "정렬 확인 → 그 다음 별도 CDP 호출로 클릭" 2단계로 나누면, 그 사이 애니메이션이

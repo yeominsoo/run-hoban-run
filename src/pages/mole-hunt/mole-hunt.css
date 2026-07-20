@@ -334,12 +334,58 @@ button { border: 0; cursor: pointer; }
   touch-action: manipulation;
 }
 .mh-mole {
-  font-size: 2.1rem;
-  line-height: 1;
+  width: 122%;
+  height: 122%;
+  display: grid;
+  place-items: center;
+  background-image: url("/assets/game-art/mole-hunt/mole.webp");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
   transform: translateY(120%) scale(0.7);
+  transform-origin: center bottom;
   opacity: 0;
   transition: none;
   user-select: none;
+  pointer-events: none;
+}
+.mh-mole-fallback {
+  display: none;
+  position: relative;
+  width: 62%;
+  aspect-ratio: 0.92;
+  border: 3px solid #3f3140;
+  border-radius: 50% 50% 44% 44%;
+  background: radial-gradient(circle at 38% 28%, #c6875f 0 11%, #8b5538 48%, #6c402d 100%);
+}
+.mh-mole-fallback::before {
+  content: "";
+  position: absolute;
+  top: 33%;
+  left: 27%;
+  width: 7px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3f3140;
+  box-shadow: 24px 0 0 #3f3140;
+}
+.mh-mole-fallback::after {
+  content: "";
+  position: absolute;
+  top: 49%;
+  left: 50%;
+  width: 13px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff7f86;
+  transform: translateX(-50%);
+  border: 2px solid #3f3140;
+}
+.mh-grid:not([data-asset-state="ready"]) .mh-mole {
+  background-image: none;
+}
+.mh-grid:not([data-asset-state="ready"]) .mh-mole-fallback {
+  display: block;
 }
 .mh-hole.active .mh-mole {
   animation: mh-pop-up 180ms ease-out forwards;
@@ -397,5 +443,5 @@ button { border: 0; cursor: pointer; }
 @media (max-width: 420px) {
   .mh-panel { padding: 24px 18px; }
   .mh-grid { max-width: 300px; gap: 9px; }
-  .mh-mole { font-size: 1.8rem; }
+  .mh-mole { width: 120%; height: 120%; }
 }
