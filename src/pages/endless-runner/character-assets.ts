@@ -19,8 +19,8 @@ export interface RunnerCharacter {
 
 const importedAssets = import.meta.glob(
   [
-    '../../../endless-runner/assets/characters/pink-glasses-girl-flat-sticker/*.{png,gif}',
-    '../../../endless-runner/assets/characters/checkered-vest-boy-flat-sticker/*.{png,gif}'
+    '../../../endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/*.{png,gif}',
+    '../../../endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/*.{png,gif}'
   ],
   { eager: true, query: '?url', import: 'default' }
 ) as Record<string, string>;
@@ -58,8 +58,8 @@ function character(
 }
 
 export const RUNNER_CHARACTERS: RunnerCharacter[] = [
-  character('pink-glasses-girl-flat-sticker', '분홍안경 소녀', '분홍안경 소녀', 'flat-sticker', 'girl'),
-  character('checkered-vest-boy-flat-sticker', '체크 조끼 소년', '체크 조끼 소년', 'flat-sticker', 'boy')
+  character('pink-glasses-girl-soft-3d-toy', '분홍안경 소녀', '분홍안경 소녀', 'soft-3d-toy', 'girl'),
+  character('checkered-vest-boy-soft-3d-toy', '체크 조끼 소년', '체크 조끼 소년', 'soft-3d-toy', 'boy')
 ];
 
 export const DEFAULT_RUNNER_CHARACTER_ID = RUNNER_CHARACTERS[0].id;
@@ -68,7 +68,7 @@ export function findRunnerCharacter(id: string): RunnerCharacter {
   const exactMatch = RUNNER_CHARACTERS.find((candidate) => candidate.id === id);
   if (exactMatch) return exactMatch;
 
-  // 3화풍 선택 UI를 사용하던 브라우저는 같은 아이의 플랫 스티커 버전으로 자연스럽게 이관한다.
+  // 이전 화풍을 선택한 브라우저도 같은 아이의 고품질 소프트 3D 버전으로 자연스럽게 이관한다.
   if (id.startsWith('pink-glasses-girl-')) return RUNNER_CHARACTERS[0];
   if (id.startsWith('checkered-vest-boy-')) return RUNNER_CHARACTERS[1];
   return RUNNER_CHARACTERS[0];

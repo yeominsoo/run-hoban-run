@@ -2153,7 +2153,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   });
   await page.goto('/endless-runner/');
   await page.evaluate(() => {
-    localStorage.setItem('rhh_endless-runner_character', 'checkered-vest-boy-soft-3d-toy');
+    localStorage.setItem('rhh_endless-runner_character', 'checkered-vest-boy-flat-sticker');
   });
   await page.reload();
 
@@ -2165,30 +2165,30 @@ test('endless runner: selects one of two character GIF sets and reflects every a
     (option as HTMLElement).dataset.characterId
   )));
   expect(characterIds).toEqual([
-    'pink-glasses-girl-flat-sticker',
-    'checkered-vest-boy-flat-sticker'
+    'pink-glasses-girl-soft-3d-toy',
+    'checkered-vest-boy-soft-3d-toy'
   ]);
   const boyOption = page.locator(
-    '.character-option[data-character-id="checkered-vest-boy-flat-sticker"]'
+    '.character-option[data-character-id="checkered-vest-boy-soft-3d-toy"]'
   );
   await expect(boyOption).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(
     () => page.evaluate(() => localStorage.getItem('rhh_endless-runner_character'))
-  ).toBe('checkered-vest-boy-flat-sticker');
+  ).toBe('checkered-vest-boy-soft-3d-toy');
 
   await page.evaluate(() => {
     localStorage.setItem('rhh_endless-runner_character', 'floral-hat-girl-soft-3d-toy');
   });
   await page.reload();
   const defaultOption = page.locator(
-    '.character-option[data-character-id="pink-glasses-girl-flat-sticker"]'
+    '.character-option[data-character-id="pink-glasses-girl-soft-3d-toy"]'
   );
   await expect(defaultOption).toHaveAttribute('aria-pressed', 'true');
   await expect(defaultOption).toHaveClass(/selected/);
   await expect(page.locator('.character-option[aria-pressed="true"]')).toHaveCount(1);
   await expect.poll(
     () => page.evaluate(() => localStorage.getItem('rhh_endless-runner_character'))
-  ).toBe('pink-glasses-girl-flat-sticker');
+  ).toBe('pink-glasses-girl-soft-3d-toy');
   await expect.poll(
     () => characterPreviews.evaluateAll((images) => images.every((image) => {
       const preview = image as HTMLImageElement;
@@ -2197,7 +2197,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
     { timeout: 10_000 }
   ).toBe(true);
 
-  const characterId = 'checkered-vest-boy-flat-sticker';
+  const characterId = 'checkered-vest-boy-soft-3d-toy';
   const selectedOption = page.locator(`.character-option[data-character-id="${characterId}"]`);
   await selectedOption.click();
   await expect(selectedOption).toHaveAttribute('aria-pressed', 'true');
@@ -2231,7 +2231,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
     return image.currentSrc || image.src;
   });
   expect(playerImageSource).toMatch(/(?:\.gif(?:$|[?#])|^data:image\/gif)/);
-  expect(playerImageSource).toContain('checkered-vest-boy-flat-sticker');
+  expect(playerImageSource).toContain('checkered-vest-boy-soft-3d-toy');
 
   await page.keyboard.press('ArrowUp');
   await expect(canvas).toHaveAttribute('data-state', 'jumping');
@@ -2295,7 +2295,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   });
   await page.goto('/endless-runner/');
 
-  const characterId = 'pink-glasses-girl-flat-sticker';
+  const characterId = 'pink-glasses-girl-soft-3d-toy';
   const canvas = page.locator('#er-canvas');
   const player = page.locator('#runner-character');
   await expect(canvas).toHaveAttribute('data-assets-ready', characterId, { timeout: 10_000 });

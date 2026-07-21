@@ -51,7 +51,12 @@ body {
   user-select: none;
   -webkit-user-drag: none;
   will-change: left, top;
-  filter: drop-shadow(0 4px 3px rgba(70, 45, 54, 0.2));
+  image-rendering: auto;
+  filter:
+    saturate(1.06)
+    contrast(1.04)
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.72))
+    drop-shadow(0 5px 4px rgba(62, 43, 55, 0.24));
 }
 
 #start-overlay {
