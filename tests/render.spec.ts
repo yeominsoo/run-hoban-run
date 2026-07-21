@@ -2173,6 +2173,10 @@ test('endless runner: selects one of two character GIF sets and reflects every a
     'pink-glasses-girl-soft-3d-toy',
     'checkered-vest-boy-soft-3d-toy'
   ]);
+  await expect(characterOptions.locator('span')).toHaveText(['이엘이', '이안이']);
+  expect(await characterOptions.evaluateAll((options) => options.map((option) => (
+    option.getAttribute('aria-label')
+  )))).toEqual(['이엘이 선택', '이안이 선택']);
   const boyOption = page.locator(
     '.character-option[data-character-id="checkered-vest-boy-soft-3d-toy"]'
   );
@@ -2224,6 +2228,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await page.locator('#start-btn').click();
   await expect(canvas).toHaveAttribute('data-phase', 'playing');
   await expect(canvas).toHaveAttribute('data-scene-assets-ready', 'true');
+  await expect(canvas).toHaveAttribute('data-terrain-texture-ready', 'true');
   await expect(canvas).toHaveAttribute('data-character', characterId);
   await expect(player).toHaveAttribute('data-character', characterId);
   await expect(player).toHaveAttribute('data-action', 'run');

@@ -182,7 +182,8 @@ v4로 올리고, 최종 인벤토리는 디자인 6장, 프레임 시트 18장, 
 
 런타임은 `RUNNER_CHARACTERS` 데이터로 선택 UI와 액션 파일을 연결하므로 물리·상태 코드는
 바꾸지 않는다. 현재 목록은 `pink-glasses-girl-soft-3d-toy`와
-`checkered-vest-boy-soft-3d-toy` 두 항목만 제공하고 기본 캐릭터는 분홍안경 소녀다.
+`checkered-vest-boy-soft-3d-toy` 두 항목만 제공한다. 선택 UI 표시 이름은 각각 `이엘이`,
+`이안이`이며 기본 캐릭터는 이엘이다.
 localStorage 키는 유지한다. 구형 분홍안경·소년 스타일 ID는 같은 인물의 소프트 3D 버전으로
 이관하고, 꽃모자 또는 알 수 없는 ID는 기본 분홍안경 소녀로 정규화한다.
 

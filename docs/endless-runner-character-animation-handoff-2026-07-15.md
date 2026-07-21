@@ -27,7 +27,8 @@
 
 기존 두 소녀의 6종을 포함한 제작 자산 9종은 재생성·비교용으로 그대로 보존한다. 최종
 게임 선택 UI에는 `pink-glasses-girl-soft-3d-toy`와
-`checkered-vest-boy-soft-3d-toy` 두 캐릭터만 사용하며 기본값은 분홍안경 소녀다.
+`checkered-vest-boy-soft-3d-toy` 두 캐릭터만 사용한다. 표시 이름은 각각 `이엘이`, `이안이`이며
+기본값은 이엘이다.
 localStorage 키는 유지하고, 구형 소년 화풍 ID는 소년 소프트 3D로 이관하며 꽃모자 또는
 알 수 없는 값은 기본 분홍안경 소녀로 정규화한다.
 
@@ -64,7 +65,7 @@ short dark bowl cut with blunt fringe, rounded cheeks, small nose and broad toot
 - 슬라이드 단계 GIF: 27개 (`enter`, `hold`, `exit`)
 - 프레임: `256×256` RGBA, 발 피벗 `(128, 232)`
 - 슬라이드: enter 2프레임, hold 4프레임 반복, exit 2프레임
-- 프로덕션 런타임: 분홍안경 소녀 소프트 3D + 체크 조끼 소년 소프트 3D 2종
+- 프로덕션 런타임: 이엘이(분홍안경 소녀) + 이안이(체크 조끼 소년) 소프트 3D 2종
 - 프로덕션 번들: 위 두 디렉터리의 PNG/GIF 22개만 포함
 
 프로젝트에서 사용하는 최종 파일은 다음 경로에 있다.

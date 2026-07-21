@@ -10,6 +10,7 @@ import {
   type RunnerSlidePhase
 } from './character-assets';
 import { OBSTACLE_ASSET_URLS, type ObstacleVisual } from './obstacle-assets';
+import { TERRAIN_ASSET_URLS } from './terrain-assets';
 
 const GAME_SLUG = 'endless-runner';
 
@@ -330,7 +331,7 @@ function characterVisualAssets(character: RunnerCharacter): string[] {
 }
 
 function sceneVisualAssets(): string[] {
-  return Object.values(OBSTACLE_ASSET_URLS);
+  return [...Object.values(OBSTACLE_ASSET_URLS), ...Object.values(TERRAIN_ASSET_URLS)];
 }
 
 function preloadVisualAsset(asset: string): Promise<boolean> {
@@ -658,6 +659,10 @@ function updateTestAttrs() {
   canvas.dataset.speed = String(Math.round(speed));
   canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
   canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
+  const terrainTexture = preloadedVisuals.get(TERRAIN_ASSET_URLS.meadowGround);
+  canvas.dataset.terrainTextureReady = String(
+    Boolean(terrainTexture?.complete && terrainTexture.naturalWidth > 0)
+  );
   canvas.dataset.coinPaths = coins
     .filter((coin) => !coin.collected)
     .map((coin) => `${Math.round(coin.x)}:${Math.round(coin.y)}:${coin.safeAction}`)
@@ -915,8 +920,44 @@ function pointIsOnGround(x: number, pits: Obstacle[]): boolean {
   return !pits.some((pit) => x >= pit.x && x <= pit.x + pit.width);
 }
 
+function drawGroundTextureSegment(
+  start: number,
+  end: number,
+  texture: HTMLImageElement | undefined,
+  fallback: CanvasGradient
+) {
+  if (end <= start) return;
+  if (!texture?.complete || texture.naturalWidth <= 0) {
+    ctx.fillStyle = fallback;
+    ctx.fillRect(start, groundY, end - start, stageHeight - groundY);
+    ctx.fillStyle = '#5fbd55';
+    ctx.fillRect(start, groundY - 6, end - start, 14);
+    return;
+  }
+
+  const top = groundY - 16;
+  const height = stageHeight - top;
+  const tileWidth = Math.max(170, height * 1.45);
+  const offset = (distancePx * 0.96) % tileWidth;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(start, top, end - start, height);
+  ctx.clip();
+  for (let x = -offset - tileWidth; x < stageWidth + tileWidth; x += tileWidth) {
+    ctx.drawImage(texture, x, top, tileWidth, height);
+  }
+  const depthShade = ctx.createLinearGradient(0, groundY, 0, stageHeight);
+  depthShade.addColorStop(0, 'rgba(255,255,255,0)');
+  depthShade.addColorStop(1, 'rgba(52,31,31,0.14)');
+  ctx.fillStyle = depthShade;
+  ctx.fillRect(start, groundY, end - start, stageHeight - groundY);
+  ctx.restore();
+}
+
 function drawGround() {
   const pits = obstacles.filter((o) => o.type === 'pit').sort((a, b) => a.x - b.x);
+  const terrainTexture = preloadedVisuals.get(TERRAIN_ASSET_URLS.meadowGround);
+  const terrainReady = Boolean(terrainTexture?.complete && terrainTexture.naturalWidth > 0);
   const soil = ctx.createLinearGradient(0, groundY, 0, stageHeight);
   soil.addColorStop(0, '#a96f43');
   soil.addColorStop(0.5, '#805137');
@@ -925,39 +966,31 @@ function drawGround() {
   let cursor = 0;
   for (const pit of pits) {
     if (pit.x > cursor) {
-      ctx.fillStyle = soil;
-      ctx.fillRect(cursor, groundY, pit.x - cursor, stageHeight - groundY);
+      drawGroundTextureSegment(cursor, pit.x, terrainTexture, soil);
     }
     cursor = Math.max(cursor, pit.x + pit.width);
   }
   if (cursor < stageWidth) {
-    ctx.fillStyle = soil;
-    ctx.fillRect(cursor, groundY, stageWidth - cursor, stageHeight - groundY);
+    drawGroundTextureSegment(cursor, stageWidth, terrainTexture, soil);
   }
 
-  ctx.fillStyle = 'rgba(255,209,135,0.12)';
-  for (let bandY = groundY + 34; bandY < stageHeight; bandY += 42) {
-    ctx.fillRect(0, bandY, stageWidth, 3);
-  }
+  if (!terrainReady) {
+    ctx.fillStyle = 'rgba(255,209,135,0.12)';
+    for (let bandY = groundY + 34; bandY < stageHeight; bandY += 42) {
+      ctx.fillRect(0, bandY, stageWidth, 3);
+    }
 
-  const pebbleOffset = (distancePx * 0.58) % 58;
-  for (let x = -pebbleOffset; x < stageWidth + 20; x += 58) {
-    if (!pointIsOnGround(x, pits)) continue;
-    const row = Math.abs(Math.floor((x + distancePx) / 58)) % 3;
-    const y = groundY + 27 + row * 25;
-    ctx.fillStyle = row === 1 ? '#c39763' : '#705064';
-    ctx.beginPath();
-    ctx.ellipse(x, y, 4 + row, 2.5 + row * 0.5, -0.25, 0, Math.PI * 2);
-    ctx.fill();
+    const pebbleOffset = (distancePx * 0.58) % 58;
+    for (let x = -pebbleOffset; x < stageWidth + 20; x += 58) {
+      if (!pointIsOnGround(x, pits)) continue;
+      const row = Math.abs(Math.floor((x + distancePx) / 58)) % 3;
+      const y = groundY + 27 + row * 25;
+      ctx.fillStyle = row === 1 ? '#c39763' : '#705064';
+      ctx.beginPath();
+      ctx.ellipse(x, y, 4 + row, 2.5 + row * 0.5, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
-
-  ctx.fillStyle = '#5fbd55';
-  cursor = 0;
-  for (const pit of pits) {
-    if (pit.x > cursor) ctx.fillRect(cursor, groundY - 6, pit.x - cursor, 14);
-    cursor = Math.max(cursor, pit.x + pit.width);
-  }
-  if (cursor < stageWidth) ctx.fillRect(cursor, groundY - 6, stageWidth - cursor, 14);
 
   const grassOffset = distancePx % 18;
   for (let x = -grassOffset; x < stageWidth + 18; x += 18) {

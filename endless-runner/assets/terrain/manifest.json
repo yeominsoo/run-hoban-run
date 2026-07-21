@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "generatedOn": "2026-07-21",
+  "source": {
+    "path": "endless-runner/assets/terrain/source/meadow-ground-source.webp",
+    "size": [
+      1024,
+      1024
+    ],
+    "sha256": "85237aed80718499d7a9d50b2f3ff8c221b9c0a4bec6d7b17137e65c35282a28"
+  },
+  "runtime": {
+    "id": "meadow-ground",
+    "path": "endless-runner/assets/terrain/meadow-ground.png",
+    "size": [
+      512,
+      512
+    ],
+    "seamBlendWidth": 56,
+    "sha256": "b074e7de504736717c8909187795c80583e38b9ebe4487692a87daa24a2de7f3"
+  }
+}

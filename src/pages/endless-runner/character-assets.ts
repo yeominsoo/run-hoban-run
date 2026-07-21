@@ -58,8 +58,8 @@ function character(
 }
 
 export const RUNNER_CHARACTERS: RunnerCharacter[] = [
-  character('pink-glasses-girl-soft-3d-toy', '분홍안경 소녀', '분홍안경 소녀', 'soft-3d-toy', 'girl'),
-  character('checkered-vest-boy-soft-3d-toy', '체크 조끼 소년', '체크 조끼 소년', 'soft-3d-toy', 'boy')
+  character('pink-glasses-girl-soft-3d-toy', '이엘이', '이엘이', 'soft-3d-toy', 'girl'),
+  character('checkered-vest-boy-soft-3d-toy', '이안이', '이안이', 'soft-3d-toy', 'boy')
 ];
 
 export const DEFAULT_RUNNER_CHARACTER_ID = RUNNER_CHARACTERS[0].id;
