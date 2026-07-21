@@ -1393,6 +1393,7 @@ test('hub: splits games into single-player and multiplayer categories', async ({
   await expect(page.locator('#hub-list-title')).toHaveText('싱글플레이');
   await expect(page.locator('.game-card[data-slug="race"]')).toBeVisible();
   await expect(page.locator('.game-card[data-slug="aim-trainer"]')).toBeVisible();
+  await expect(page.locator('.game-card[data-slug="endless-runner"] .game-card-name')).toHaveText('안엘런');
   await expect(page.locator('.game-card[data-slug="rps"]')).toHaveCount(0);
 
   await page.locator('#hub-back-btn').click();
@@ -2105,8 +2106,10 @@ interface RunnerCoinPath {
 interface RunnerState {
   phase: string | undefined;
   playerX: number;
+  playerY: number;
   groundY: number;
   playerState: string | undefined;
+  standingPlatform: string | undefined;
   obstacles: RunnerObstacle[];
   coinPaths: RunnerCoinPath[];
   score: number;
@@ -2137,8 +2140,10 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
     return {
       phase: canvas.dataset.phase,
       playerX: Number(canvas.dataset.playerX),
+      playerY: Number(canvas.dataset.playerY),
       groundY: Number(canvas.dataset.groundY),
       playerState: canvas.dataset.state,
+      standingPlatform: canvas.dataset.standingPlatform,
       obstacles,
       coinPaths,
       score: Number(canvas.dataset.score ?? 0),
@@ -2161,6 +2166,9 @@ test('endless runner: selects one of two character GIF sets and reflects every a
     localStorage.setItem('rhh_endless-runner_character', 'checkered-vest-boy-flat-sticker');
   });
   await page.reload();
+  await expect(page).toHaveTitle('안엘런 — Toris Arcade');
+  await expect(page.locator('.game-title')).toHaveText('안엘런');
+  await expect(page.locator('#start-overlay h2')).toHaveText('안엘런');
 
   const characterOptions = page.locator('.character-option[data-character-id]');
   const characterPreviews = characterOptions.locator('img');
@@ -2382,7 +2390,7 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
     };
   });
   await page.goto('/endless-runner/');
-  await expect(page.locator('.game-title')).toHaveText('무한 러너');
+  await expect(page.locator('.game-title')).toHaveText('안엘런');
 
   await page.locator('#start-btn').click();
   await expect(page.locator('#er-canvas')).toHaveAttribute('data-phase', 'playing');
@@ -2411,7 +2419,10 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
         return distance <= 135;
       });
       if (!nearbyObstacle) continue;
-      const expectedAction = nearbyObstacle.type === 'high' ? 'slide' : 'jump';
+      const expectedAction = nearbyObstacle.type === 'high'
+        && nearbyObstacle.visual !== 'floating-grass-platform'
+        ? 'slide'
+        : 'jump';
       expect(coin.safeAction).toBe(expectedAction);
       if (expectedAction === 'slide') expect(coin.y).toBeGreaterThanOrEqual(state.groundY - 20);
       else expect(coin.y).toBeLessThanOrEqual(state.groundY - 60);
@@ -2425,7 +2436,7 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
       (o) => o.x >= state.playerX + 10 && o.x <= state.playerX + 60
     );
     if (upcoming && state.playerState === 'running') {
-      if (upcoming.type === 'high') {
+      if (upcoming.type === 'high' && upcoming.visual !== 'floating-grass-platform') {
         // 더블탭 타이밍에 기대는 대신, 명확한 아래로 스와이프 제스처로 슬라이드를 발동한다
         // (연속 클릭 두 번은 이 테스트 환경의 실행 지연 때문에 더블탭 판정 창을 놓치기 쉬웠다).
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -2449,13 +2460,54 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
   expect([...encounteredVisuals].every((visual) => finalState.obstacleCatalog.includes(visual))).toBe(true);
 });
 
+test('endless runner: floating grass terrain is safe from below and supports landing', async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    // 1라운드 high 스폰을 계속 선택해 착지형 공중 잔디 지형만 생성한다.
+    Math.random = () => 0.75;
+  });
+  await page.goto('/endless-runner/');
+  const canvas = page.locator('#er-canvas');
+  await page.locator('#start-btn').click();
+
+  // 첫 발판은 조작 없이 아래로 통과한다. 옆면·아랫면 접촉은 사망 판정이 아니어야 한다.
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    return state.phase === 'playing' && state.obstacles.some((obstacle) => (
+      obstacle.visual === 'floating-grass-platform'
+      && obstacle.x + obstacle.width < state.playerX - 20
+    ));
+  }, { timeout: 10_000, intervals: [25] }).toBe(true);
+
+  // 다음 발판 윗면을 향해 점프해 실제로 발 위치가 발판 높이에 고정되는지 확인한다.
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    return state.obstacles.some((obstacle) => (
+      obstacle.visual === 'floating-grass-platform'
+      && obstacle.x - state.playerX >= 120
+      && obstacle.x - state.playerX <= 150
+    ));
+  }, { timeout: 10_000, intervals: [20] }).toBe(true);
+  await canvas.click();
+
+  await expect.poll(async () => (await readRunnerState(page)).standingPlatform, {
+    timeout: 3_000,
+    intervals: [16]
+  }).toBe('floating-grass-platform');
+  const landed = await readRunnerState(page);
+  expect(landed.phase).toBe('playing');
+  expect(landed.playerState).toBe('running');
+  expect(Math.abs(landed.playerY - (landed.groundY - 88))).toBeLessThanOrEqual(1);
+});
+
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
   await page.goto('/endless-runner/');
   await page.evaluate(() => localStorage.removeItem('rhh_endless-runner_ranking'));
   await page.reload();
 
   await page.locator('#start-btn').click();
-  // 아무 조작도 하지 않고 방치하면 낮은 장애물/높은 장애물/구덩이 중 하나에 반드시 걸린다.
+  // 착지형 공중 발판을 제외한 낮은 장애물/비행 생물/구덩이 중 하나에는 반드시 걸린다.
   await expect(page.locator('#er-canvas')).toHaveAttribute('data-phase', 'ended', { timeout: 20_000 });
   await expect(page.locator('#result-overlay')).toBeVisible();
 

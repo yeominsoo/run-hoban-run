@@ -106,7 +106,7 @@ app.innerHTML = `
   <div class="er-shell">
     <header class="game-header">
       <a class="back-link" href="/">← 게임 선택</a>
-      <h1 class="game-title">무한 러너</h1>
+      <h1 class="game-title">안엘런</h1>
       <div class="best-score">최고 <strong id="best-score">0</strong></div>
     </header>
 
@@ -122,7 +122,7 @@ app.innerHTML = `
 
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
-          <h2>무한 러너</h2>
+          <h2>안엘런</h2>
           <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>잔디 절벽·가시·공중 지형과 날아오는 생물이 라운드마다 추가됩니다. 코인은 안전한 회피 동선을 안내합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
@@ -233,6 +233,7 @@ let score = 0;
 
 let obstacles: Obstacle[] = [];
 let coins: Coin[] = [];
+let standingPlatform: Obstacle | null = null;
 let distanceSinceSpawn = 0;
 let distanceSinceCoin = 0;
 
@@ -257,7 +258,7 @@ window.addEventListener('resize', resizeCanvas);
 setupRankingUI(
   {
     gameSlug: GAME_SLUG,
-    gameTitle: '무한 러너',
+    gameTitle: '안엘런',
     nameInput: rankNameInput,
     saveBtn: rankSaveBtn,
     savedMsg: rankSavedMsg,
@@ -442,10 +443,13 @@ function highObstacleClearance(): number {
   return SLIDE_HEIGHT + 8;
 }
 
+function isLandingPlatform(o: Obstacle): boolean {
+  return o.type === 'high' && o.visual === 'floating-grass-platform';
+}
+
 /**
- * 낮은 지형은 점프로, 공중 지형과 비행 생물은 슬라이드로 피할 수 있는 판정 상자를 만든다.
- * 공중 장애물의 아래쪽은 슬라이드 높이보다 충분히 높고 달리는 캐릭터의 머리보다 낮게 유지해
- * 그래픽과 요구 동작이 일치하게 한다. 높은 2단 점프로 위를 넘는 선택지도 허용한다.
+ * 낮은 장애물은 점프로, 비행 생물은 슬라이드로 피할 수 있는 판정 상자를 만든다. 공중 잔디
+ * 지형은 같은 high 스폰 계열이지만 위에서 착지할 수 있는 발판으로 별도 처리한다.
  */
 function obstacleGeometry(o: Obstacle): { top: number; height: number } {
   if (o.type === 'low') {
@@ -497,7 +501,7 @@ function spawnObstacle() {
     };
   } else if (roll < lowChance + highChance) {
     const visual = highVisualForTier(tier);
-    const baseWidth = visual === 'floating-grass-platform' ? 76 : visual === 'bluebird' ? 42 : 38;
+    const baseWidth = visual === 'floating-grass-platform' ? 96 : visual === 'bluebird' ? 42 : 38;
     obstacle = {
       type: 'high',
       visual,
@@ -521,6 +525,7 @@ function spawnObstacle() {
 }
 
 function requiredActionForObstacle(obstacle: Obstacle): CoinSafeAction {
+  if (isLandingPlatform(obstacle)) return 'jump';
   return obstacle.type === 'high' ? 'slide' : 'jump';
 }
 
@@ -538,7 +543,9 @@ function horizontalDistanceToObstacle(x: number, obstacle: Obstacle): number {
 
 function alignCoinWithObstacle(coin: Coin, obstacle: Obstacle) {
   coin.safeAction = requiredActionForObstacle(obstacle);
-  coin.y = coinYForAction(coin.safeAction);
+  coin.y = isLandingPlatform(obstacle)
+    ? obstacleGeometry(obstacle).top - 20
+    : coinYForAction(coin.safeAction);
 }
 
 function alignNearbyCoinsWithObstacle(obstacle: Obstacle) {
@@ -577,10 +584,10 @@ function triggerJump() {
     slidePhaseEndAt = 0;
     slideHoldEndAt = 0;
     keyboardSlideHeld = false;
-    playerY = groundY;
   } else if (playerState !== 'running') {
     return;
   }
+  standingPlatform = null;
   playerState = 'jumping';
   jumpsUsed = 1;
   playerVy = JUMP_VELOCITY;
@@ -659,6 +666,7 @@ function updateTestAttrs() {
   canvas.dataset.speed = String(Math.round(speed));
   canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
   canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
+  canvas.dataset.standingPlatform = standingPlatform?.visual ?? 'none';
   const terrainTexture = preloadedVisuals.get(TERRAIN_ASSET_URLS.meadowGround);
   canvas.dataset.terrainTextureReady = String(
     Boolean(terrainTexture?.complete && terrainTexture.naturalWidth > 0)
@@ -690,6 +698,7 @@ function startGame() {
   score = 0;
   obstacles = [];
   coins = [];
+  standingPlatform = null;
   distanceSinceSpawn = 0;
   distanceSinceCoin = 0;
 
@@ -711,6 +720,7 @@ function beginFall(now: number) {
   slidePhase = null;
   keyboardSlideHeld = false;
   jumpsUsed = 0;
+  standingPlatform = null;
   playerY = groundY;
   fallEndAt = now + FALL_ANIMATION_MS;
   canvas.dataset.phase = phase;
@@ -799,6 +809,57 @@ function updateWorld(dt: number) {
   }
 }
 
+function horizontallyOverlapsPlatform(platform: Obstacle): boolean {
+  const margin = 5;
+  const playerLeft = playerX - PLAYER_WIDTH / 2 + margin;
+  const playerRight = playerX + PLAYER_WIDTH / 2 - margin;
+  return playerLeft < platform.x + platform.width && playerRight > platform.x;
+}
+
+function leavePlatform() {
+  standingPlatform = null;
+  if (playerState !== 'running' && playerState !== 'sliding') return;
+  playerState = 'jumping';
+  playerVy = 0;
+  jumpsUsed = 0;
+  slidePhase = null;
+  slidePhaseEndAt = 0;
+  slideHoldEndAt = 0;
+  keyboardSlideHeld = false;
+  syncPlayerVisual(true);
+}
+
+function resolvePlatformLanding(previousPlayerY: number, wasJumping: boolean) {
+  if (standingPlatform) {
+    const stillExists = obstacles.includes(standingPlatform);
+    if (stillExists && horizontallyOverlapsPlatform(standingPlatform)) {
+      playerY = obstacleGeometry(standingPlatform).top;
+      playerVy = 0;
+      return;
+    }
+    leavePlatform();
+  }
+
+  if (!wasJumping || playerVy < 0) return;
+  const landingPlatform = obstacles
+    .filter((obstacle) => isLandingPlatform(obstacle) && horizontallyOverlapsPlatform(obstacle))
+    .sort((a, b) => obstacleGeometry(a).top - obstacleGeometry(b).top)
+    .find((platform) => {
+      const top = obstacleGeometry(platform).top;
+      return previousPlayerY <= top + 3 && playerY >= top;
+    });
+  if (!landingPlatform) return;
+
+  standingPlatform = landingPlatform;
+  playerY = obstacleGeometry(landingPlatform).top;
+  playerVy = 0;
+  jumpsUsed = 0;
+  playerState = 'running';
+  slidePhase = null;
+  keyboardSlideHeld = false;
+  syncPlayerVisual(true);
+}
+
 function checkCollisions(): boolean {
   const halfW = PLAYER_WIDTH / 2;
   const pLeft = playerX - halfW;
@@ -808,9 +869,11 @@ function checkCollisions(): boolean {
   for (const o of obstacles) {
     if (o.type === 'pit') {
       const withinPit = playerX >= o.x && playerX <= o.x + o.width;
-      if (withinPit && playerState !== 'jumping') return true;
+      if (withinPit && playerState !== 'jumping' && !standingPlatform) return true;
       continue;
     }
+    // 공중 잔디 지형은 착지면만 갖는 안전한 발판이다. 옆면이나 아랫면에 닿아도 사망하지 않는다.
+    if (isLandingPlatform(o)) continue;
     const { top, height } = obstacleGeometry(o);
     if (aabbOverlap(pLeft, pTop, PLAYER_WIDTH, pHeight, o.x, top, o.width, height)) {
       return true;
@@ -1204,8 +1267,11 @@ function loop(now: number) {
     return;
   }
 
+  const previousPlayerY = playerY;
+  const wasJumping = playerState === 'jumping';
   updatePhysics(dt, now);
   updateWorld(dt);
+  resolvePlatformLanding(previousPlayerY, wasJumping);
   const collided = checkCollisions();
   recomputeScore();
   updateHudNumbers();
