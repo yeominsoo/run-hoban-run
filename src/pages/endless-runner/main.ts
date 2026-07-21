@@ -57,6 +57,7 @@ interface Obstacle {
   width: number;
   visual: ObstacleVisual;
   phase: number;
+  approachSpeed: number;
 }
 
 interface Coin {
@@ -64,6 +65,7 @@ interface Coin {
   y: number;
   collected: boolean;
   safeAction: CoinSafeAction;
+  approachSpeed: number;
 }
 
 function loadSelectedCharacter(): RunnerCharacter {
@@ -481,6 +483,12 @@ function highVisualForTier(tier: number): ObstacleVisual {
   return 'honeybee';
 }
 
+function creatureApproachSpeed(visual: ObstacleVisual, tier: number): number {
+  if (visual === 'honeybee') return 52 + Math.min(MAX_DIFFICULTY_TIER, tier) * 4;
+  if (visual === 'bluebird') return 72 + Math.min(MAX_DIFFICULTY_TIER, tier) * 5;
+  return 0;
+}
+
 function spawnObstacle() {
   const roll = Math.random();
   const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
@@ -497,7 +505,8 @@ function spawnObstacle() {
       visual,
       phase: Math.random() * Math.PI * 2,
       x: stageWidth + 20,
-      width: baseWidth + Math.min(6, tier * 2)
+      width: baseWidth + Math.min(6, tier * 2),
+      approachSpeed: 0
     };
   } else if (roll < lowChance + highChance) {
     const visual = highVisualForTier(tier);
@@ -507,7 +516,8 @@ function spawnObstacle() {
       visual,
       phase: Math.random() * Math.PI * 2,
       x: stageWidth + 20,
-      width: baseWidth + Math.min(8, tier * 2)
+      width: baseWidth + Math.min(8, tier * 2),
+      approachSpeed: creatureApproachSpeed(visual, tier)
     };
   } else {
     const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
@@ -516,7 +526,8 @@ function spawnObstacle() {
       visual: 'thorn-patch',
       phase: Math.random() * Math.PI * 2,
       x: stageWidth + 20,
-      width
+      width,
+      approachSpeed: 0
     };
   }
 
@@ -543,6 +554,7 @@ function horizontalDistanceToObstacle(x: number, obstacle: Obstacle): number {
 
 function alignCoinWithObstacle(coin: Coin, obstacle: Obstacle) {
   coin.safeAction = requiredActionForObstacle(obstacle);
+  coin.approachSpeed = obstacle.approachSpeed;
   coin.y = isLandingPlatform(obstacle)
     ? obstacleGeometry(obstacle).top - 20
     : coinYForAction(coin.safeAction);
@@ -563,7 +575,13 @@ function spawnCoin() {
     .filter((obstacle) => horizontalDistanceToObstacle(x, obstacle) <= COIN_OBSTACLE_ALIGN_DISTANCE)
     .sort((a, b) => horizontalDistanceToObstacle(x, a) - horizontalDistanceToObstacle(x, b))[0];
   const safeAction = nearbyObstacle ? requiredActionForObstacle(nearbyObstacle) : 'run';
-  const coin: Coin = { x, y: coinYForAction(safeAction), collected: false, safeAction };
+  const coin: Coin = {
+    x,
+    y: coinYForAction(safeAction),
+    collected: false,
+    safeAction,
+    approachSpeed: nearbyObstacle?.approachSpeed ?? 0
+  };
   if (nearbyObstacle) alignCoinWithObstacle(coin, nearbyObstacle);
   coins.push(coin);
 }
@@ -653,7 +671,7 @@ function updateHudNumbers() {
 
 function updateTestAttrs() {
   canvas.dataset.obstacles = obstacles
-    .map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}:${o.visual}`)
+    .map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}:${o.visual}:${o.approachSpeed}`)
     .join('|');
   canvas.dataset.playerY = String(Math.round(playerY));
   canvas.dataset.playerX = String(Math.round(playerX));
@@ -673,7 +691,7 @@ function updateTestAttrs() {
   );
   canvas.dataset.coinPaths = coins
     .filter((coin) => !coin.collected)
-    .map((coin) => `${Math.round(coin.x)}:${Math.round(coin.y)}:${coin.safeAction}`)
+    .map((coin) => `${Math.round(coin.x)}:${Math.round(coin.y)}:${coin.safeAction}:${coin.approachSpeed}`)
     .join('|');
 }
 
@@ -789,10 +807,13 @@ function updateWorld(dt: number) {
   const travel = speed * dt;
   distancePx += travel;
 
-  for (const o of obstacles) o.x -= travel;
+  for (const o of obstacles) {
+    // 생물형 장애물은 지형 스크롤에 실려 오는 데서 그치지 않고 플레이어 쪽으로 직접 날아온다.
+    o.x -= travel + o.approachSpeed * dt;
+  }
   obstacles = obstacles.filter((o) => o.x + o.width > -10);
 
-  for (const c of coins) c.x -= travel;
+  for (const c of coins) c.x -= travel + c.approachSpeed * dt;
   coins = coins.filter((c) => !c.collected && c.x > -20);
 
   distanceSinceSpawn += travel;
@@ -1155,6 +1176,28 @@ function drawLowObstacle(o: Obstacle, top: number, height: number) {
   ctx.restore();
 }
 
+function drawApproachTrails(o: Obstacle, centerX: number, centerY: number, spriteSize: number) {
+  if (o.approachSpeed <= 0) return;
+  const speedRatio = Math.min(1, o.approachSpeed / 100);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = o.visual === 'honeybee'
+    ? `rgba(255,190,72,${0.28 + speedRatio * 0.18})`
+    : `rgba(112,190,235,${0.25 + speedRatio * 0.2})`;
+  for (let index = 0; index < 3; index += 1) {
+    const flutter = Math.sin(elapsedS * 10 + o.phase + index * 1.7) * 2.5;
+    const startX = centerX + spriteSize * 0.28 + index * 5;
+    const startY = centerY - 11 + index * 11 + flutter;
+    const length = 12 + speedRatio * 15 - index * 2;
+    ctx.lineWidth = 2.4 - index * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(startX + length, startY + flutter * 0.22);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawHighObstacle(o: Obstacle, top: number, height: number) {
   const centerX = o.x + o.width / 2;
   const centerY = top + height / 2;
@@ -1162,9 +1205,11 @@ function drawHighObstacle(o: Obstacle, top: number, height: number) {
     if (drawObstacleSprite(o.visual, centerX, centerY, o.width + 32, 112)) return;
   } else {
     const spriteSize = o.visual === 'bluebird' ? 58 : 62;
+    drawApproachTrails(o, centerX, centerY, spriteSize);
     ctx.save();
     const wingPulse = 1 + Math.sin(elapsedS * 12 + o.phase) * 0.035;
     ctx.translate(centerX, centerY);
+    ctx.rotate(Math.sin(elapsedS * 6 + o.phase) * 0.025);
     ctx.scale(1, wingPulse);
     const drawn = drawObstacleSprite(o.visual, 0, 0, spriteSize, spriteSize);
     ctx.restore();

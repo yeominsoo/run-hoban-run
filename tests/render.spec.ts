@@ -2095,12 +2095,14 @@ interface RunnerObstacle {
   x: number;
   width: number;
   visual: string;
+  approachSpeed: number;
 }
 
 interface RunnerCoinPath {
   x: number;
   y: number;
   safeAction: string;
+  approachSpeed: number;
 }
 
 interface RunnerState {
@@ -2115,6 +2117,7 @@ interface RunnerState {
   score: number;
   coins: number;
   round: number;
+  speed: number;
   jumpsUsed: number;
   groundRatio: number;
   obstacleCatalog: string[];
@@ -2127,15 +2130,15 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       .split('|')
       .filter(Boolean)
       .map((entry) => {
-        const [type, x, width, visual] = entry.split(':');
-        return { type, x: Number(x), width: Number(width), visual };
+        const [type, x, width, visual, approachSpeed] = entry.split(':');
+        return { type, x: Number(x), width: Number(width), visual, approachSpeed: Number(approachSpeed) };
       });
     const coinPaths = (canvas.dataset.coinPaths ?? '')
       .split('|')
       .filter(Boolean)
       .map((entry) => {
-        const [x, y, safeAction] = entry.split(':');
-        return { x: Number(x), y: Number(y), safeAction };
+        const [x, y, safeAction, approachSpeed] = entry.split(':');
+        return { x: Number(x), y: Number(y), safeAction, approachSpeed: Number(approachSpeed) };
       });
     return {
       phase: canvas.dataset.phase,
@@ -2149,6 +2152,7 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       score: Number(canvas.dataset.score ?? 0),
       coins: Number(canvas.dataset.coins ?? 0),
       round: Number(canvas.dataset.round ?? 1),
+      speed: Number(canvas.dataset.speed ?? 0),
       jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0),
       groundRatio: Number(canvas.dataset.groundRatio ?? 0),
       obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean)
@@ -2424,6 +2428,7 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
         ? 'slide'
         : 'jump';
       expect(coin.safeAction).toBe(expectedAction);
+      expect(coin.approachSpeed).toBe(nearbyObstacle.approachSpeed);
       if (expectedAction === 'slide') expect(coin.y).toBeGreaterThanOrEqual(state.groundY - 20);
       else expect(coin.y).toBeLessThanOrEqual(state.groundY - 60);
       alignedCoinSamples += 1;
@@ -2499,6 +2504,40 @@ test('endless runner: floating grass terrain is safe from below and supports lan
   expect(landed.phase).toBe('playing');
   expect(landed.playerState).toBe('running');
   expect(Math.abs(landed.playerY - (landed.groundY - 88))).toBeLessThanOrEqual(1);
+});
+
+test('endless runner: bees actively approach faster than the scrolling terrain', async ({ page }) => {
+  test.setTimeout(25_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    // 1라운드에는 안전한 공중 발판, 2라운드부터는 벌을 선택하는 결정론적 스폰이다.
+    Math.random = () => 0.75;
+  });
+  await page.goto('/endless-runner/');
+  await page.locator('#start-btn').click();
+
+  let firstSample: { obstacle: RunnerObstacle; speed: number; sampledAt: number } | null = null;
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    const bee = state.obstacles.find((obstacle) => obstacle.visual === 'honeybee');
+    if (!bee) return false;
+    firstSample = { obstacle: bee, speed: state.speed, sampledAt: Date.now() };
+    return true;
+  }, { timeout: 20_000, intervals: [25] }).toBe(true);
+  if (!firstSample) throw new Error('honeybee approach sample was not captured');
+
+  await page.waitForTimeout(260);
+  const secondState = await readRunnerState(page);
+  const secondBee = secondState.obstacles.find((obstacle) => obstacle.visual === 'honeybee');
+  if (!secondBee) throw new Error('honeybee disappeared before approach speed could be measured');
+
+  const elapsedSeconds = (Date.now() - firstSample.sampledAt) / 1000;
+  const actualTravel = firstSample.obstacle.x - secondBee.x;
+  const terrainTravel = firstSample.speed * elapsedSeconds;
+  const expectedExtraTravel = firstSample.obstacle.approachSpeed * elapsedSeconds;
+  expect(firstSample.obstacle.approachSpeed).toBeGreaterThan(0);
+  expect(actualTravel).toBeGreaterThan(terrainTravel + expectedExtraTravel * 0.55);
+  expect(secondState.phase).toBe('playing');
 });
 
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
