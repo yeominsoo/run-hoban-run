@@ -2237,7 +2237,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await expect(page.locator('#result-overlay')).toBeVisible();
 });
 
-test('endless runner: an eight-frame slide enters, loops low, extends, and exits upright', async ({ page }) => {
+test('endless runner: an eight-frame slide enters, stays low while held, and exits on release', async ({ page }) => {
   test.setTimeout(15_000);
   // 첫 장애물을 높은 장애물로 고정해 슬라이드 단계 자체를 검증하는 동안 우발적인 구덩이 충돌을 막는다.
   await page.addInitScript(() => {
@@ -2248,22 +2248,83 @@ test('endless runner: an eight-frame slide enters, loops low, extends, and exits
 
   const canvas = page.locator('#er-canvas');
   const player = page.locator('#runner-character');
-  await page.keyboard.press('ArrowDown');
+  await page.keyboard.down('ArrowDown');
   await expect(canvas).toHaveAttribute('data-state', 'sliding');
   await expect(canvas).toHaveAttribute('data-slide-phase', 'enter');
   await expect(player).toHaveAttribute('data-clip', 'slide-enter');
 
   await expect(canvas).toHaveAttribute('data-slide-phase', 'hold', { timeout: 1_000 });
   await expect(player).toHaveAttribute('data-clip', 'slide-hold');
-  await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(500);
   await expect(canvas).toHaveAttribute('data-state', 'sliding');
   await expect(canvas).toHaveAttribute('data-slide-phase', 'hold');
 
-  await expect(canvas).toHaveAttribute('data-slide-phase', 'exit', { timeout: 1_000 });
+  await page.keyboard.up('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'exit');
   await expect(player).toHaveAttribute('data-clip', 'slide-exit');
   await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 1_000 });
   await expect(player).toHaveAttribute('data-clip', 'run');
+});
+
+test('endless runner: rapid jump, slide, and stand inputs keep state and GIF clip synchronized', async ({ page }) => {
+  test.setTimeout(15_000);
+  // 첫 장애물 도착 전에 입력 전환만 검증할 수 있도록 높은 장애물 시퀀스로 고정한다.
+  await page.addInitScript(() => {
+    Math.random = () => 0.5;
+  });
+  await page.goto('/endless-runner/');
+
+  const characterId = 'pink-glasses-girl-flat-sticker';
+  const canvas = page.locator('#er-canvas');
+  const player = page.locator('#runner-character');
+  await expect(canvas).toHaveAttribute('data-assets-ready', characterId, { timeout: 10_000 });
+  await page.locator('#start-btn').click();
+  await expect(canvas).toHaveAttribute('data-phase', 'playing');
+
+  await page.keyboard.down('ArrowUp');
+  await page.keyboard.up('ArrowUp');
+  await expect(canvas).toHaveAttribute('data-state', 'jumping');
+  await expect(player).toHaveAttribute('data-action', 'jump');
+  await expect(player).toHaveAttribute('data-clip', 'jump');
+  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
+    .toContain(`${characterId}-jump`);
+
+  // 착지를 기다리지 않고 아래 키를 누르면 점프 물리와 화면 모두 즉시 슬라이드로 바뀐다.
+  await page.keyboard.down('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'enter');
+  await expect(player).toHaveAttribute('data-action', 'slide');
+  await expect(player).toHaveAttribute('data-clip', 'slide-enter');
+  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
+    .toContain(`${characterId}-slide-enter`);
+
+  // 키를 놓는 입력은 잔여 유지 타이머를 기다리지 않고 일어서기 클립으로 전환한다.
+  await page.keyboard.up('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'exit');
+  await expect(player).toHaveAttribute('data-clip', 'slide-exit');
+  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
+    .toContain(`${characterId}-slide-exit`);
+
+  // 일어서기 도중 들어온 점프도 무시하지 않고 마지막 입력으로 즉시 반영한다.
+  await page.keyboard.down('ArrowUp');
+  await page.keyboard.up('ArrowUp');
+  await expect(canvas).toHaveAttribute('data-state', 'jumping');
+  await expect(player).toHaveAttribute('data-action', 'jump');
+  await expect(player).toHaveAttribute('data-clip', 'jump');
+  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
+    .toContain(`${characterId}-jump`);
+
+  // 다시 숙였다가 놓으면 exit을 거쳐 달리기 GIF로 정확히 복귀한다.
+  await page.keyboard.down('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-slide-phase', 'hold', { timeout: 1_000 });
+  await expect(player).toHaveAttribute('data-clip', 'slide-hold');
+  await page.keyboard.up('ArrowDown');
+  await expect(player).toHaveAttribute('data-clip', 'slide-exit');
+  await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 1_000 });
+  await expect(player).toHaveAttribute('data-action', 'run');
+  await expect(player).toHaveAttribute('data-clip', 'run');
+  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
+    .toContain(`${characterId}-run`);
 });
 
 test('endless runner: jumping/sliding at the right moment clears obstacles and pits', async ({ page }) => {

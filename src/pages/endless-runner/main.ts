@@ -206,6 +206,7 @@ let playerState: PlayerState = 'running';
 let slidePhase: RunnerSlidePhase | null = null;
 let slidePhaseEndAt = 0;
 let slideHoldEndAt = 0;
+let keyboardSlideHeld = false;
 let fallEndAt = 0;
 
 let speed = BASE_SPEED;
@@ -225,6 +226,10 @@ let rafId: number | null = null;
 let pointerDownX = 0;
 let pointerDownY = 0;
 let lastTapAt = -Infinity;
+
+const preloadedVisuals = new Map<string, HTMLImageElement>();
+const visualPreloadPromises = new Map<string, Promise<boolean>>();
+let characterPrepareRequest = 0;
 
 // ── Init ──────────────────────────────────────
 bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
@@ -250,6 +255,7 @@ setupRankingUI(
   },
   () => score
 );
+void prepareSelectedCharacterVisuals();
 
 function resizeCanvas() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -281,27 +287,81 @@ function playerHeight(): number {
   return playerState === 'sliding' ? SLIDE_HEIGHT : PLAYER_HEIGHT;
 }
 
+function characterVisualAssets(character: RunnerCharacter): string[] {
+  return [...new Set([
+    character.actions.run.animation,
+    character.actions.jump.animation,
+    character.actions.fall.animation,
+    ...Object.values(character.slideClips)
+  ])];
+}
+
+function preloadVisualAsset(asset: string): Promise<boolean> {
+  const cached = visualPreloadPromises.get(asset);
+  if (cached) return cached;
+
+  const promise = new Promise<boolean>((resolve) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.addEventListener('load', async () => {
+      try {
+        await image.decode();
+      } catch {
+        // 일부 브라우저는 애니메이션 GIF의 decode()를 지원하지 않아도 load 후 표시할 수 있다.
+      }
+      preloadedVisuals.set(asset, image);
+      resolve(image.naturalWidth > 0 && image.naturalHeight > 0);
+    }, { once: true });
+    image.addEventListener('error', () => resolve(false), { once: true });
+    image.src = asset;
+  });
+
+  visualPreloadPromises.set(asset, promise);
+  return promise;
+}
+
+async function prepareSelectedCharacterVisuals() {
+  const request = ++characterPrepareRequest;
+  const character = selectedCharacter;
+  canvas.dataset.assetsReady = 'loading';
+  startBtn.disabled = true;
+  startBtn.textContent = '캐릭터 준비 중…';
+
+  const results = await Promise.all(characterVisualAssets(character).map(preloadVisualAsset));
+  if (request !== characterPrepareRequest || character.id !== selectedCharacter.id) return;
+
+  canvas.dataset.assetsReady = results.every(Boolean) ? character.id : 'fallback';
+  startBtn.disabled = false;
+  startBtn.textContent = '시작하기';
+}
+
 function syncPlayerVisual(forceRestart = false) {
   const action = PLAYER_ACTIONS[playerState];
   const clip = playerState === 'sliding' ? `slide-${slidePhase ?? 'enter'}` : action;
   const asset = playerState === 'sliding'
     ? selectedCharacter.slideClips[slidePhase ?? 'enter']
     : selectedCharacter.actions[action].animation;
+  const fallbackAsset = selectedCharacter.actions[action].still;
   const changed = playerImage.dataset.character !== selectedCharacter.id
     || playerImage.dataset.clip !== clip;
 
   if (changed || forceRestart) {
-    if (forceRestart) {
-      // 새 이미지 요소는 브라우저의 GIF 디코더 타임라인도 새로 만들어 첫 프레임부터 재생한다.
-      const replacement = playerImage.cloneNode(false) as HTMLImageElement;
-      replacement.removeAttribute('src');
-      playerImage.replaceWith(replacement);
-      playerImage = replacement;
-    }
-    playerImage.src = asset;
-    playerImage.dataset.character = selectedCharacter.id;
-    playerImage.dataset.action = action;
-    playerImage.dataset.clip = clip;
+    // 같은 img의 src만 바꾸면 새 GIF가 디코딩되는 동안 직전 액션의 마지막 프레임이 남을 수
+    // 있다. 준비된 에셋을 새 요소에 연결한 뒤 교체해 이전 액션이 화면에 잔류하지 않게 한다.
+    const replacement = playerImage.cloneNode(false) as HTMLImageElement;
+    replacement.removeAttribute('src');
+    replacement.decoding = 'sync';
+    replacement.src = asset;
+    replacement.dataset.character = selectedCharacter.id;
+    replacement.dataset.action = action;
+    replacement.dataset.clip = clip;
+    replacement.addEventListener('error', () => {
+      if (playerImage !== replacement || replacement.dataset.clip !== clip) return;
+      replacement.dataset.assetFallback = 'true';
+      replacement.src = fallbackAsset;
+    }, { once: true });
+    playerImage.replaceWith(replacement);
+    playerImage = replacement;
   }
 
   playerImage.style.left = `${playerX}px`;
@@ -326,6 +386,7 @@ function selectCharacter(characterId: string) {
     option.setAttribute('aria-pressed', String(isSelected));
   }
   syncPlayerVisual(true);
+  void prepareSelectedCharacterVisuals();
 }
 
 function playerTopY(): number {
@@ -371,25 +432,36 @@ function spawnCoin() {
 }
 
 function triggerJump() {
-  if (phase !== 'playing' || playerState !== 'running') return;
+  if (phase !== 'playing' || playerState === 'falling' || playerState === 'jumping') return;
+  if (playerState === 'sliding') {
+    // 점프 입력은 슬라이드 진입·유지·복귀 중 어느 시점에서도 마지막 입력으로 우선한다.
+    // GIF만 점프로 바뀌고 충돌 상태는 낮게 남는 일이 없도록 슬라이드 상태도 함께 해제한다.
+    slidePhase = null;
+    slidePhaseEndAt = 0;
+    slideHoldEndAt = 0;
+    keyboardSlideHeld = false;
+    playerY = groundY;
+  } else if (playerState !== 'running') {
+    return;
+  }
   playerState = 'jumping';
   playerVy = JUMP_VELOCITY;
-  canvas.dataset.state = playerState;
   syncPlayerVisual();
 }
 
-function triggerSlide() {
+function triggerSlide(holdForKeyboard = false) {
   if (phase !== 'playing') return;
   const now = performance.now();
   if (playerState === 'sliding') {
+    keyboardSlideHeld ||= holdForKeyboard;
     // 반복 입력은 진입 포즈를 다시 재생하지 않고 낮은 유지 구간만 연장한다. 키를 누르고
     // 있거나 스와이프를 다시 해도 일어났다 다시 눕는 부자연스러운 루프가 생기지 않는다.
     if (slidePhase === 'exit') {
       slidePhase = 'hold';
-      slideHoldEndAt = now + SLIDE_HOLD_MS;
+      slideHoldEndAt = keyboardSlideHeld ? Infinity : now + SLIDE_HOLD_MS;
       slidePhaseEndAt = slideHoldEndAt;
       syncPlayerVisual();
-    } else {
+    } else if (!keyboardSlideHeld) {
       slideHoldEndAt = Math.max(slideHoldEndAt, now + SLIDE_HOLD_MS);
     }
     canvas.dataset.slidePhase = slidePhase ?? 'hold';
@@ -407,11 +479,23 @@ function triggerSlide() {
     return;
   }
   playerState = 'sliding';
+  keyboardSlideHeld = holdForKeyboard;
   slidePhase = 'enter';
   slidePhaseEndAt = now + SLIDE_ENTER_MS;
-  slideHoldEndAt = slidePhaseEndAt + SLIDE_HOLD_MS;
-  canvas.dataset.state = playerState;
-  canvas.dataset.slidePhase = slidePhase;
+  slideHoldEndAt = keyboardSlideHeld ? Infinity : slidePhaseEndAt + SLIDE_HOLD_MS;
+  syncPlayerVisual();
+}
+
+function releaseKeyboardSlide() {
+  if (!keyboardSlideHeld) return;
+  keyboardSlideHeld = false;
+  if (phase !== 'playing' || playerState !== 'sliding' || slidePhase === 'exit') return;
+
+  // 아래 키를 놓는 순간부터 일어서기 GIF를 재생한다. 고정 800ms 타이머를 기다리지 않아
+  // 실제 키 입력과 화면 자세가 뒤늦게 어긋나는 현상을 막는다.
+  slidePhase = 'exit';
+  slidePhaseEndAt = performance.now() + SLIDE_EXIT_MS;
+  slideHoldEndAt = slidePhaseEndAt;
   syncPlayerVisual();
 }
 
@@ -442,6 +526,7 @@ function startGame() {
   slidePhase = null;
   slidePhaseEndAt = 0;
   slideHoldEndAt = 0;
+  keyboardSlideHeld = false;
   fallEndAt = 0;
   speed = BASE_SPEED;
   elapsedS = 0;
@@ -469,6 +554,7 @@ function beginFall(now: number) {
   phase = 'falling';
   playerState = 'falling';
   slidePhase = null;
+  keyboardSlideHeld = false;
   playerY = groundY;
   fallEndAt = now + FALL_ANIMATION_MS;
   canvas.dataset.phase = phase;
@@ -817,11 +903,17 @@ window.addEventListener('keydown', (ev) => {
   if (phase !== 'playing') return;
   if (ev.code === 'Space' || ev.code === 'ArrowUp') {
     ev.preventDefault();
-    triggerJump();
+    if (!ev.repeat) triggerJump();
   } else if (ev.code === 'ArrowDown') {
     ev.preventDefault();
-    triggerSlide();
+    if (!ev.repeat) triggerSlide(true);
   }
+});
+
+window.addEventListener('keyup', (ev) => {
+  if (ev.code !== 'ArrowDown') return;
+  ev.preventDefault();
+  releaseKeyboardSlide();
 });
 
 startBtn.addEventListener('click', startGame);
