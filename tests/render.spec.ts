@@ -2095,13 +2095,23 @@ interface RunnerObstacle {
   width: number;
 }
 
+interface RunnerCoinPath {
+  x: number;
+  y: number;
+  safeAction: string;
+}
+
 interface RunnerState {
   phase: string | undefined;
   playerX: number;
+  groundY: number;
   playerState: string | undefined;
   obstacles: RunnerObstacle[];
+  coinPaths: RunnerCoinPath[];
   score: number;
   coins: number;
+  round: number;
+  jumpsUsed: number;
 }
 
 async function readRunnerState(page: Page): Promise<RunnerState> {
@@ -2114,13 +2124,24 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
         const [type, x, width] = entry.split(':');
         return { type, x: Number(x), width: Number(width) };
       });
+    const coinPaths = (canvas.dataset.coinPaths ?? '')
+      .split('|')
+      .filter(Boolean)
+      .map((entry) => {
+        const [x, y, safeAction] = entry.split(':');
+        return { x: Number(x), y: Number(y), safeAction };
+      });
     return {
       phase: canvas.dataset.phase,
       playerX: Number(canvas.dataset.playerX),
+      groundY: Number(canvas.dataset.groundY),
       playerState: canvas.dataset.state,
       obstacles,
+      coinPaths,
       score: Number(canvas.dataset.score ?? 0),
-      coins: Number(canvas.dataset.coins ?? 0)
+      coins: Number(canvas.dataset.coins ?? 0),
+      round: Number(canvas.dataset.round ?? 1),
+      jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0)
     };
   });
 }
@@ -2338,11 +2359,31 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
   const canvas = page.locator('#er-canvas');
   const box = await canvas.boundingBox();
   if (!box) throw new Error('endless-runner canvas has no bounding box');
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 18_000;
+  let highestRound = 1;
+  let alignedCoinSamples = 0;
 
   while (Date.now() < deadline) {
     const state = await readRunnerState(page);
     if (state.phase !== 'playing') break;
+    highestRound = Math.max(highestRound, state.round);
+
+    for (const coin of state.coinPaths) {
+      const nearbyObstacle = state.obstacles.find((obstacle) => {
+        const distance = coin.x < obstacle.x
+          ? obstacle.x - coin.x
+          : coin.x > obstacle.x + obstacle.width
+            ? coin.x - (obstacle.x + obstacle.width)
+            : 0;
+        return distance <= 135;
+      });
+      if (!nearbyObstacle) continue;
+      const expectedAction = nearbyObstacle.type === 'high' ? 'slide' : 'jump';
+      expect(coin.safeAction).toBe(expectedAction);
+      if (expectedAction === 'slide') expect(coin.y).toBeGreaterThanOrEqual(state.groundY - 20);
+      else expect(coin.y).toBeLessThanOrEqual(state.groundY - 60);
+      alignedCoinSamples += 1;
+    }
 
     // 반응 창을 장애물 바로 앞(약 0.2초 거리)까지 좁혀야 한다 — 너무 일찍(예: 140px 밖)
     // 점프하면 특히 폭이 넓은 구덩이를 건너는 도중 체공 시간이 바닥나 착지해버린다(실제로
@@ -2365,10 +2406,12 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
     await page.waitForTimeout(35);
   }
 
-  // 15초 동안 여러 장애물·구덩이를 만나면서도 살아남아야 한다(잘못 피하면 즉시 게임오버).
+  // 여러 장애물·구덩이를 만나고 2라운드에 진입하면서도 살아남아야 한다.
   const finalState = await readRunnerState(page);
   expect(finalState.phase).toBe('playing');
   expect(finalState.score).toBeGreaterThan(0);
+  expect(highestRound).toBeGreaterThanOrEqual(2);
+  expect(alignedCoinSamples).toBeGreaterThan(0);
 });
 
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
@@ -2384,11 +2427,7 @@ test('endless runner: colliding with an obstacle ends the game and saves a ranki
   await verifyRankingSaveAndView(page, '/endless-runner/');
 });
 
-test('endless runner: a fast second tap while airborne cancels the jump into a slide (double-tap slide)', async ({ page }) => {
-  // 실사용자 버그 리포트: 점프 체공 시간(약 690ms)이 더블탭 판정 창(300ms)보다 길어서,
-  // 예전 구현에서는 "빠른 탭 2번"의 두 번째 탭이 도착할 때 항상 이미 공중이라 슬라이드가
-  // 절대 발동하지 않았다(죽은 기능). 지금은 공중에서의 두 번째 탭이 점프를 취소하고
-  // 즉시 착지 후 슬라이드로 전환되어야 한다.
+test('endless runner: a second tap while airborne performs a double jump and ignores a third jump', async ({ page }) => {
   await page.goto('/endless-runner/');
   await page.locator('#start-btn').click();
   const canvas = page.locator('#er-canvas');
@@ -2399,10 +2438,17 @@ test('endless runner: a fast second tap while airborne cancels the jump into a s
   await page.mouse.down();
   await page.mouse.up();
   await expect(canvas).toHaveAttribute('data-state', 'jumping');
+  await expect(canvas).toHaveAttribute('data-jumps-used', '1');
 
   await page.mouse.down();
   await page.mouse.up();
-  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+  await expect(canvas).toHaveAttribute('data-state', 'jumping');
+  await expect(canvas).toHaveAttribute('data-jumps-used', '2');
+  await expect(page.locator('#runner-character')).toHaveAttribute('data-action', 'jump');
+
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(canvas).toHaveAttribute('data-jumps-used', '2');
 });
 
 test('aim trainer: saves and restores the best score across visits', async ({ page }) => {

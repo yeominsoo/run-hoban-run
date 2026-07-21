@@ -22,16 +22,23 @@ const JUMP_VELOCITY = -760; // px/s
 const SLIDE_ENTER_MS = 180;
 const SLIDE_HOLD_MS = 800;
 const SLIDE_EXIT_MS = 180;
-const DOUBLE_TAP_WINDOW_MS = 300;
 const SWIPE_MIN_DISTANCE = 30;
-const BASE_SPEED = 260; // px/s
-const SPEED_ACCEL = 4; // px/s per second (연속 상승)
+const MAX_JUMPS = 2;
+const SECOND_JUMP_VELOCITY = -690;
+const ROUND_DURATION_S = 15;
+const MAX_DIFFICULTY_TIER = 6;
+const BASE_SPEED = 245; // px/s
+const ROUND_SPEED_STEP = 28;
+const ROUND_SPEED_RAMP = 1.4;
 const PX_PER_METER = 50;
 const COIN_SCORE = 10;
-const OBSTACLE_MIN_GAP_START = 420;
-const OBSTACLE_MIN_GAP_END = 220;
-const GAP_SHRINK_DURATION_S = 60;
-const COIN_INTERVAL_S = 1.4;
+const OBSTACLE_MIN_GAP_START = 440;
+const OBSTACLE_MIN_GAP_STEP = 34;
+const OBSTACLE_MIN_GAP_FLOOR = 270;
+const COIN_INTERVAL_START_S = 1.35;
+const COIN_INTERVAL_STEP_S = 0.07;
+const COIN_INTERVAL_FLOOR_S = 0.9;
+const COIN_OBSTACLE_ALIGN_DISTANCE = 135;
 const PIT_MIN_WIDTH = 70;
 const PIT_MAX_WIDTH = 110;
 const FALL_ANIMATION_MS = 1100;
@@ -40,6 +47,7 @@ const CHARACTER_STORAGE_KEY = 'rhh_endless-runner_character';
 type Phase = 'idle' | 'playing' | 'falling' | 'ended';
 type PlayerState = 'running' | 'jumping' | 'sliding' | 'falling';
 type ObstacleType = 'low' | 'high' | 'pit';
+type CoinSafeAction = 'run' | 'jump' | 'slide';
 
 interface Obstacle {
   type: ObstacleType;
@@ -51,6 +59,7 @@ interface Coin {
   x: number;
   y: number;
   collected: boolean;
+  safeAction: CoinSafeAction;
 }
 
 function loadSelectedCharacter(): RunnerCharacter {
@@ -104,12 +113,13 @@ app.innerHTML = `
       <div class="hud" id="hud" hidden>
         <div class="hud-item"><span class="hud-label">점수</span><span class="hud-value" id="hud-score">0</span></div>
         <div class="hud-item"><span class="hud-label">코인</span><span class="hud-value" id="hud-coins">0</span></div>
+        <div class="hud-item"><span class="hud-label">라운드</span><span class="hud-value" id="hud-round">1</span></div>
       </div>
 
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>무한 러너</h2>
-          <p>탭하면 점프, 아래로 스와이프(또는 빠르게 2번 탭)하면 슬라이드!<br>낮은 장애물은 점프, 높은 장애물은 슬라이드, 구덩이는 타이밍 점프로 통과하세요. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>코인은 안전한 회피 동선을 안내하며, 15초마다 라운드와 난이도가 올라갑니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -165,6 +175,7 @@ const characterOptions = Array.from(document.querySelectorAll<HTMLButtonElement>
 const hud = document.getElementById('hud')!;
 const hudScore = document.getElementById('hud-score')!;
 const hudCoins = document.getElementById('hud-coins')!;
+const hudRound = document.getElementById('hud-round')!;
 const bestScoreEl = document.getElementById('best-score')!;
 const startOverlay = document.getElementById('start-overlay')!;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
@@ -202,6 +213,7 @@ let playerX = 0;
 
 let playerY = 0; // 캐릭터 하단(발) y좌표. groundY면 지면.
 let playerVy = 0;
+let jumpsUsed = 0;
 let playerState: PlayerState = 'running';
 let slidePhase: RunnerSlidePhase | null = null;
 let slidePhaseEndAt = 0;
@@ -211,6 +223,7 @@ let fallEndAt = 0;
 
 let speed = BASE_SPEED;
 let elapsedS = 0;
+let roundNumber = 1;
 let distancePx = 0;
 let coinsCollected = 0;
 let score = 0;
@@ -225,7 +238,6 @@ let rafId: number | null = null;
 
 let pointerDownX = 0;
 let pointerDownY = 0;
-let lastTapAt = -Infinity;
 
 const preloadedVisuals = new Map<string, HTMLImageElement>();
 const visualPreloadPromises = new Map<string, Promise<boolean>>();
@@ -279,8 +291,27 @@ function resizeCanvas() {
 
 // ── Helpers ───────────────────────────────────
 function currentMinGap(): number {
-  const t = Math.min(1, elapsedS / GAP_SHRINK_DURATION_S);
-  return OBSTACLE_MIN_GAP_START + (OBSTACLE_MIN_GAP_END - OBSTACLE_MIN_GAP_START) * t;
+  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
+  return Math.max(
+    OBSTACLE_MIN_GAP_FLOOR,
+    OBSTACLE_MIN_GAP_START - (tier - 1) * OBSTACLE_MIN_GAP_STEP
+  );
+}
+
+function currentCoinInterval(): number {
+  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
+  return Math.max(
+    COIN_INTERVAL_FLOOR_S,
+    COIN_INTERVAL_START_S - (tier - 1) * COIN_INTERVAL_STEP_S
+  );
+}
+
+function speedForCurrentRound(): number {
+  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
+  const secondsIntoRound = tier === MAX_DIFFICULTY_TIER
+    ? Math.min(ROUND_DURATION_S, Math.max(0, elapsedS - (tier - 1) * ROUND_DURATION_S))
+    : elapsedS % ROUND_DURATION_S;
+  return BASE_SPEED + (tier - 1) * ROUND_SPEED_STEP + secondsIntoRound * ROUND_SPEED_RAMP;
 }
 
 function playerHeight(): number {
@@ -416,23 +447,75 @@ function obstacleGeometry(o: Obstacle): { top: number; height: number } {
 
 function spawnObstacle() {
   const roll = Math.random();
-  if (roll < 0.34) {
-    obstacles.push({ type: 'low', x: stageWidth + 20, width: 34 });
-  } else if (roll < 0.67) {
-    obstacles.push({ type: 'high', x: stageWidth + 20, width: 50 });
+  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
+  const pitChance = tier === 1 ? 0 : Math.min(0.3, (tier - 1) * 0.075);
+  const highChance = Math.min(0.4, 0.32 + (tier - 1) * 0.015);
+  const lowChance = 1 - highChance - pitChance;
+  let obstacle: Obstacle;
+
+  if (roll < lowChance) {
+    obstacle = { type: 'low', x: stageWidth + 20, width: 38 + Math.min(6, tier * 2) };
+  } else if (roll < lowChance + highChance) {
+    obstacle = { type: 'high', x: stageWidth + 20, width: 52 + Math.min(8, tier * 2) };
   } else {
     const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
-    obstacles.push({ type: 'pit', x: stageWidth + 20, width });
+    obstacle = { type: 'pit', x: stageWidth + 20, width };
+  }
+
+  obstacles.push(obstacle);
+  alignNearbyCoinsWithObstacle(obstacle);
+}
+
+function requiredActionForObstacle(obstacle: Obstacle): CoinSafeAction {
+  return obstacle.type === 'high' ? 'slide' : 'jump';
+}
+
+function coinYForAction(action: CoinSafeAction): number {
+  if (action === 'jump') return groundY - 78;
+  if (action === 'slide') return groundY - SLIDE_HEIGHT * 0.55;
+  return groundY - PLAYER_HEIGHT * 0.52;
+}
+
+function horizontalDistanceToObstacle(x: number, obstacle: Obstacle): number {
+  if (x < obstacle.x) return obstacle.x - x;
+  if (x > obstacle.x + obstacle.width) return x - (obstacle.x + obstacle.width);
+  return 0;
+}
+
+function alignCoinWithObstacle(coin: Coin, obstacle: Obstacle) {
+  coin.safeAction = requiredActionForObstacle(obstacle);
+  coin.y = coinYForAction(coin.safeAction);
+}
+
+function alignNearbyCoinsWithObstacle(obstacle: Obstacle) {
+  for (const coin of coins) {
+    if (coin.collected) continue;
+    if (horizontalDistanceToObstacle(coin.x, obstacle) <= COIN_OBSTACLE_ALIGN_DISTANCE) {
+      alignCoinWithObstacle(coin, obstacle);
+    }
   }
 }
 
 function spawnCoin() {
-  const height = 40 + Math.random() * 90;
-  coins.push({ x: stageWidth + 20, y: groundY - height, collected: false });
+  const x = stageWidth + 20;
+  const nearbyObstacle = obstacles
+    .filter((obstacle) => horizontalDistanceToObstacle(x, obstacle) <= COIN_OBSTACLE_ALIGN_DISTANCE)
+    .sort((a, b) => horizontalDistanceToObstacle(x, a) - horizontalDistanceToObstacle(x, b))[0];
+  const safeAction = nearbyObstacle ? requiredActionForObstacle(nearbyObstacle) : 'run';
+  const coin: Coin = { x, y: coinYForAction(safeAction), collected: false, safeAction };
+  if (nearbyObstacle) alignCoinWithObstacle(coin, nearbyObstacle);
+  coins.push(coin);
 }
 
 function triggerJump() {
-  if (phase !== 'playing' || playerState === 'falling' || playerState === 'jumping') return;
+  if (phase !== 'playing' || playerState === 'falling') return;
+  if (playerState === 'jumping') {
+    if (jumpsUsed >= MAX_JUMPS) return;
+    jumpsUsed += 1;
+    playerVy = SECOND_JUMP_VELOCITY;
+    syncPlayerVisual(true);
+    return;
+  }
   if (playerState === 'sliding') {
     // 점프 입력은 슬라이드 진입·유지·복귀 중 어느 시점에서도 마지막 입력으로 우선한다.
     // GIF만 점프로 바뀌고 충돌 상태는 낮게 남는 일이 없도록 슬라이드 상태도 함께 해제한다.
@@ -445,6 +528,7 @@ function triggerJump() {
     return;
   }
   playerState = 'jumping';
+  jumpsUsed = 1;
   playerVy = JUMP_VELOCITY;
   syncPlayerVisual();
 }
@@ -468,13 +552,11 @@ function triggerSlide(holdForKeyboard = false) {
     return;
   }
   if (playerState === 'jumping') {
-    // 점프 체공 시간(약 690ms)이 더블탭 판정 창(300ms)보다 길어서, "빠른 탭 2번"의
-    // 첫 탭이 이미 점프를 시작시켜버린 뒤 두 번째 탭이 도착하면 그 시점엔 항상
-    // playerState==='jumping'이다. 여기서 그냥 무시하면 더블탭 슬라이드가 실제로는
-    // 절대 발동할 수 없는 죽은 기능이 된다(실사용자 버그 리포트로 발견) — 대신 점프를
-    // 즉시 취소하고 착지시켜 슬라이드로 전환한다("다이빙" 느낌).
+    // 공중에서도 아래 스와이프/ArrowDown을 무시하지 않고 점프를 즉시 취소해 슬라이드로
+    // 전환한다. 모바일의 연속 입력과 키보드 입력이 같은 물리 상태를 만들게 한다.
     playerY = groundY;
     playerVy = 0;
+    jumpsUsed = 0;
   } else if (playerState !== 'running') {
     return;
   }
@@ -502,18 +584,27 @@ function releaseKeyboardSlide() {
 function updateHudNumbers() {
   hudScore.textContent = String(score);
   hudCoins.textContent = String(coinsCollected);
+  hudRound.textContent = String(roundNumber);
   canvas.dataset.score = String(score);
   canvas.dataset.coins = String(coinsCollected);
+  canvas.dataset.round = String(roundNumber);
 }
 
 function updateTestAttrs() {
   canvas.dataset.obstacles = obstacles.map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}`).join('|');
   canvas.dataset.playerY = String(Math.round(playerY));
   canvas.dataset.playerX = String(Math.round(playerX));
+  canvas.dataset.groundY = String(Math.round(groundY));
   canvas.dataset.state = playerState;
   canvas.dataset.character = selectedCharacter.id;
   canvas.dataset.action = PLAYER_ACTIONS[playerState];
   canvas.dataset.slidePhase = slidePhase ?? 'none';
+  canvas.dataset.jumpsUsed = String(jumpsUsed);
+  canvas.dataset.speed = String(Math.round(speed));
+  canvas.dataset.coinPaths = coins
+    .filter((coin) => !coin.collected)
+    .map((coin) => `${Math.round(coin.x)}:${Math.round(coin.y)}:${coin.safeAction}`)
+    .join('|');
 }
 
 // ── Game flow ─────────────────────────────────
@@ -522,6 +613,7 @@ function startGame() {
   canvas.dataset.phase = phase;
   playerY = groundY;
   playerVy = 0;
+  jumpsUsed = 0;
   playerState = 'running';
   slidePhase = null;
   slidePhaseEndAt = 0;
@@ -530,6 +622,7 @@ function startGame() {
   fallEndAt = 0;
   speed = BASE_SPEED;
   elapsedS = 0;
+  roundNumber = 1;
   distancePx = 0;
   coinsCollected = 0;
   score = 0;
@@ -555,6 +648,7 @@ function beginFall(now: number) {
   playerState = 'falling';
   slidePhase = null;
   keyboardSlideHeld = false;
+  jumpsUsed = 0;
   playerY = groundY;
   fallEndAt = now + FALL_ANIMATION_MS;
   canvas.dataset.phase = phase;
@@ -597,6 +691,7 @@ function updatePhysics(dt: number, now: number) {
     if (playerY >= groundY) {
       playerY = groundY;
       playerVy = 0;
+      jumpsUsed = 0;
       playerState = 'running';
     }
   } else if (playerState === 'sliding') {
@@ -616,8 +711,9 @@ function updatePhysics(dt: number, now: number) {
 }
 
 function updateWorld(dt: number) {
-  speed += SPEED_ACCEL * dt;
   elapsedS += dt;
+  roundNumber = Math.min(MAX_DIFFICULTY_TIER, Math.floor(elapsedS / ROUND_DURATION_S) + 1);
+  speed = speedForCurrentRound();
   const travel = speed * dt;
   distancePx += travel;
 
@@ -634,7 +730,7 @@ function updateWorld(dt: number) {
   }
 
   distanceSinceCoin += travel;
-  const coinGap = COIN_INTERVAL_S * speed;
+  const coinGap = currentCoinInterval() * speed;
   if (distanceSinceCoin >= coinGap) {
     distanceSinceCoin = 0;
     spawnCoin();
@@ -717,6 +813,13 @@ function drawGround() {
   if (cursor < stageWidth) ctx.fillRect(cursor, groundY, stageWidth - cursor, 4);
 
   for (const pit of pits) {
+    const depth = ctx.createLinearGradient(0, groundY, 0, stageHeight);
+    depth.addColorStop(0, '#3f2f46');
+    depth.addColorStop(0.45, '#241c2c');
+    depth.addColorStop(1, '#120f19');
+    ctx.fillStyle = depth;
+    ctx.fillRect(pit.x, groundY, pit.width, stageHeight - groundY);
+
     const gradient = ctx.createLinearGradient(0, groundY, 0, groundY + 26);
     gradient.addColorStop(0, 'rgba(43,30,40,0.55)');
     gradient.addColorStop(1, 'rgba(43,30,40,0)');
@@ -726,45 +829,142 @@ function drawGround() {
     ctx.fillStyle = COLOR_ACCENT;
     for (let sx = pit.x - 6; sx < pit.x; sx += 6) ctx.fillRect(sx, groundY, 3, 4);
     for (let sx = pit.x + pit.width; sx < pit.x + pit.width + 6; sx += 6) ctx.fillRect(sx, groundY, 3, 4);
+
+    // 절벽 입구를 평평한 사각형 대신 깨진 석재 테두리와 안쪽 암벽으로 표현한다.
+    ctx.fillStyle = '#6d566f';
+    ctx.beginPath();
+    ctx.moveTo(pit.x - 10, groundY - 3);
+    ctx.lineTo(pit.x + 5, groundY - 3);
+    ctx.lineTo(pit.x + 12, groundY + 8);
+    ctx.lineTo(pit.x + 2, groundY + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(pit.x + pit.width - 5, groundY - 3);
+    ctx.lineTo(pit.x + pit.width + 10, groundY - 3);
+    ctx.lineTo(pit.x + pit.width - 2, groundY + 5);
+    ctx.lineTo(pit.x + pit.width - 12, groundY + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pit.x + 5, groundY + 8);
+    ctx.lineTo(pit.x + 14, groundY + 18);
+    ctx.lineTo(pit.x + 9, groundY + 29);
+    ctx.moveTo(pit.x + pit.width - 5, groundY + 8);
+    ctx.lineTo(pit.x + pit.width - 15, groundY + 20);
+    ctx.lineTo(pit.x + pit.width - 10, groundY + 32);
+    ctx.stroke();
   }
 }
 
 function drawLowObstacle(o: Obstacle, top: number, height: number) {
-  drawRoundedRect(o.x, top, o.width, height, 4);
-  ctx.fillStyle = '#b9895a';
-  ctx.fill();
-  ctx.strokeStyle = shadeColor('#b9895a', -0.28);
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // 나무 상자 느낌의 X자 판자 무늬
   ctx.save();
+  drawRoundedRect(o.x, top, o.width, height, 4);
+  const wood = ctx.createLinearGradient(o.x, top, o.x + o.width, top + height);
+  wood.addColorStop(0, '#e2ae70');
+  wood.addColorStop(0.48, '#b97848');
+  wood.addColorStop(1, '#8d563a');
+  ctx.fillStyle = wood;
+  ctx.fill();
+  ctx.strokeStyle = '#5f3a35';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // 안쪽 판넬과 교차 보강대를 분리해 작은 크기에서도 상자 깊이가 읽히게 한다.
+  ctx.fillStyle = 'rgba(255,240,204,0.16)';
+  ctx.fillRect(o.x + 4, top + 4, o.width - 8, height - 8);
   ctx.beginPath();
   drawRoundedRect(o.x, top, o.width, height, 4);
   ctx.clip();
-  ctx.strokeStyle = shadeColor('#b9895a', -0.32);
-  ctx.lineWidth = Math.max(2, o.width * 0.08);
+  ctx.strokeStyle = 'rgba(91,53,45,0.78)';
+  ctx.lineWidth = Math.max(3, o.width * 0.09);
   ctx.beginPath();
-  ctx.moveTo(o.x, top);
-  ctx.lineTo(o.x + o.width, top + height);
-  ctx.moveTo(o.x + o.width, top);
-  ctx.lineTo(o.x, top + height);
+  ctx.moveTo(o.x + 5, top + 3);
+  ctx.lineTo(o.x + o.width - 5, top + height - 3);
+  ctx.moveTo(o.x + o.width - 5, top + 3);
+  ctx.lineTo(o.x + 5, top + height - 3);
   ctx.stroke();
+
+  const plateSize = 7;
+  ctx.fillStyle = '#665f67';
+  for (const [px, py] of [
+    [o.x + 1, top + 1],
+    [o.x + o.width - plateSize - 1, top + 1],
+    [o.x + 1, top + height - plateSize - 1],
+    [o.x + o.width - plateSize - 1, top + height - plateSize - 1]
+  ]) {
+    ctx.fillRect(px, py, plateSize, plateSize);
+    ctx.beginPath();
+    ctx.arc(px + plateSize / 2, py + plateSize / 2, 1.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#f3d58e';
+    ctx.fill();
+    ctx.fillStyle = '#665f67';
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.fillRect(o.x + 5, top + 3, o.width - 10, 2);
   ctx.restore();
 }
 
 function drawHighObstacle(o: Obstacle, top: number, height: number) {
-  const gradient = ctx.createLinearGradient(0, top, 0, top + height);
-  gradient.addColorStop(0, 'rgba(232,93,117,0)');
-  gradient.addColorStop(0.35, COLOR_DANGER);
-  gradient.addColorStop(1, COLOR_DANGER);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(o.x, top, o.width, height);
+  const bottom = top + height;
+  const beamHeight = Math.min(50, Math.max(38, height * 0.22));
+  const beamTop = bottom - beamHeight;
+  ctx.save();
 
-  // 아래쪽 끝에 아래를 향한 가시를 달아 "여기 아래로 지나가면 위험"을 시각적으로 강조한다.
+  // 위에서 매달린 구조임을 보여 주는 케이블과 반투명 위험 차단막.
+  ctx.fillStyle = 'rgba(232,93,117,0.13)';
+  ctx.fillRect(o.x, top, o.width, Math.max(0, beamTop - top));
+  ctx.strokeStyle = 'rgba(83,56,73,0.72)';
+  ctx.lineWidth = 3;
+  for (const cableX of [o.x + 9, o.x + o.width - 9]) {
+    ctx.beginPath();
+    ctx.moveTo(cableX, top);
+    ctx.lineTo(cableX, beamTop + 3);
+    ctx.stroke();
+  }
+
+  const metal = ctx.createLinearGradient(o.x, beamTop, o.x + o.width, bottom);
+  metal.addColorStop(0, '#ff8c8f');
+  metal.addColorStop(0.5, COLOR_DANGER);
+  metal.addColorStop(1, '#a63f63');
+  drawRoundedRect(o.x, beamTop, o.width, beamHeight, 5);
+  ctx.fillStyle = metal;
+  ctx.fill();
+  ctx.strokeStyle = '#71384f';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // 사선 경고띠와 리벳으로 단순한 붉은 벽 대신 기계식 장애물처럼 보이게 한다.
+  ctx.save();
+  drawRoundedRect(o.x + 2, beamTop + 2, o.width - 4, beamHeight - 4, 3);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(255,221,111,0.78)';
+  ctx.lineWidth = 6;
+  for (let stripeX = o.x - beamHeight; stripeX < o.x + o.width + beamHeight; stripeX += 18) {
+    ctx.beginPath();
+    ctx.moveTo(stripeX, bottom);
+    ctx.lineTo(stripeX + beamHeight, beamTop);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = '#ffe5a6';
+  for (const rivetX of [o.x + 7, o.x + o.width - 7]) {
+    for (const rivetY of [beamTop + 8, bottom - 8]) {
+      ctx.beginPath();
+      ctx.arc(rivetX, rivetY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 아래쪽 끝에 가시를 달아 슬라이드 통로를 실루엣만으로도 즉시 읽게 한다.
   const spikeCount = Math.max(2, Math.floor(o.width / 14));
   const spikeW = o.width / spikeCount;
-  const bottom = top + height;
-  ctx.fillStyle = shadeColor(COLOR_DANGER, -0.15);
+  ctx.fillStyle = '#63314a';
   for (let i = 0; i < spikeCount; i += 1) {
     const sx = o.x + i * spikeW;
     ctx.beginPath();
@@ -774,6 +974,7 @@ function drawHighObstacle(o: Obstacle, top: number, height: number) {
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
 }
 
 function drawCoin(c: Coin, now: number) {
@@ -782,19 +983,31 @@ function drawCoin(c: Coin, now: number) {
   ctx.save();
   ctx.translate(c.x, c.y);
   ctx.scale(scaleX, 1);
+  ctx.shadowColor = 'rgba(255,200,67,0.65)';
+  ctx.shadowBlur = 9;
   ctx.beginPath();
   ctx.arc(0, 0, 9, 0, Math.PI * 2);
-  ctx.fillStyle = COLOR_ACCENT;
+  const coinGradient = ctx.createRadialGradient(-3, -4, 1, 0, 0, 10);
+  coinGradient.addColorStop(0, '#fff4b5');
+  coinGradient.addColorStop(0.42, COLOR_ACCENT);
+  coinGradient.addColorStop(1, '#df922d');
+  ctx.fillStyle = coinGradient;
   ctx.fill();
+  ctx.shadowBlur = 0;
   ctx.strokeStyle = shadeColor(COLOR_ACCENT, -0.25);
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.48)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
   if (spin > 0) {
     ctx.beginPath();
-    ctx.moveTo(-3, -4);
-    ctx.lineTo(3, -4);
+    ctx.moveTo(-3.5, -4.5);
+    ctx.lineTo(1.5, -4.5);
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 1.8;
     ctx.stroke();
   }
   ctx.restore();
@@ -879,24 +1092,16 @@ canvas.addEventListener('pointerdown', (ev) => {
 
 canvas.addEventListener('pointerup', (ev) => {
   if (phase !== 'playing') return;
-  const now = performance.now();
   const dx = ev.clientX - pointerDownX;
   const dy = ev.clientY - pointerDownY;
 
   const isSwipeDown = dy > SWIPE_MIN_DISTANCE && Math.abs(dy) > Math.abs(dx);
   if (isSwipeDown) {
     triggerSlide();
-    lastTapAt = -Infinity;
     return;
   }
 
-  if (now - lastTapAt < DOUBLE_TAP_WINDOW_MS) {
-    triggerSlide();
-    lastTapAt = -Infinity;
-  } else {
-    triggerJump();
-    lastTapAt = now;
-  }
+  triggerJump();
 });
 
 window.addEventListener('keydown', (ev) => {
