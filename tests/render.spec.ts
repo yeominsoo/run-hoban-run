@@ -1549,8 +1549,9 @@ test('ball dodge: dedicated player, hazard, and collectible sprites load before 
   expect([...loadedAssetPaths].sort()).toEqual([
     '/assets/game-art/ball-dodge/collectible-star.webp',
     '/assets/game-art/ball-dodge/hazard-meteor.webp',
-    '/assets/game-art/ball-dodge/player-rabbit.webp'
+    '/assets/game-art/ball-dodge/player-star-collector.webp'
   ]);
+  await expect(page.locator('#start-overlay p')).toContainText('별 수집선');
 });
 
 test('ball dodge: a failed sprite request keeps the Canvas fallback playable', async ({ page }) => {

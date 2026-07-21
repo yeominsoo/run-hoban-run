@@ -18,7 +18,7 @@ const MIN_SPAWN_DIST_FROM_PLAYER = 70;
 const PLAYER_SPRITE_SIZE = 64;
 const BALL_SPRITE_SIZE = 34;
 const SPRITE_URLS = {
-  player: '/assets/game-art/ball-dodge/player-rabbit.webp',
+  player: '/assets/game-art/ball-dodge/player-star-collector.webp',
   red: '/assets/game-art/ball-dodge/hazard-meteor.webp',
   green: '/assets/game-art/ball-dodge/collectible-star.webp'
 } as const;
@@ -55,7 +55,7 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>볼 피하기 + 수집</h2>
-          <p>드래그로 토끼 비행선을 움직여 가시 운석을 피하고 별을 모으세요.<br>HP 3, 별 하나당 +10점. 30초마다 더 빨라지고 오브젝트가 늘어납니다.</p>
+          <p>드래그로 별 수집선을 움직여 가시 운석을 피하고 별을 모으세요.<br>HP 3, 별 하나당 +10점. 30초마다 더 빨라지고 오브젝트가 늘어납니다.</p>
           <button id="start-btn" class="primary-btn" type="button">시작하기</button>
           <button id="view-ranking-btn" class="ghost-btn" type="button">랭킹보기</button>
         </div>
