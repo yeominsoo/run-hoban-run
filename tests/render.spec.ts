@@ -2093,6 +2093,7 @@ interface RunnerObstacle {
   type: string;
   x: number;
   width: number;
+  visual: string;
 }
 
 interface RunnerCoinPath {
@@ -2112,6 +2113,8 @@ interface RunnerState {
   coins: number;
   round: number;
   jumpsUsed: number;
+  groundRatio: number;
+  obstacleCatalog: string[];
 }
 
 async function readRunnerState(page: Page): Promise<RunnerState> {
@@ -2121,8 +2124,8 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       .split('|')
       .filter(Boolean)
       .map((entry) => {
-        const [type, x, width] = entry.split(':');
-        return { type, x: Number(x), width: Number(width) };
+        const [type, x, width, visual] = entry.split(':');
+        return { type, x: Number(x), width: Number(width), visual };
       });
     const coinPaths = (canvas.dataset.coinPaths ?? '')
       .split('|')
@@ -2141,7 +2144,9 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       score: Number(canvas.dataset.score ?? 0),
       coins: Number(canvas.dataset.coins ?? 0),
       round: Number(canvas.dataset.round ?? 1),
-      jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0)
+      jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0),
+      groundRatio: Number(canvas.dataset.groundRatio ?? 0),
+      obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean)
     };
   });
 }
@@ -2218,6 +2223,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await expect(canvas).toHaveAttribute('data-character', characterId);
   await page.locator('#start-btn').click();
   await expect(canvas).toHaveAttribute('data-phase', 'playing');
+  await expect(canvas).toHaveAttribute('data-scene-assets-ready', 'true');
   await expect(canvas).toHaveAttribute('data-character', characterId);
   await expect(player).toHaveAttribute('data-character', characterId);
   await expect(player).toHaveAttribute('data-action', 'run');
@@ -2229,6 +2235,16 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   const playerBounds = await player.boundingBox();
   expect(playerBounds?.width).toBeGreaterThanOrEqual(92);
   expect(playerBounds?.height).toBeGreaterThanOrEqual(92);
+  const initialScene = await readRunnerState(page);
+  expect(initialScene.groundRatio).toBe(0.82);
+  expect(initialScene.obstacleCatalog).toEqual([
+    'stump',
+    'thorn-patch',
+    'floating-grass-platform',
+    'honeybee',
+    'bluebird',
+    'mossy-rock'
+  ]);
   const playerImageSource = await player.evaluate((element) => {
     const image = element as HTMLImageElement;
     return image.currentSrc || image.src;
@@ -2353,6 +2369,13 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
 
 test('endless runner: jumping/sliding at the right moment clears obstacles and pits', async ({ page }) => {
   test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    let seed = 0x6d2b79f5;
+    Math.random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+  });
   await page.goto('/endless-runner/');
   await expect(page.locator('.game-title')).toHaveText('무한 러너');
 
@@ -2365,11 +2388,13 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
   const deadline = Date.now() + 18_000;
   let highestRound = 1;
   let alignedCoinSamples = 0;
+  const encounteredVisuals = new Set<string>();
 
   while (Date.now() < deadline) {
     const state = await readRunnerState(page);
     if (state.phase !== 'playing') break;
     highestRound = Math.max(highestRound, state.round);
+    for (const obstacle of state.obstacles) encounteredVisuals.add(obstacle.visual);
 
     for (const coin of state.coinPaths) {
       const nearbyObstacle = state.obstacles.find((obstacle) => {
@@ -2415,6 +2440,8 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
   expect(finalState.score).toBeGreaterThan(0);
   expect(highestRound).toBeGreaterThanOrEqual(2);
   expect(alignedCoinSamples).toBeGreaterThan(0);
+  expect(encounteredVisuals.size).toBeGreaterThanOrEqual(2);
+  expect([...encounteredVisuals].every((visual) => finalState.obstacleCatalog.includes(visual))).toBe(true);
 });
 
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {

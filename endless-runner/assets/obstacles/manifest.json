@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "generatedOn": "2026-07-21",
+  "sourceAtlas": {
+    "path": "endless-runner/assets/obstacles/source/endless-runner-obstacle-atlas.png",
+    "grid": {
+      "columns": 2,
+      "rows": 3
+    },
+    "sha256": "d0a655f50d3cfa38f17a90ced0f4baae837811ae76a0f20f290b06b96a7749b9"
+  },
+  "assets": [
+    {
+      "id": "stump",
+      "path": "endless-runner/assets/obstacles/stump.png",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        12,
+        71,
+        244,
+        236
+      ],
+      "anchor": "ground",
+      "sha256": "e6413c5eda1c5638cd0e227012abd3f0c0b5c62f6cb1ad0d5a096a94374c8d1a"
+    },
+    {
+      "id": "thorn-patch",
+      "path": "endless-runner/assets/obstacles/thorn-patch.png",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        12,
+        99,
+        244,
+        236
+      ],
+      "anchor": "ground",
+      "sha256": "cfab7c976088b9483f966dc9d081cb862a192a7b32b02c38c4f4b6a8025f87ce"
+    },
+    {
+      "id": "floating-grass-platform",
+      "path": "endless-runner/assets/obstacles/floating-grass-platform.png",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        12,
+        70,
+        244,
+        186
+      ],
+      "anchor": "center",
+      "sha256": "5cd3ee31a7b9dab8dc78bd641ab5be1ba4cd47e1553e6f3c91a8ba42b46d5931"
+    },
+    {
+      "id": "honeybee",
+      "path": "endless-runner/assets/obstacles/honeybee.png",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        12,
+        22,
+        244,
+        235
+      ],
+      "anchor": "center",
+      "sha256": "8bea8a9b17eaafeb8203f144e821eac1de03f5d8cbca5ac7b7bea69d478cd971"
+    },
+    {
+      "id": "bluebird",
+      "path": "endless-runner/assets/obstacles/bluebird.png",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        12,
+        38,
+        244,
+        218
+      ],
+      "anchor": "center",
+      "sha256": "638da6aefdd0b6d9bf5bf8156224843d1c22f2ff16bbb95fb56f26c687173d8f"
+    },
+    {
+      "id": "mossy-rock",
+      "path": "endless-runner/assets/obstacles/mossy-rock.png",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        12,
+        103,
+        244,
+        236
+      ],
+      "anchor": "ground",
+      "sha256": "788b3a4b3ab70f6e84b8ee759bc7369f71bb0192c791109d7837ff7cac33c453"
+    }
+  ]
+}

@@ -9,10 +9,11 @@ import {
   type RunnerCharacter,
   type RunnerSlidePhase
 } from './character-assets';
+import { OBSTACLE_ASSET_URLS, type ObstacleVisual } from './obstacle-assets';
 
 const GAME_SLUG = 'endless-runner';
 
-const GROUND_Y_RATIO = 0.72;
+const GROUND_Y_RATIO = 0.82;
 const PLAYER_X_RATIO = 0.22;
 const PLAYER_WIDTH = 30;
 const PLAYER_HEIGHT = 42;
@@ -53,6 +54,8 @@ interface Obstacle {
   type: ObstacleType;
   x: number;
   width: number;
+  visual: ObstacleVisual;
+  phase: number;
 }
 
 interface Coin {
@@ -119,7 +122,7 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>무한 러너</h2>
-          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>코인은 안전한 회피 동선을 안내하며, 15초마다 라운드와 난이도가 올라갑니다. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>잔디 절벽·가시·공중 지형과 날아오는 생물이 라운드마다 추가됩니다. 코인은 안전한 회피 동선을 안내합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -198,7 +201,6 @@ const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') 
 // ── Theme colors ───────────────────────────────
 const rootStyle = getComputedStyle(document.documentElement);
 const cssVar = (name: string) => rootStyle.getPropertyValue(name).trim();
-const COLOR_SECONDARY = cssVar('--color-secondary') || '#5ecfbc';
 const COLOR_ACCENT = cssVar('--color-accent') || '#ffc857';
 const COLOR_DANGER = cssVar('--color-danger') || '#e85d75';
 const COLOR_TEXT = cssVar('--color-page-text') || '#4b3447';
@@ -327,6 +329,10 @@ function characterVisualAssets(character: RunnerCharacter): string[] {
   ])];
 }
 
+function sceneVisualAssets(): string[] {
+  return Object.values(OBSTACLE_ASSET_URLS);
+}
+
 function preloadVisualAsset(asset: string): Promise<boolean> {
   const cached = visualPreloadPromises.get(asset);
   if (cached) return cached;
@@ -355,13 +361,20 @@ async function prepareSelectedCharacterVisuals() {
   const request = ++characterPrepareRequest;
   const character = selectedCharacter;
   canvas.dataset.assetsReady = 'loading';
+  canvas.dataset.sceneAssetsReady = 'loading';
   startBtn.disabled = true;
   startBtn.textContent = '캐릭터 준비 중…';
 
-  const results = await Promise.all(characterVisualAssets(character).map(preloadVisualAsset));
+  const [characterResults, sceneResults] = await Promise.all([
+    Promise.all(characterVisualAssets(character).map(preloadVisualAsset)),
+    Promise.all(sceneVisualAssets().map(preloadVisualAsset))
+  ]);
   if (request !== characterPrepareRequest || character.id !== selectedCharacter.id) return;
 
-  canvas.dataset.assetsReady = results.every(Boolean) ? character.id : 'fallback';
+  canvas.dataset.sceneAssetsReady = String(sceneResults.every(Boolean));
+  canvas.dataset.assetsReady = characterResults.every(Boolean) && sceneResults.every(Boolean)
+    ? character.id
+    : 'fallback';
   startBtn.disabled = false;
   startBtn.textContent = '시작하기';
 }
@@ -429,20 +442,38 @@ function highObstacleClearance(): number {
 }
 
 /**
- * 장애물 종류별 충돌 판정용 사각형(위/높이)을 계산한다. "낮은 장애물"은 바닥에 붙은
- * 낮은 블록(점프로 넘김), "높은 장애물"은 슬라이드 통로(clearance)만 남기고 화면 위쪽까지
- * 뻗은 긴 기둥으로 만들어야 한다 — 높이를 obstacleHeight처럼 짧게 두면 점프 정점에서는
- * 오히려 장애물 위로 넘어가버려 "슬라이드해야만 통과"라는 의도가 깨진다(실제로 자동
- * 플레이 테스트 중 발견한 버그: 점프 최고점(약 131px)이 30px짜리 장애물보다 높아 그냥
- * 넘어가졌다).
+ * 낮은 지형은 점프로, 공중 지형과 비행 생물은 슬라이드로 피할 수 있는 판정 상자를 만든다.
+ * 공중 장애물의 아래쪽은 슬라이드 높이보다 충분히 높고 달리는 캐릭터의 머리보다 낮게 유지해
+ * 그래픽과 요구 동작이 일치하게 한다. 높은 2단 점프로 위를 넘는 선택지도 허용한다.
  */
 function obstacleGeometry(o: Obstacle): { top: number; height: number } {
   if (o.type === 'low') {
-    const height = 30;
+    const height = o.visual === 'thorn-patch' ? 24 : o.visual === 'mossy-rock' ? 32 : 36;
     return { top: groundY - height, height };
   }
-  const bottom = groundY - highObstacleClearance();
-  return { top: 0, height: bottom };
+  if (o.type === 'high') {
+    if (o.visual === 'honeybee' || o.visual === 'bluebird') {
+      const bob = Math.sin(elapsedS * 4.4 + o.phase) * 3;
+      return { top: groundY - 64 + bob, height: 30 };
+    }
+    const bottom = groundY - highObstacleClearance() - 2;
+    const height = 56;
+    return { top: bottom - height, height };
+  }
+  return { top: groundY, height: stageHeight - groundY };
+}
+
+function lowVisualForTier(tier: number): ObstacleVisual {
+  const roll = Math.random();
+  if (tier >= 2 && roll > 0.72) return 'thorn-patch';
+  if (tier >= 2 && roll > 0.36) return 'mossy-rock';
+  return 'stump';
+}
+
+function highVisualForTier(tier: number): ObstacleVisual {
+  if (tier < 2 || Math.random() < 0.55) return 'floating-grass-platform';
+  if (tier >= 3 && Math.random() > 0.55) return 'bluebird';
+  return 'honeybee';
 }
 
 function spawnObstacle() {
@@ -454,12 +485,34 @@ function spawnObstacle() {
   let obstacle: Obstacle;
 
   if (roll < lowChance) {
-    obstacle = { type: 'low', x: stageWidth + 20, width: 38 + Math.min(6, tier * 2) };
+    const visual = lowVisualForTier(tier);
+    const baseWidth = visual === 'thorn-patch' ? 54 : visual === 'mossy-rock' ? 46 : 42;
+    obstacle = {
+      type: 'low',
+      visual,
+      phase: Math.random() * Math.PI * 2,
+      x: stageWidth + 20,
+      width: baseWidth + Math.min(6, tier * 2)
+    };
   } else if (roll < lowChance + highChance) {
-    obstacle = { type: 'high', x: stageWidth + 20, width: 52 + Math.min(8, tier * 2) };
+    const visual = highVisualForTier(tier);
+    const baseWidth = visual === 'floating-grass-platform' ? 76 : visual === 'bluebird' ? 42 : 38;
+    obstacle = {
+      type: 'high',
+      visual,
+      phase: Math.random() * Math.PI * 2,
+      x: stageWidth + 20,
+      width: baseWidth + Math.min(8, tier * 2)
+    };
   } else {
     const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
-    obstacle = { type: 'pit', x: stageWidth + 20, width };
+    obstacle = {
+      type: 'pit',
+      visual: 'thorn-patch',
+      phase: Math.random() * Math.PI * 2,
+      x: stageWidth + 20,
+      width
+    };
   }
 
   obstacles.push(obstacle);
@@ -591,7 +644,9 @@ function updateHudNumbers() {
 }
 
 function updateTestAttrs() {
-  canvas.dataset.obstacles = obstacles.map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}`).join('|');
+  canvas.dataset.obstacles = obstacles
+    .map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}:${o.visual}`)
+    .join('|');
   canvas.dataset.playerY = String(Math.round(playerY));
   canvas.dataset.playerX = String(Math.round(playerX));
   canvas.dataset.groundY = String(Math.round(groundY));
@@ -601,6 +656,8 @@ function updateTestAttrs() {
   canvas.dataset.slidePhase = slidePhase ?? 'none';
   canvas.dataset.jumpsUsed = String(jumpsUsed);
   canvas.dataset.speed = String(Math.round(speed));
+  canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
+  canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
   canvas.dataset.coinPaths = coins
     .filter((coin) => !coin.collected)
     .map((coin) => `${Math.round(coin.x)}:${Math.round(coin.y)}:${coin.safeAction}`)
@@ -792,188 +849,239 @@ function drawRoundedRect(x: number, y: number, w: number, h: number, r: number) 
   ctx.closePath();
 }
 
-function drawGround() {
-  // 구덩이는 뚫어서 그리고, 안쪽엔 그라데이션으로 깊이감을 준다.
-  const pits = obstacles.filter((o) => o.type === 'pit').sort((a, b) => a.x - b.x);
-  let cursor = 0;
-  ctx.fillStyle = COLOR_SECONDARY;
-  for (const pit of pits) {
-    if (pit.x > cursor) ctx.fillRect(cursor, groundY, pit.x - cursor, stageHeight - groundY);
-    cursor = Math.max(cursor, pit.x + pit.width);
-  }
-  if (cursor < stageWidth) ctx.fillRect(cursor, groundY, stageWidth - cursor, stageHeight - groundY);
-
-  // 지면 표면 하이라이트 줄무늬
-  ctx.fillStyle = shadeColor(COLOR_SECONDARY, 0.16);
-  cursor = 0;
-  for (const pit of pits) {
-    if (pit.x > cursor) ctx.fillRect(cursor, groundY, pit.x - cursor, 4);
-    cursor = Math.max(cursor, pit.x + pit.width);
-  }
-  if (cursor < stageWidth) ctx.fillRect(cursor, groundY, stageWidth - cursor, 4);
-
-  for (const pit of pits) {
-    const depth = ctx.createLinearGradient(0, groundY, 0, stageHeight);
-    depth.addColorStop(0, '#3f2f46');
-    depth.addColorStop(0.45, '#241c2c');
-    depth.addColorStop(1, '#120f19');
-    ctx.fillStyle = depth;
-    ctx.fillRect(pit.x, groundY, pit.width, stageHeight - groundY);
-
-    const gradient = ctx.createLinearGradient(0, groundY, 0, groundY + 26);
-    gradient.addColorStop(0, 'rgba(43,30,40,0.55)');
-    gradient.addColorStop(1, 'rgba(43,30,40,0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(pit.x, groundY, pit.width, 26);
-    // 가장자리 위험 표시
-    ctx.fillStyle = COLOR_ACCENT;
-    for (let sx = pit.x - 6; sx < pit.x; sx += 6) ctx.fillRect(sx, groundY, 3, 4);
-    for (let sx = pit.x + pit.width; sx < pit.x + pit.width + 6; sx += 6) ctx.fillRect(sx, groundY, 3, 4);
-
-    // 절벽 입구를 평평한 사각형 대신 깨진 석재 테두리와 안쪽 암벽으로 표현한다.
-    ctx.fillStyle = '#6d566f';
+function drawCloud(x: number, y: number, scale: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = 'rgba(255,255,255,0.72)';
+  for (const [cx, cy, radius] of [[0, 6, 12], [14, 0, 16], [31, 7, 12], [15, 10, 21]] as const) {
     ctx.beginPath();
-    ctx.moveTo(pit.x - 10, groundY - 3);
-    ctx.lineTo(pit.x + 5, groundY - 3);
-    ctx.lineTo(pit.x + 12, groundY + 8);
-    ctx.lineTo(pit.x + 2, groundY + 5);
-    ctx.closePath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(pit.x + pit.width - 5, groundY - 3);
-    ctx.lineTo(pit.x + pit.width + 10, groundY - 3);
-    ctx.lineTo(pit.x + pit.width - 2, groundY + 5);
-    ctx.lineTo(pit.x + pit.width - 12, groundY + 8);
-    ctx.closePath();
-    ctx.fill();
+  }
+  ctx.restore();
+}
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(pit.x + 5, groundY + 8);
-    ctx.lineTo(pit.x + 14, groundY + 18);
-    ctx.lineTo(pit.x + 9, groundY + 29);
-    ctx.moveTo(pit.x + pit.width - 5, groundY + 8);
-    ctx.lineTo(pit.x + pit.width - 15, groundY + 20);
-    ctx.lineTo(pit.x + pit.width - 10, groundY + 32);
-    ctx.stroke();
+function drawSky() {
+  const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+  sky.addColorStop(0, '#fff8ed');
+  sky.addColorStop(0.54, '#dff5ed');
+  sky.addColorStop(1, '#bde9d7');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, stageWidth, groundY);
+
+  ctx.fillStyle = 'rgba(255,207,92,0.42)';
+  ctx.beginPath();
+  ctx.arc(stageWidth * 0.82, Math.max(72, groundY * 0.2), 38, 0, Math.PI * 2);
+  ctx.fill();
+
+  const cloudOffset = (distancePx * 0.055) % (stageWidth + 180);
+  drawCloud(stageWidth - cloudOffset, groundY * 0.2, 0.9);
+  drawCloud(stageWidth * 0.45 - cloudOffset * 0.55, groundY * 0.34, 0.65);
+  drawCloud(stageWidth * 1.28 - cloudOffset * 0.8, groundY * 0.13, 0.52);
+
+  const farOffset = (distancePx * 0.11) % 180;
+  ctx.fillStyle = '#a6dbc2';
+  ctx.beginPath();
+  ctx.moveTo(-180 - farOffset, groundY);
+  for (let x = -180 - farOffset; x <= stageWidth + 220; x += 90) {
+    ctx.quadraticCurveTo(x + 45, groundY - 86, x + 90, groundY);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  const nearOffset = (distancePx * 0.2) % 150;
+  ctx.fillStyle = '#83cba9';
+  ctx.beginPath();
+  ctx.moveTo(-150 - nearOffset, groundY);
+  for (let x = -150 - nearOffset; x <= stageWidth + 190; x += 75) {
+    ctx.quadraticCurveTo(x + 38, groundY - 48, x + 75, groundY);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  const platformImage = preloadedVisuals.get(OBSTACLE_ASSET_URLS['floating-grass-platform']);
+  if (platformImage?.complete && platformImage.naturalWidth > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    const drift = (distancePx * 0.075) % (stageWidth + 260);
+    ctx.drawImage(platformImage, stageWidth - drift, groundY * 0.3, 112, 72);
+    ctx.drawImage(platformImage, stageWidth * 0.38 - drift * 0.46, groundY * 0.48, 78, 50);
+    ctx.restore();
   }
 }
 
-function drawLowObstacle(o: Obstacle, top: number, height: number) {
-  ctx.save();
-  drawRoundedRect(o.x, top, o.width, height, 4);
-  const wood = ctx.createLinearGradient(o.x, top, o.x + o.width, top + height);
-  wood.addColorStop(0, '#e2ae70');
-  wood.addColorStop(0.48, '#b97848');
-  wood.addColorStop(1, '#8d563a');
-  ctx.fillStyle = wood;
-  ctx.fill();
-  ctx.strokeStyle = '#5f3a35';
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
+function pointIsOnGround(x: number, pits: Obstacle[]): boolean {
+  return !pits.some((pit) => x >= pit.x && x <= pit.x + pit.width);
+}
 
-  // 안쪽 판넬과 교차 보강대를 분리해 작은 크기에서도 상자 깊이가 읽히게 한다.
-  ctx.fillStyle = 'rgba(255,240,204,0.16)';
-  ctx.fillRect(o.x + 4, top + 4, o.width - 8, height - 8);
-  ctx.beginPath();
-  drawRoundedRect(o.x, top, o.width, height, 4);
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(91,53,45,0.78)';
-  ctx.lineWidth = Math.max(3, o.width * 0.09);
-  ctx.beginPath();
-  ctx.moveTo(o.x + 5, top + 3);
-  ctx.lineTo(o.x + o.width - 5, top + height - 3);
-  ctx.moveTo(o.x + o.width - 5, top + 3);
-  ctx.lineTo(o.x + 5, top + height - 3);
-  ctx.stroke();
+function drawGround() {
+  const pits = obstacles.filter((o) => o.type === 'pit').sort((a, b) => a.x - b.x);
+  const soil = ctx.createLinearGradient(0, groundY, 0, stageHeight);
+  soil.addColorStop(0, '#a96f43');
+  soil.addColorStop(0.5, '#805137');
+  soil.addColorStop(1, '#573a35');
 
-  const plateSize = 7;
-  ctx.fillStyle = '#665f67';
-  for (const [px, py] of [
-    [o.x + 1, top + 1],
-    [o.x + o.width - plateSize - 1, top + 1],
-    [o.x + 1, top + height - plateSize - 1],
-    [o.x + o.width - plateSize - 1, top + height - plateSize - 1]
-  ]) {
-    ctx.fillRect(px, py, plateSize, plateSize);
-    ctx.beginPath();
-    ctx.arc(px + plateSize / 2, py + plateSize / 2, 1.2, 0, Math.PI * 2);
-    ctx.fillStyle = '#f3d58e';
-    ctx.fill();
-    ctx.fillStyle = '#665f67';
+  let cursor = 0;
+  for (const pit of pits) {
+    if (pit.x > cursor) {
+      ctx.fillStyle = soil;
+      ctx.fillRect(cursor, groundY, pit.x - cursor, stageHeight - groundY);
+    }
+    cursor = Math.max(cursor, pit.x + pit.width);
+  }
+  if (cursor < stageWidth) {
+    ctx.fillStyle = soil;
+    ctx.fillRect(cursor, groundY, stageWidth - cursor, stageHeight - groundY);
   }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.fillRect(o.x + 5, top + 3, o.width - 10, 2);
+  ctx.fillStyle = 'rgba(255,209,135,0.12)';
+  for (let bandY = groundY + 34; bandY < stageHeight; bandY += 42) {
+    ctx.fillRect(0, bandY, stageWidth, 3);
+  }
+
+  const pebbleOffset = (distancePx * 0.58) % 58;
+  for (let x = -pebbleOffset; x < stageWidth + 20; x += 58) {
+    if (!pointIsOnGround(x, pits)) continue;
+    const row = Math.abs(Math.floor((x + distancePx) / 58)) % 3;
+    const y = groundY + 27 + row * 25;
+    ctx.fillStyle = row === 1 ? '#c39763' : '#705064';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 4 + row, 2.5 + row * 0.5, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#5fbd55';
+  cursor = 0;
+  for (const pit of pits) {
+    if (pit.x > cursor) ctx.fillRect(cursor, groundY - 6, pit.x - cursor, 14);
+    cursor = Math.max(cursor, pit.x + pit.width);
+  }
+  if (cursor < stageWidth) ctx.fillRect(cursor, groundY - 6, stageWidth - cursor, 14);
+
+  const grassOffset = distancePx % 18;
+  for (let x = -grassOffset; x < stageWidth + 18; x += 18) {
+    if (!pointIsOnGround(x, pits)) continue;
+    ctx.fillStyle = Math.floor((x + distancePx) / 18) % 2 === 0 ? '#8ddb58' : '#74cb4e';
+    ctx.beginPath();
+    ctx.moveTo(x - 7, groundY - 5);
+    ctx.quadraticCurveTo(x - 2, groundY - 13, x, groundY - 5);
+    ctx.quadraticCurveTo(x + 5, groundY - 15, x + 8, groundY - 5);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const flowerOffset = (distancePx * 0.9) % 190;
+  for (let x = 70 - flowerOffset; x < stageWidth + 190; x += 190) {
+    if (!pointIsOnGround(x, pits)) continue;
+    ctx.strokeStyle = '#4eaa55';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, groundY - 5);
+    ctx.lineTo(x, groundY - 18);
+    ctx.stroke();
+    ctx.fillStyle = '#fff2a6';
+    for (let petal = 0; petal < 5; petal += 1) {
+      const angle = petal * Math.PI * 0.4;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(angle) * 4, groundY - 20 + Math.sin(angle) * 4, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#f49a5a';
+    ctx.beginPath();
+    ctx.arc(x, groundY - 20, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const pit of pits) {
+    const depth = ctx.createLinearGradient(0, groundY, 0, stageHeight);
+    depth.addColorStop(0, '#483349');
+    depth.addColorStop(0.42, '#281f31');
+    depth.addColorStop(1, '#120f19');
+    ctx.fillStyle = depth;
+    ctx.fillRect(pit.x, groundY - 7, pit.width, stageHeight - groundY + 7);
+
+    ctx.fillStyle = '#4b332e';
+    ctx.beginPath();
+    ctx.moveTo(pit.x - 9, groundY - 7);
+    ctx.lineTo(pit.x + 8, groundY - 7);
+    ctx.lineTo(pit.x + 14, groundY + 9);
+    ctx.lineTo(pit.x + 3, groundY + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(pit.x + pit.width - 8, groundY - 7);
+    ctx.lineTo(pit.x + pit.width + 9, groundY - 7);
+    ctx.lineTo(pit.x + pit.width - 3, groundY + 5);
+    ctx.lineTo(pit.x + pit.width - 14, groundY + 10);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,220,160,0.23)';
+    ctx.lineWidth = 2;
+    for (const edgeX of [pit.x + 6, pit.x + pit.width - 6]) {
+      ctx.beginPath();
+      ctx.moveTo(edgeX, groundY + 5);
+      ctx.lineTo(edgeX + (edgeX < pit.x + pit.width / 2 ? 8 : -8), groundY + 23);
+      ctx.lineTo(edgeX + (edgeX < pit.x + pit.width / 2 ? 3 : -3), groundY + 40);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawObstacleSprite(
+  visual: ObstacleVisual,
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number
+): boolean {
+  const image = preloadedVisuals.get(OBSTACLE_ASSET_URLS[visual]);
+  if (!image?.complete || image.naturalWidth <= 0) return false;
+  ctx.drawImage(image, centerX - width / 2, centerY - height / 2, width, height);
+  return true;
+}
+
+function drawLowObstacle(o: Obstacle, top: number, height: number) {
+  const visualHeight = o.visual === 'thorn-patch' ? 58 : o.visual === 'mossy-rock' ? 64 : 72;
+  const visualWidth = o.width + (o.visual === 'thorn-patch' ? 28 : 22);
+  const visibleBaselineRatio = 236 / 256;
+  const centerY = groundY - visualHeight * visibleBaselineRatio + visualHeight / 2;
+  if (drawObstacleSprite(o.visual, o.x + o.width / 2, centerY, visualWidth, visualHeight)) return;
+
+  ctx.save();
+  drawRoundedRect(o.x, top, o.width, height, 6);
+  ctx.fillStyle = o.visual === 'thorn-patch' ? COLOR_DANGER : '#9a6844';
+  ctx.fill();
+  ctx.strokeStyle = '#5d3a42';
+  ctx.lineWidth = 2;
+  ctx.stroke();
   ctx.restore();
 }
 
 function drawHighObstacle(o: Obstacle, top: number, height: number) {
-  const bottom = top + height;
-  const beamHeight = Math.min(50, Math.max(38, height * 0.22));
-  const beamTop = bottom - beamHeight;
-  ctx.save();
-
-  // 위에서 매달린 구조임을 보여 주는 케이블과 반투명 위험 차단막.
-  ctx.fillStyle = 'rgba(232,93,117,0.13)';
-  ctx.fillRect(o.x, top, o.width, Math.max(0, beamTop - top));
-  ctx.strokeStyle = 'rgba(83,56,73,0.72)';
-  ctx.lineWidth = 3;
-  for (const cableX of [o.x + 9, o.x + o.width - 9]) {
-    ctx.beginPath();
-    ctx.moveTo(cableX, top);
-    ctx.lineTo(cableX, beamTop + 3);
-    ctx.stroke();
+  const centerX = o.x + o.width / 2;
+  const centerY = top + height / 2;
+  if (o.visual === 'floating-grass-platform') {
+    if (drawObstacleSprite(o.visual, centerX, centerY, o.width + 32, 112)) return;
+  } else {
+    const spriteSize = o.visual === 'bluebird' ? 58 : 62;
+    ctx.save();
+    const wingPulse = 1 + Math.sin(elapsedS * 12 + o.phase) * 0.035;
+    ctx.translate(centerX, centerY);
+    ctx.scale(1, wingPulse);
+    const drawn = drawObstacleSprite(o.visual, 0, 0, spriteSize, spriteSize);
+    ctx.restore();
+    if (drawn) return;
   }
 
-  const metal = ctx.createLinearGradient(o.x, beamTop, o.x + o.width, bottom);
-  metal.addColorStop(0, '#ff8c8f');
-  metal.addColorStop(0.5, COLOR_DANGER);
-  metal.addColorStop(1, '#a63f63');
-  drawRoundedRect(o.x, beamTop, o.width, beamHeight, 5);
-  ctx.fillStyle = metal;
+  ctx.save();
+  drawRoundedRect(o.x, top, o.width, height, 8);
+  ctx.fillStyle = o.visual === 'floating-grass-platform' ? '#75c853' : COLOR_DANGER;
   ctx.fill();
-  ctx.strokeStyle = '#71384f';
-  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#563a4d';
+  ctx.lineWidth = 2;
   ctx.stroke();
-
-  // 사선 경고띠와 리벳으로 단순한 붉은 벽 대신 기계식 장애물처럼 보이게 한다.
-  ctx.save();
-  drawRoundedRect(o.x + 2, beamTop + 2, o.width - 4, beamHeight - 4, 3);
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(255,221,111,0.78)';
-  ctx.lineWidth = 6;
-  for (let stripeX = o.x - beamHeight; stripeX < o.x + o.width + beamHeight; stripeX += 18) {
-    ctx.beginPath();
-    ctx.moveTo(stripeX, bottom);
-    ctx.lineTo(stripeX + beamHeight, beamTop);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  ctx.fillStyle = '#ffe5a6';
-  for (const rivetX of [o.x + 7, o.x + o.width - 7]) {
-    for (const rivetY of [beamTop + 8, bottom - 8]) {
-      ctx.beginPath();
-      ctx.arc(rivetX, rivetY, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // 아래쪽 끝에 가시를 달아 슬라이드 통로를 실루엣만으로도 즉시 읽게 한다.
-  const spikeCount = Math.max(2, Math.floor(o.width / 14));
-  const spikeW = o.width / spikeCount;
-  ctx.fillStyle = '#63314a';
-  for (let i = 0; i < spikeCount; i += 1) {
-    const sx = o.x + i * spikeW;
-    ctx.beginPath();
-    ctx.moveTo(sx, bottom);
-    ctx.lineTo(sx + spikeW / 2, bottom + 10);
-    ctx.lineTo(sx + spikeW, bottom);
-    ctx.closePath();
-    ctx.fill();
-  }
   ctx.restore();
 }
 
@@ -1023,9 +1131,7 @@ function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, stageWidth, stageHeight);
 
-  // sky
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillRect(0, 0, stageWidth, groundY);
+  drawSky();
 
   drawGround();
 
