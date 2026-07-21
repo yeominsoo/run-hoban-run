@@ -2226,6 +2226,9 @@ test('endless runner: selects one of two character GIF sets and reflects every a
     const image = element as HTMLImageElement;
     return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
   }), { timeout: 10_000 }).toBe(true);
+  const playerBounds = await player.boundingBox();
+  expect(playerBounds?.width).toBeGreaterThanOrEqual(92);
+  expect(playerBounds?.height).toBeGreaterThanOrEqual(92);
   const playerImageSource = await player.evaluate((element) => {
     const image = element as HTMLImageElement;
     return image.currentSrc || image.src;

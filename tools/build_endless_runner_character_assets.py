@@ -50,7 +50,7 @@ SHEET_GROUPS = {
     "slide-fall": ("slide", "fall"),
 }
 DESIGN_SOURCE_DIR = Path("output/imagegen/endless-runner-characters-2026-07-15")
-FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-15")
+FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-21")
 ASSET_DIR = Path("endless-runner/assets/characters")
 
 
@@ -496,7 +496,7 @@ def build(repo_root: Path) -> None:
 
     manifest: dict[str, object] = {
         "version": 4,
-        "generatedOn": "2026-07-15",
+        "generatedOn": "2026-07-21",
         "canvas": {"width": CANVAS_SIZE[0], "height": CANVAS_SIZE[1], "pivot": list(PIVOT)},
         "frameCountPerAction": FRAME_COUNT,
         "method": METHOD,
@@ -533,7 +533,24 @@ def build(repo_root: Path) -> None:
                         transparent_sheet = temporary_root / sheet_name
                         remove_chroma_key(staged_sheet, transparent_sheet)
                         with Image.open(transparent_sheet) as opened:
-                            group_frames = extract_sheet_frames(opened.convert("RGBA"), group)
+                            transparent_rgba = opened.convert("RGBA")
+                            if source == generated:
+                                # Image generation can add a barely visible green lighting gradient
+                                # even when a flat chroma background is requested.  Preserve the
+                                # extracted antialiased subject, but canonicalize the archived sheet
+                                # so its empty background again satisfies the exact #00ff00 contract.
+                                canonical_sheet = Image.new(
+                                    "RGBA",
+                                    transparent_rgba.size,
+                                    (0, 255, 0, 255),
+                                )
+                                canonical_sheet.alpha_composite(transparent_rgba)
+                                canonical_sheet.convert("RGB").save(
+                                    staged_sheet,
+                                    format="PNG",
+                                    optimize=True,
+                                )
+                            group_frames = extract_sheet_frames(transparent_rgba, group)
                         overlap = set(extracted).intersection(group_frames)
                         if overlap:
                             raise RuntimeError(f"Duplicate actions across sheets for {character_id}: {overlap}")

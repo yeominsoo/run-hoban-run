@@ -74,7 +74,8 @@ short dark bowl cut with blunt fringe, rounded cheeks, small nose and broad toot
 - 캐릭터별 PNG/GIF: `endless-runner/assets/characters/checkered-vest-boy-*/`
 - 전체 계약과 경로: `endless-runner/assets/characters/manifest.json`
 - 이미지 생성 최종 입력: `output/imagegen/endless-runner-characters-2026-07-15/`,
-  `output/imagegen/endless-runner-8frame-2026-07-15/`
+  `output/imagegen/endless-runner-8frame-2026-07-15/`,
+  `output/imagegen/endless-runner-8frame-2026-07-21/`
 
 생성·검증 명령은 다음과 같다.
 
@@ -108,11 +109,19 @@ npm run test:render
 
 ## 2026-07-21 런타임 품질 승격
 
-새 캐릭터를 재생성하지 않고, 이미 정체성·복장·8프레임 동작·피벗 검증을 통과한 소프트 3D
-토이 세트를 프로덕션 런타임으로 승격했다. 256×256 원본은 실제 최대 94px 표시 크기에 충분한
-여유 해상도를 가지며, 플랫 스티커보다 머리카락·옷감·신발의 재질과 입체감이 잘 드러난다.
+첫 단계에서는 새 캐릭터를 재생성하지 않고, 이미 정체성·복장·8프레임 동작·피벗 검증을
+통과한 소프트 3D 토이 세트를 프로덕션 런타임으로 승격했다. 256×256 원본은 실제 최대 112px
+표시 크기에 맞춰 사용하며, 플랫 스티커보다 머리카락·옷감·신발의 재질과 입체감이 잘 드러난다.
 화면에서는 채도·대비와 밝은 가장자리 및 바닥 그림자를 소폭 보강했다. 물리 판정, 발 피벗,
 액션 타이밍은 변경하지 않았고 프로덕션 번들도 동일하게 22개 파일만 포함한다.
+
+첫 승격본은 작은 화면에서 기존과 차이가 충분히 드러나지 않아 4×4 원화 시트 4장을 다시
+제작했다. 캐릭터가 각 셀을 더 크게 채우고 머리카락·직물·안경과 신발 재질의 국부 대비가
+선명하게 보이도록 했다. 추가 피드백에 따라 두 캐릭터의 발목, 신발 앞코, 밑창 홈과 좌우 발
+겹침도 별도 이미지 편집으로 재보정했다. 게임 캐릭터는 모바일 92px, 최대 112px로 키우고
+선택 미리보기는 모바일 62px로 확대했다. 생성 원본은
+`output/imagegen/endless-runner-8frame-2026-07-21/`, 프로젝트 원화는
+`endless-runner/assets/characters/frame-sheets/`에 보존한다.
 
 ### 최종 생성 입력 SHA-256
 
@@ -127,6 +136,15 @@ npm run test:render
 | `checkered-vest-boy-soft-3d-toy-action-sheet-v1.png` | `d590a3623d44bd474a35b7b19d378617748f92da057921e2a1d996364db6436d` |
 | `checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png` | `2248e12cace38608d2336474510e03109fc0716728e2a015c7ecd391cc5beaf0` |
 | `checkered-vest-boy-soft-3d-toy-slide-fall-8frame-sheet.png` | `ecb643aa1690965cdc3b79ea6ea049ce45fe43ee97b97de456aa1a36569204b4` |
+
+### 2026-07-21 품질 보정 시트 SHA-256
+
+| 파일 | SHA-256 |
+|---|---|
+| `pink-glasses-girl-soft-3d-toy-run-jump-8frame-sheet.png` | `1e49c61a1fe8bd07551fa53771400ed04e40f83815cc3224c9858e14488a0608` |
+| `pink-glasses-girl-soft-3d-toy-slide-fall-8frame-sheet.png` | `554fafe92c5a27b192aa33c92884429dc7a1e631d0bce076c4e8772d2868e080` |
+| `checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png` | `06950465b6ac3dc5d583e06142194de20f604568facbd8e86461df35978db9bd` |
+| `checkered-vest-boy-soft-3d-toy-slide-fall-8frame-sheet.png` | `eea318db93e856e16ea20d3d15f9022115bb861970a1dc3cc92446d7662410d8` |
 
 ## Git 상태
 

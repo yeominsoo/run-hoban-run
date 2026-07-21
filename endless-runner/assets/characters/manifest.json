@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "generatedOn": "2026-07-15",
+  "generatedOn": "2026-07-21",
   "canvas": {
     "width": 256,
     "height": 256,
@@ -231,7 +231,7 @@
         "jump"
       ],
       "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-soft-3d-toy-run-jump-8frame-sheet.png",
-      "sha256": "5691fd7bd82ab94bcb454a01769663b25c9a8ff98c290489855df2d1ba8cc545"
+      "sha256": "1e49c61a1fe8bd07551fa53771400ed04e40f83815cc3224c9858e14488a0608"
     },
     {
       "characterId": "pink-glasses-girl-soft-3d-toy",
@@ -241,7 +241,7 @@
         "fall"
       ],
       "path": "endless-runner/assets/characters/frame-sheets/pink-glasses-girl-soft-3d-toy-slide-fall-8frame-sheet.png",
-      "sha256": "69c8d9e0f43b1e83d59c5199469a1e637a345d7d2b89bdd0efad6df0c3717c4b"
+      "sha256": "554fafe92c5a27b192aa33c92884429dc7a1e631d0bce076c4e8772d2868e080"
     },
     {
       "characterId": "checkered-vest-boy-soft-3d-toy",
@@ -251,7 +251,7 @@
         "jump"
       ],
       "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png",
-      "sha256": "2248e12cace38608d2336474510e03109fc0716728e2a015c7ecd391cc5beaf0"
+      "sha256": "06950465b6ac3dc5d583e06142194de20f604568facbd8e86461df35978db9bd"
     },
     {
       "characterId": "checkered-vest-boy-soft-3d-toy",
@@ -261,7 +261,7 @@
         "fall"
       ],
       "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-slide-fall-8frame-sheet.png",
-      "sha256": "ecb643aa1690965cdc3b79ea6ea049ce45fe43ee97b97de456aa1a36569204b4"
+      "sha256": "eea318db93e856e16ea20d3d15f9022115bb861970a1dc3cc92446d7662410d8"
     }
   ],
   "characters": [
