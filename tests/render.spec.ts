@@ -2275,6 +2275,24 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await page.keyboard.press('ArrowUp');
   await expect(canvas).toHaveAttribute('data-state', 'jumping');
   await expect(player).toHaveAttribute('data-action', 'jump');
+  const firstJumpSource = await player.getAttribute('src');
+  const firstJumpReplay = await player.getAttribute('data-replay');
+  expect(firstJumpSource).toMatch(/^blob:/);
+  await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 3_000 });
+  await expect(player).toHaveAttribute('data-action', 'run');
+
+  await page.keyboard.press('ArrowUp');
+  await expect(canvas).toHaveAttribute('data-state', 'jumping');
+  await expect(player).toHaveAttribute('data-action', 'jump');
+  const secondJumpSource = await player.getAttribute('src');
+  const secondJumpReplay = await player.getAttribute('data-replay');
+  expect(secondJumpSource).toMatch(/^blob:/);
+  expect(secondJumpSource).not.toBe(firstJumpSource);
+  expect(Number(secondJumpReplay)).toBeGreaterThan(Number(firstJumpReplay));
+  await expect.poll(() => player.evaluate((element) => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+  })).toBe(true);
   await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 3_000 });
   await expect(player).toHaveAttribute('data-action', 'run');
 
@@ -2346,8 +2364,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   await expect(canvas).toHaveAttribute('data-state', 'jumping');
   await expect(player).toHaveAttribute('data-action', 'jump');
   await expect(player).toHaveAttribute('data-clip', 'jump');
-  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
-    .toContain(`${characterId}-jump`);
+  await expect(player).toHaveAttribute('data-asset', new RegExp(`${characterId}-jump`));
 
   // 착지를 기다리지 않고 아래 키를 누르면 점프 물리와 화면 모두 즉시 슬라이드로 바뀐다.
   await page.keyboard.down('ArrowDown');
@@ -2355,15 +2372,13 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   await expect(canvas).toHaveAttribute('data-slide-phase', 'enter');
   await expect(player).toHaveAttribute('data-action', 'slide');
   await expect(player).toHaveAttribute('data-clip', 'slide-enter');
-  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
-    .toContain(`${characterId}-slide-enter`);
+  await expect(player).toHaveAttribute('data-asset', new RegExp(`${characterId}-slide-enter`));
 
   // 키를 놓는 입력은 잔여 유지 타이머를 기다리지 않고 일어서기 클립으로 전환한다.
   await page.keyboard.up('ArrowDown');
   await expect(canvas).toHaveAttribute('data-slide-phase', 'exit');
   await expect(player).toHaveAttribute('data-clip', 'slide-exit');
-  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
-    .toContain(`${characterId}-slide-exit`);
+  await expect(player).toHaveAttribute('data-asset', new RegExp(`${characterId}-slide-exit`));
 
   // 일어서기 도중 들어온 점프도 무시하지 않고 마지막 입력으로 즉시 반영한다.
   await page.keyboard.down('ArrowUp');
@@ -2371,8 +2386,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   await expect(canvas).toHaveAttribute('data-state', 'jumping');
   await expect(player).toHaveAttribute('data-action', 'jump');
   await expect(player).toHaveAttribute('data-clip', 'jump');
-  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
-    .toContain(`${characterId}-jump`);
+  await expect(player).toHaveAttribute('data-asset', new RegExp(`${characterId}-jump`));
 
   // 다시 숙였다가 놓으면 exit을 거쳐 달리기 GIF로 정확히 복귀한다.
   await page.keyboard.down('ArrowDown');
@@ -2383,8 +2397,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 1_000 });
   await expect(player).toHaveAttribute('data-action', 'run');
   await expect(player).toHaveAttribute('data-clip', 'run');
-  await expect.poll(() => player.evaluate((element) => (element as HTMLImageElement).currentSrc))
-    .toContain(`${characterId}-run`);
+  await expect(player).toHaveAttribute('data-asset', new RegExp(`${characterId}-run`));
 });
 
 test('endless runner: jumping/sliding at the right moment clears obstacles and pits', async ({ page }) => {

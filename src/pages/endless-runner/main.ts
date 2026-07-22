@@ -247,6 +247,10 @@ let pointerDownY = 0;
 
 const preloadedVisuals = new Map<string, HTMLImageElement>();
 const visualPreloadPromises = new Map<string, Promise<boolean>>();
+const characterVisualBlobPromises = new Map<string, Promise<boolean>>();
+const characterVisualBlobs = new Map<string, Blob>();
+let activePlayerVisualObjectUrl: string | null = null;
+let playerVisualReplay = 0;
 let characterPrepareRequest = 0;
 
 // ── Init ──────────────────────────────────────
@@ -361,6 +365,41 @@ function preloadVisualAsset(asset: string): Promise<boolean> {
   return promise;
 }
 
+function preloadCharacterVisualAsset(asset: string): Promise<boolean> {
+  const cached = characterVisualBlobPromises.get(asset);
+  if (cached) return cached;
+
+  const promise = fetch(asset)
+    .then((response) => {
+      if (!response.ok) throw new Error(`Failed to preload character asset: ${response.status}`);
+      return response.blob();
+    })
+    .then((blob) => new Promise<boolean>((resolve) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(blob);
+      image.addEventListener('load', async () => {
+        try {
+          await image.decode();
+        } catch {
+          // GIF decode() 미지원 브라우저도 load가 끝났으면 재생할 수 있다.
+        }
+        const loaded = image.naturalWidth > 0 && image.naturalHeight > 0;
+        if (loaded) characterVisualBlobs.set(asset, blob);
+        URL.revokeObjectURL(objectUrl);
+        resolve(loaded);
+      }, { once: true });
+      image.addEventListener('error', () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(false);
+      }, { once: true });
+      image.src = objectUrl;
+    }))
+    .catch(() => preloadVisualAsset(asset));
+
+  characterVisualBlobPromises.set(asset, promise);
+  return promise;
+}
+
 async function prepareSelectedCharacterVisuals() {
   const request = ++characterPrepareRequest;
   const character = selectedCharacter;
@@ -370,7 +409,7 @@ async function prepareSelectedCharacterVisuals() {
   startBtn.textContent = '캐릭터 준비 중…';
 
   const [characterResults, sceneResults] = await Promise.all([
-    Promise.all(characterVisualAssets(character).map(preloadVisualAsset)),
+    Promise.all(characterVisualAssets(character).map(preloadCharacterVisualAsset)),
     Promise.all(sceneVisualAssets().map(preloadVisualAsset))
   ]);
   if (request !== characterPrepareRequest || character.id !== selectedCharacter.id) return;
@@ -399,17 +438,32 @@ function syncPlayerVisual(forceRestart = false) {
     const replacement = playerImage.cloneNode(false) as HTMLImageElement;
     replacement.removeAttribute('src');
     replacement.decoding = 'sync';
-    replacement.src = asset;
+    // 점프·넘어짐·슬라이드 진입/복귀는 유한 GIF다. 같은 URL을 다시 지정하면 일부
+    // 브라우저가 끝난 디코딩 타임라인을 공유하므로, 메모리 Blob에서 매번 고유 URL을
+    // 만들어 첫 프레임부터 재생한다. 네트워크 재다운로드는 발생하지 않는다.
+    const requiresFreshTimeline = playerState === 'jumping'
+      || playerState === 'falling'
+      || (playerState === 'sliding' && slidePhase !== 'hold');
+    const replayBlob = requiresFreshTimeline ? characterVisualBlobs.get(asset) : undefined;
+    const nextObjectUrl = replayBlob ? URL.createObjectURL(replayBlob) : null;
+    const previousObjectUrl = activePlayerVisualObjectUrl;
+    replacement.src = nextObjectUrl ?? asset;
     replacement.dataset.character = selectedCharacter.id;
     replacement.dataset.action = action;
     replacement.dataset.clip = clip;
+    replacement.dataset.asset = asset;
+    replacement.dataset.replay = String(++playerVisualReplay);
     replacement.addEventListener('error', () => {
       if (playerImage !== replacement || replacement.dataset.clip !== clip) return;
       replacement.dataset.assetFallback = 'true';
+      if (nextObjectUrl) URL.revokeObjectURL(nextObjectUrl);
+      if (activePlayerVisualObjectUrl === nextObjectUrl) activePlayerVisualObjectUrl = null;
       replacement.src = fallbackAsset;
     }, { once: true });
     playerImage.replaceWith(replacement);
     playerImage = replacement;
+    activePlayerVisualObjectUrl = nextObjectUrl;
+    if (previousObjectUrl) URL.revokeObjectURL(previousObjectUrl);
   }
 
   playerImage.style.left = `${playerX}px`;
