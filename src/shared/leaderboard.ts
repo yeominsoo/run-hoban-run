@@ -195,6 +195,16 @@ export interface RankingUIRefs {
 export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
   refs.nameInput.value = loadLastNickname();
 
+  // 싱글 게임의 랭킹 버튼은 원래 시작 오버레이 안에만 있었다. 공용 헤더를 쓰는
+  // 게임에서는 같은 버튼을 헤더 우측으로 옮겨 시작 전/플레이 중/결과 화면 모두에서
+  // 접근할 수 있게 한다. 버튼 노드를 재사용하므로 이벤트와 id가 중복되지 않는다.
+  const gameHeader = document.querySelector<HTMLElement>('.game-header');
+  if (gameHeader && !gameHeader.contains(refs.viewRankingBtn)) {
+    refs.viewRankingBtn.classList.add('header-ranking-btn');
+    refs.viewRankingBtn.setAttribute('aria-label', `${refs.gameTitle} 랭킹 보기`);
+    gameHeader.append(refs.viewRankingBtn);
+  }
+
   refs.saveBtn.addEventListener('click', () => {
     addRankingEntry(refs.gameSlug, refs.nameInput.value, getScore());
     refs.savedMsg.classList.remove('hidden');

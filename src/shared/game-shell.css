@@ -52,6 +52,36 @@ button { border: 0; cursor: pointer; font: inherit; }
   font-size: 0.95rem;
 }
 
+.game-header .header-ranking-btn {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 7px;
+  color: var(--color-accent-strong);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .game-header {
+    gap: 7px;
+    padding-inline: 9px;
+  }
+
+  .game-header .back-link,
+  .game-header .header-ranking-btn {
+    padding-inline: 8px;
+  }
+
+  .game-header .game-title {
+    font-size: 0.92rem;
+  }
+
+  .game-header .best-score {
+    font-size: 0.72rem;
+  }
+}
+
 /* ── Overlays ───────────────────────────────── */
 .overlay {
   position: absolute;

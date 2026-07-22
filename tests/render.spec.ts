@@ -1271,6 +1271,44 @@ async function clickAimCircle(page: Page) {
   return attrs;
 }
 
+test('local ranking games: keep the ranking button in the top-right header on every screen', async ({ page }) => {
+  const routes = [
+    '/aim-trainer/',
+    '/color-slider/',
+    '/ball-dodge/',
+    '/tower-stack/',
+    '/snake/',
+    '/typing-survival/',
+    '/2048-hex/',
+    '/2an2el-runner/',
+    '/idle-farm/',
+  ];
+
+  await page.addInitScript(() => localStorage.setItem('rhh_idle-farm_tutorial_seen', '1'));
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const route of routes) {
+    await page.goto(route);
+
+    const header = page.locator('.game-header');
+    const rankingBtn = page.locator('.game-header > #view-ranking-btn.header-ranking-btn');
+    await expect(rankingBtn, `${route} ranking button`).toBeVisible();
+    await expect.poll(() => header.evaluate((el) => el.scrollWidth <= el.clientWidth), {
+      message: `${route} mobile header should not overflow`,
+    }).toBe(true);
+
+    const [headerBox, rankingBox] = await Promise.all([header.boundingBox(), rankingBtn.boundingBox()]);
+    expect(headerBox, `${route} header box`).not.toBeNull();
+    expect(rankingBox, `${route} ranking button box`).not.toBeNull();
+    expect((headerBox!.x + headerBox!.width) - (rankingBox!.x + rankingBox!.width)).toBeLessThanOrEqual(12);
+
+    await rankingBtn.click();
+    await expect(page.locator('#ranking-overlay'), `${route} ranking overlay`).toBeVisible();
+    await page.locator('#close-ranking-btn').click();
+    await expect(page.locator('#ranking-overlay')).toBeHidden();
+  }
+});
+
 test('aim trainer: starts, registers hits and misses, tracks level and best score', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await expect(page.locator('.game-title')).toHaveText('에임 트레이너');
