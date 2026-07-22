@@ -2276,6 +2276,44 @@ test('endless runner: selects one of two character animation sets and reflects e
   expect(playerImageSource).toMatch(/(?:\.gif(?:$|[?#])|^data:image\/gif)/);
   expect(playerImageSource).toContain('checkered-vest-boy-soft-3d-toy');
 
+  await page.evaluate(() => {
+    const initialLayers = Array.from(document.querySelectorAll<HTMLImageElement>('.runner-character'));
+    const audit = {
+      initialLayers,
+      started: false,
+      done: false,
+      samples: 0,
+      blankSamples: 0,
+      minDecodedVisibleLayers: initialLayers.length
+    };
+    (window as typeof window & { __runnerLayerAudit?: typeof audit }).__runnerLayerAudit = audit;
+
+    const sample = () => {
+      const runner = document.querySelector('#er-canvas') as HTMLElement | null;
+      const state = runner?.dataset.state;
+      if (state === 'jumping' || state === 'landing') audit.started = true;
+      if (audit.started && (state === 'jumping' || state === 'landing')) {
+        const decodedVisibleLayers = Array.from(
+          document.querySelectorAll<HTMLImageElement>('.runner-character')
+        ).filter((layer) => (
+          Number.parseFloat(getComputedStyle(layer).opacity) > 0.01
+          && layer.complete
+          && layer.naturalWidth > 0
+          && layer.naturalHeight > 0
+        )).length;
+        audit.samples += 1;
+        audit.minDecodedVisibleLayers = Math.min(audit.minDecodedVisibleLayers, decodedVisibleLayers);
+        if (decodedVisibleLayers === 0) audit.blankSamples += 1;
+      }
+      if (audit.started && state === 'running') {
+        audit.done = true;
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+
   await page.keyboard.press('ArrowUp');
   await expect(canvas).toHaveAttribute('data-state', 'jumping');
   await expect(player).toHaveAttribute('data-action', 'jump');
@@ -2304,6 +2342,36 @@ test('endless runner: selects one of two character animation sets and reflects e
   await expect(player).toHaveAttribute('data-frame', '8');
   await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 3_000 });
   await expect(player).toHaveAttribute('data-action', 'run');
+  const layerAudit = await page.evaluate(() => {
+    const audit = (window as typeof window & {
+      __runnerLayerAudit?: {
+        initialLayers: HTMLImageElement[];
+        done: boolean;
+        samples: number;
+        blankSamples: number;
+        minDecodedVisibleLayers: number;
+      };
+    }).__runnerLayerAudit;
+    if (!audit) return null;
+    const currentLayers = Array.from(document.querySelectorAll<HTMLImageElement>('.runner-character'));
+    return {
+      done: audit.done,
+      samples: audit.samples,
+      blankSamples: audit.blankSamples,
+      minDecodedVisibleLayers: audit.minDecodedVisibleLayers,
+      stableLayers: audit.initialLayers.every((layer) => layer.isConnected && currentLayers.includes(layer)),
+      activeIds: document.querySelectorAll('#runner-character').length,
+      bufferIds: document.querySelectorAll('#runner-character-buffer').length
+    };
+  });
+  expect(layerAudit).not.toBeNull();
+  expect(layerAudit?.done).toBe(true);
+  expect(layerAudit?.samples).toBeGreaterThan(5);
+  expect(layerAudit?.blankSamples).toBe(0);
+  expect(layerAudit?.minDecodedVisibleLayers).toBeGreaterThanOrEqual(1);
+  expect(layerAudit?.stableLayers).toBe(true);
+  expect(layerAudit?.activeIds).toBe(1);
+  expect(layerAudit?.bufferIds).toBe(1);
 
   await page.keyboard.press('ArrowUp');
   await expect(canvas).toHaveAttribute('data-state', 'jumping');

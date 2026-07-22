@@ -116,7 +116,8 @@ app.innerHTML = `
 
     <div class="game-stage" id="game-stage">
       <canvas id="er-canvas"></canvas>
-      <img id="runner-character" class="runner-character" alt="" aria-hidden="true" draggable="false" />
+      <img id="runner-character" class="runner-character is-active" data-visual-layer="front" alt="" aria-hidden="true" draggable="false" />
+      <img id="runner-character-buffer" class="runner-character" data-visual-layer="back" alt="" aria-hidden="true" draggable="false" />
 
       <div class="hud" id="hud" hidden>
         <div class="hud-item"><span class="hud-label">점수</span><span class="hud-value" id="hud-score">0</span></div>
@@ -179,6 +180,7 @@ const stage = document.getElementById('game-stage')!;
 const canvas = document.getElementById('er-canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 let playerImage = document.getElementById('runner-character') as HTMLImageElement;
+let playerImageBuffer = document.getElementById('runner-character-buffer') as HTMLImageElement;
 const characterOptions = Array.from(document.querySelectorAll<HTMLButtonElement>('.character-option'));
 const hud = document.getElementById('hud')!;
 const hudScore = document.getElementById('hud-score')!;
@@ -254,8 +256,9 @@ const preloadedVisuals = new Map<string, HTMLImageElement>();
 const visualPreloadPromises = new Map<string, Promise<boolean>>();
 const characterVisualBlobPromises = new Map<string, Promise<boolean>>();
 const characterVisualBlobs = new Map<string, Blob>();
-let activePlayerVisualObjectUrl: string | null = null;
 let playerVisualReplay = 0;
+let pendingPlayerVisualKey: string | null = null;
+let pendingPlayerVisualAbort: AbortController | null = null;
 let characterPrepareRequest = 0;
 
 // ── Init ──────────────────────────────────────
@@ -418,32 +421,20 @@ function preloadCharacterVisualAsset(asset: string): Promise<boolean> {
   const cached = characterVisualBlobPromises.get(asset);
   if (cached) return cached;
 
-  const promise = fetch(asset)
+  // 실제 화면에서 사용하는 원본 URL을 먼저 디코딩해 둔다. Blob은 유한 GIF를 매번
+  // 처음부터 재생할 때만 사용하며, 두 요청은 브라우저 HTTP 캐시를 공유한다.
+  const blobReady = fetch(asset)
     .then((response) => {
       if (!response.ok) throw new Error(`Failed to preload character asset: ${response.status}`);
       return response.blob();
     })
-    .then((blob) => new Promise<boolean>((resolve) => {
-      const image = new Image();
-      const objectUrl = URL.createObjectURL(blob);
-      image.addEventListener('load', async () => {
-        try {
-          await image.decode();
-        } catch {
-          // GIF decode() 미지원 브라우저도 load가 끝났으면 재생할 수 있다.
-        }
-        const loaded = image.naturalWidth > 0 && image.naturalHeight > 0;
-        if (loaded) characterVisualBlobs.set(asset, blob);
-        URL.revokeObjectURL(objectUrl);
-        resolve(loaded);
-      }, { once: true });
-      image.addEventListener('error', () => {
-        URL.revokeObjectURL(objectUrl);
-        resolve(false);
-      }, { once: true });
-      image.src = objectUrl;
-    }))
-    .catch(() => preloadVisualAsset(asset));
+    .then((blob) => {
+      characterVisualBlobs.set(asset, blob);
+      return true;
+    })
+    .catch(() => false);
+  const promise = Promise.all([preloadVisualAsset(asset), blobReady])
+    .then(([visualReady]) => visualReady);
 
   characterVisualBlobPromises.set(asset, promise);
   return promise;
@@ -471,6 +462,104 @@ async function prepareSelectedCharacterVisuals() {
   startBtn.textContent = '시작하기';
 }
 
+function releasePlayerLayerObjectUrl(layer: HTMLImageElement) {
+  const objectUrl = layer.dataset.objectUrl;
+  if (!objectUrl) return;
+  URL.revokeObjectURL(objectUrl);
+  delete layer.dataset.objectUrl;
+}
+
+function resetPlayerVisualBuffer() {
+  releasePlayerLayerObjectUrl(playerImageBuffer);
+  playerImageBuffer.removeAttribute('src');
+  playerImageBuffer.classList.remove('is-active');
+  delete playerImageBuffer.dataset.assetFallback;
+}
+
+function cancelPendingPlayerVisual() {
+  pendingPlayerVisualAbort?.abort();
+  pendingPlayerVisualAbort = null;
+  pendingPlayerVisualKey = null;
+  resetPlayerVisualBuffer();
+}
+
+async function loadPlayerLayer(
+  layer: HTMLImageElement,
+  source: string,
+  signal: AbortSignal
+): Promise<boolean> {
+  const loaded = await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (success: boolean) => {
+      if (settled) return;
+      settled = true;
+      layer.onload = null;
+      layer.onerror = null;
+      signal.removeEventListener('abort', onAbort);
+      resolve(success);
+    };
+    const onAbort = () => finish(false);
+    layer.onload = () => finish(true);
+    layer.onerror = () => finish(false);
+    signal.addEventListener('abort', onAbort, { once: true });
+    layer.src = source;
+    if (layer.complete) {
+      queueMicrotask(() => finish(layer.naturalWidth > 0 && layer.naturalHeight > 0));
+    }
+  });
+  if (!loaded || signal.aborted) return false;
+  try {
+    await layer.decode();
+  } catch {
+    // 일부 브라우저는 GIF decode()를 지원하지 않아도 load가 끝나면 표시할 수 있다.
+  }
+  return !signal.aborted && layer.complete && layer.naturalWidth > 0 && layer.naturalHeight > 0;
+}
+
+async function preparePlayerVisual(
+  visualKey: string,
+  asset: string,
+  fallbackAsset: string,
+  action: RunnerAction,
+  clip: string,
+  jumpFrameIndex: number | null,
+  nextObjectUrl: string | null,
+  controller: AbortController
+) {
+  const nextLayer = playerImageBuffer;
+  resetPlayerVisualBuffer();
+  if (nextObjectUrl) nextLayer.dataset.objectUrl = nextObjectUrl;
+  nextLayer.dataset.character = selectedCharacter.id;
+  nextLayer.dataset.action = action;
+  nextLayer.dataset.clip = clip;
+  nextLayer.dataset.asset = asset;
+  nextLayer.dataset.frame = jumpFrameIndex === null ? 'none' : String(jumpFrameIndex + 1);
+  nextLayer.dataset.replay = String(++playerVisualReplay);
+
+  let loaded = await loadPlayerLayer(nextLayer, nextObjectUrl ?? asset, controller.signal);
+  if (!loaded && !controller.signal.aborted) {
+    releasePlayerLayerObjectUrl(nextLayer);
+    nextLayer.dataset.assetFallback = 'true';
+    loaded = await loadPlayerLayer(nextLayer, fallbackAsset, controller.signal);
+  }
+  if (!loaded || controller.signal.aborted || pendingPlayerVisualKey !== visualKey) return;
+
+  // 새 레이어가 완전히 디코딩된 뒤에만 앞뒤를 교환한다. 기존 레이어는 CSS 전환이
+  // 끝날 때까지 남아 있으므로 프레임 사이에 투명한 순간이 생기지 않는다.
+  const previousLayer = playerImage;
+  nextLayer.removeAttribute('id');
+  previousLayer.id = 'runner-character-buffer';
+  nextLayer.id = 'runner-character';
+  nextLayer.classList.add('is-active');
+  previousLayer.classList.remove('is-active');
+  playerImage = nextLayer;
+  playerImageBuffer = previousLayer;
+  pendingPlayerVisualAbort = null;
+  pendingPlayerVisualKey = null;
+  canvas.dataset.visualLayer = nextLayer.dataset.visualLayer ?? 'unknown';
+  canvas.dataset.visualReady = 'true';
+}
+
 function syncPlayerVisual(forceRestart = false) {
   const action = PLAYER_ACTIONS[playerState];
   const jumpFrameIndex = currentJumpFrameIndex();
@@ -484,13 +573,13 @@ function syncPlayerVisual(forceRestart = false) {
   const changed = playerImage.dataset.character !== selectedCharacter.id
     || playerImage.dataset.clip !== clip
     || playerImage.dataset.asset !== asset;
+  const visualKey = `${selectedCharacter.id}|${clip}|${asset}`;
 
-  if (changed || forceRestart) {
-    // 같은 img의 src만 바꾸면 새 GIF가 디코딩되는 동안 직전 액션의 마지막 프레임이 남을 수
-    // 있다. 준비된 에셋을 새 요소에 연결한 뒤 교체해 이전 액션이 화면에 잔류하지 않게 한다.
-    const replacement = playerImage.cloneNode(false) as HTMLImageElement;
-    replacement.removeAttribute('src');
-    replacement.decoding = 'sync';
+  if (pendingPlayerVisualKey && pendingPlayerVisualKey !== visualKey) {
+    cancelPendingPlayerVisual();
+  }
+
+  if ((changed || forceRestart) && (forceRestart || pendingPlayerVisualKey !== visualKey)) {
     // 넘어짐·슬라이드 진입/복귀는 유한 GIF다. 같은 URL을 다시 지정하면 일부
     // 브라우저가 끝난 디코딩 타임라인을 공유하므로, 메모리 Blob에서 매번 고유 URL을
     // 만들어 첫 프레임부터 재생한다. 네트워크 재다운로드는 발생하지 않는다.
@@ -498,29 +587,27 @@ function syncPlayerVisual(forceRestart = false) {
       || (playerState === 'sliding' && slidePhase !== 'hold');
     const replayBlob = requiresFreshTimeline ? characterVisualBlobs.get(asset) : undefined;
     const nextObjectUrl = replayBlob ? URL.createObjectURL(replayBlob) : null;
-    const previousObjectUrl = activePlayerVisualObjectUrl;
-    replacement.src = nextObjectUrl ?? asset;
-    replacement.dataset.character = selectedCharacter.id;
-    replacement.dataset.action = action;
-    replacement.dataset.clip = clip;
-    replacement.dataset.asset = asset;
-    replacement.dataset.frame = jumpFrameIndex === null ? 'none' : String(jumpFrameIndex + 1);
-    replacement.dataset.replay = String(++playerVisualReplay);
-    replacement.addEventListener('error', () => {
-      if (playerImage !== replacement || replacement.dataset.clip !== clip) return;
-      replacement.dataset.assetFallback = 'true';
-      if (nextObjectUrl) URL.revokeObjectURL(nextObjectUrl);
-      if (activePlayerVisualObjectUrl === nextObjectUrl) activePlayerVisualObjectUrl = null;
-      replacement.src = fallbackAsset;
-    }, { once: true });
-    playerImage.replaceWith(replacement);
-    playerImage = replacement;
-    activePlayerVisualObjectUrl = nextObjectUrl;
-    if (previousObjectUrl) URL.revokeObjectURL(previousObjectUrl);
+    pendingPlayerVisualAbort?.abort();
+    const controller = new AbortController();
+    pendingPlayerVisualAbort = controller;
+    pendingPlayerVisualKey = visualKey;
+    canvas.dataset.visualReady = 'loading';
+    void preparePlayerVisual(
+      visualKey,
+      asset,
+      fallbackAsset,
+      action,
+      clip,
+      jumpFrameIndex,
+      nextObjectUrl,
+      controller
+    );
   }
 
-  playerImage.style.left = `${playerX}px`;
-  playerImage.style.top = `${playerY}px`;
+  for (const layer of [playerImage, playerImageBuffer]) {
+    layer.style.left = `${playerX}px`;
+    layer.style.top = `${playerY}px`;
+  }
   canvas.dataset.character = selectedCharacter.id;
   canvas.dataset.action = action;
   canvas.dataset.state = playerState;

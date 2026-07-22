@@ -52,11 +52,18 @@ body {
   -webkit-user-drag: none;
   will-change: left, top;
   image-rendering: auto;
+  opacity: 0;
+  transition: opacity 16ms linear;
   filter:
     saturate(1.06)
     contrast(1.04)
     drop-shadow(0 1px 0 rgba(255, 255, 255, 0.72))
     drop-shadow(0 5px 4px rgba(62, 43, 55, 0.24));
+}
+
+.runner-character.is-active {
+  z-index: 2;
+  opacity: 1;
 }
 
 #start-overlay {
