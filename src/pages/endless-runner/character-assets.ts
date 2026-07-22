@@ -4,6 +4,7 @@ export type RunnerSlidePhase = 'enter' | 'hold' | 'exit';
 interface RunnerActionAsset {
   still: string;
   animation: string;
+  frames?: string[];
 }
 
 export interface RunnerCharacter {
@@ -20,7 +21,9 @@ export interface RunnerCharacter {
 const importedAssets = import.meta.glob(
   [
     '../../../endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/*.{png,gif}',
-    '../../../endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/*.{png,gif}'
+    '../../../endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/*.{png,gif}',
+    '../../../endless-runner/assets/characters/pink-glasses-girl-soft-3d-toy/frames/*-jump-*.png',
+    '../../../endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/frames/*-jump-*.png'
   ],
   { eager: true, query: '?url', import: 'default' }
 ) as Record<string, string>;
@@ -30,6 +33,16 @@ function assetUrl(characterId: string, name: string, extension: 'png' | 'gif'): 
   const url = importedAssets[key];
   if (!url) throw new Error(`Missing endless-runner character asset: ${key}`);
   return url;
+}
+
+function jumpFrameUrls(characterId: string): string[] {
+  return Array.from({ length: 8 }, (_, index) => {
+    const frame = String(index + 1).padStart(2, '0');
+    const key = `../../../endless-runner/assets/characters/${characterId}/frames/${characterId}-jump-${frame}.png`;
+    const url = importedAssets[key];
+    if (!url) throw new Error(`Missing endless-runner jump frame asset: ${key}`);
+    return url;
+  });
 }
 
 function character(
@@ -44,7 +57,8 @@ function character(
       action,
       {
         still: assetUrl(id, action, 'png'),
-        animation: assetUrl(id, action, 'gif')
+        animation: assetUrl(id, action, 'gif'),
+        ...(action === 'jump' ? { frames: jumpFrameUrls(id) } : {})
       }
     ])
   ) as Record<RunnerAction, RunnerActionAsset>;

@@ -21,6 +21,7 @@ const PLAYER_HEIGHT = 42;
 const SLIDE_HEIGHT = 22;
 const GRAVITY = 2200; // px/s^2
 const JUMP_VELOCITY = -760; // px/s
+const LANDING_POSE_MS = 90;
 const SLIDE_ENTER_MS = 180;
 const SLIDE_HOLD_MS = 800;
 const SLIDE_EXIT_MS = 180;
@@ -47,7 +48,7 @@ const FALL_ANIMATION_MS = 1100;
 const CHARACTER_STORAGE_KEY = 'rhh_endless-runner_character';
 
 type Phase = 'idle' | 'playing' | 'falling' | 'ended';
-type PlayerState = 'running' | 'jumping' | 'sliding' | 'falling';
+type PlayerState = 'running' | 'jumping' | 'landing' | 'sliding' | 'falling';
 type ObstacleType = 'low' | 'high' | 'pit';
 type CoinSafeAction = 'run' | 'jump' | 'slide';
 
@@ -84,6 +85,7 @@ function loadSelectedCharacter(): RunnerCharacter {
 const PLAYER_ACTIONS: Record<PlayerState, RunnerAction> = {
   running: 'run',
   jumping: 'jump',
+  landing: 'jump',
   sliding: 'slide',
   falling: 'fall'
 };
@@ -220,6 +222,9 @@ let playerY = 0; // 캐릭터 하단(발) y좌표. groundY면 지면.
 let playerVy = 0;
 let jumpsUsed = 0;
 let playerState: PlayerState = 'running';
+let jumpTakeoffSpeed = Math.abs(JUMP_VELOCITY);
+let jumpExpectedLandingSpeed = Math.abs(JUMP_VELOCITY);
+let landingEndAt = 0;
 let slidePhase: RunnerSlidePhase | null = null;
 let slidePhaseEndAt = 0;
 let slideHoldEndAt = 0;
@@ -331,10 +336,54 @@ function playerHeight(): number {
 function characterVisualAssets(character: RunnerCharacter): string[] {
   return [...new Set([
     character.actions.run.animation,
-    character.actions.jump.animation,
     character.actions.fall.animation,
+    ...(character.actions.jump.frames ?? [character.actions.jump.animation]),
     ...Object.values(character.slideClips)
   ])];
+}
+
+function currentJumpFrameIndex(): number | null {
+  const frames = selectedCharacter.actions.jump.frames;
+  if (!frames?.length) return null;
+  if (playerState === 'landing') return frames.length - 1;
+  if (playerState !== 'jumping') return null;
+
+  if (playerVy < 0) {
+    // 1~5번은 웅크림 → 도약 → 정점 포즈다. 현재 상승 속도가 0에 가까워질수록
+    // 정점 프레임에 가까워지므로 체공시간이 달라져도 포즈가 물리 위치와 일치한다.
+    const ascentProgress = Math.max(0, Math.min(1, 1 - Math.abs(playerVy) / jumpTakeoffSpeed));
+    if (ascentProgress < 0.06) return 0;
+    if (ascentProgress < 0.16) return 1;
+    if (ascentProgress < 0.48) return 2;
+    if (ascentProgress < 0.78) return 3;
+    return 4;
+  }
+
+  // 5~7번은 정점 → 하강 → 착지 직전이다. 8번 착지 포즈는 실제 발이 지면이나
+  // 공중 발판에 닿은 순간 landing 상태에서 짧게 표시한다.
+  const descentProgress = Math.max(0, Math.min(0.999, playerVy / jumpExpectedLandingSpeed));
+  if (descentProgress < 0.18) return 4;
+  if (descentProgress < 0.82) return 5;
+  return 6;
+}
+
+function setJumpVelocity(velocity: number) {
+  playerVy = velocity;
+  landingEndAt = 0;
+  jumpTakeoffSpeed = Math.max(1, Math.abs(velocity));
+  const remainingDrop = Math.max(0, groundY - playerY);
+  jumpExpectedLandingSpeed = Math.max(
+    jumpTakeoffSpeed,
+    Math.sqrt(jumpTakeoffSpeed ** 2 + 2 * GRAVITY * remainingDrop)
+  );
+}
+
+function beginLanding(now: number) {
+  playerVy = 0;
+  jumpsUsed = 0;
+  playerState = 'landing';
+  landingEndAt = now + LANDING_POSE_MS;
+  syncPlayerVisual(true);
 }
 
 function sceneVisualAssets(): string[] {
@@ -424,13 +473,17 @@ async function prepareSelectedCharacterVisuals() {
 
 function syncPlayerVisual(forceRestart = false) {
   const action = PLAYER_ACTIONS[playerState];
+  const jumpFrameIndex = currentJumpFrameIndex();
   const clip = playerState === 'sliding' ? `slide-${slidePhase ?? 'enter'}` : action;
-  const asset = playerState === 'sliding'
-    ? selectedCharacter.slideClips[slidePhase ?? 'enter']
-    : selectedCharacter.actions[action].animation;
+  const asset = jumpFrameIndex !== null
+    ? selectedCharacter.actions.jump.frames?.[jumpFrameIndex] ?? selectedCharacter.actions.jump.animation
+    : playerState === 'sliding'
+      ? selectedCharacter.slideClips[slidePhase ?? 'enter']
+      : selectedCharacter.actions[action].animation;
   const fallbackAsset = selectedCharacter.actions[action].still;
   const changed = playerImage.dataset.character !== selectedCharacter.id
-    || playerImage.dataset.clip !== clip;
+    || playerImage.dataset.clip !== clip
+    || playerImage.dataset.asset !== asset;
 
   if (changed || forceRestart) {
     // 같은 img의 src만 바꾸면 새 GIF가 디코딩되는 동안 직전 액션의 마지막 프레임이 남을 수
@@ -438,11 +491,10 @@ function syncPlayerVisual(forceRestart = false) {
     const replacement = playerImage.cloneNode(false) as HTMLImageElement;
     replacement.removeAttribute('src');
     replacement.decoding = 'sync';
-    // 점프·넘어짐·슬라이드 진입/복귀는 유한 GIF다. 같은 URL을 다시 지정하면 일부
+    // 넘어짐·슬라이드 진입/복귀는 유한 GIF다. 같은 URL을 다시 지정하면 일부
     // 브라우저가 끝난 디코딩 타임라인을 공유하므로, 메모리 Blob에서 매번 고유 URL을
     // 만들어 첫 프레임부터 재생한다. 네트워크 재다운로드는 발생하지 않는다.
-    const requiresFreshTimeline = playerState === 'jumping'
-      || playerState === 'falling'
+    const requiresFreshTimeline = playerState === 'falling'
       || (playerState === 'sliding' && slidePhase !== 'hold');
     const replayBlob = requiresFreshTimeline ? characterVisualBlobs.get(asset) : undefined;
     const nextObjectUrl = replayBlob ? URL.createObjectURL(replayBlob) : null;
@@ -452,6 +504,7 @@ function syncPlayerVisual(forceRestart = false) {
     replacement.dataset.action = action;
     replacement.dataset.clip = clip;
     replacement.dataset.asset = asset;
+    replacement.dataset.frame = jumpFrameIndex === null ? 'none' : String(jumpFrameIndex + 1);
     replacement.dataset.replay = String(++playerVisualReplay);
     replacement.addEventListener('error', () => {
       if (playerImage !== replacement || replacement.dataset.clip !== clip) return;
@@ -472,6 +525,7 @@ function syncPlayerVisual(forceRestart = false) {
   canvas.dataset.action = action;
   canvas.dataset.state = playerState;
   canvas.dataset.slidePhase = slidePhase ?? 'none';
+  canvas.dataset.jumpFrame = jumpFrameIndex === null ? 'none' : String(jumpFrameIndex + 1);
 }
 
 function selectCharacter(characterId: string) {
@@ -645,7 +699,7 @@ function triggerJump() {
   if (playerState === 'jumping') {
     if (jumpsUsed >= MAX_JUMPS) return;
     jumpsUsed += 1;
-    playerVy = SECOND_JUMP_VELOCITY;
+    setJumpVelocity(SECOND_JUMP_VELOCITY);
     syncPlayerVisual(true);
     return;
   }
@@ -656,13 +710,13 @@ function triggerJump() {
     slidePhaseEndAt = 0;
     slideHoldEndAt = 0;
     keyboardSlideHeld = false;
-  } else if (playerState !== 'running') {
+  } else if (playerState !== 'running' && playerState !== 'landing') {
     return;
   }
   standingPlatform = null;
   playerState = 'jumping';
   jumpsUsed = 1;
-  playerVy = JUMP_VELOCITY;
+  setJumpVelocity(JUMP_VELOCITY);
   syncPlayerVisual();
 }
 
@@ -690,7 +744,7 @@ function triggerSlide(holdForKeyboard = false) {
     playerY = groundY;
     playerVy = 0;
     jumpsUsed = 0;
-  } else if (playerState !== 'running') {
+  } else if (playerState !== 'running' && playerState !== 'landing') {
     return;
   }
   playerState = 'sliding';
@@ -724,16 +778,21 @@ function updateHudNumbers() {
 }
 
 function updateTestAttrs() {
+  const jumpFrameIndex = currentJumpFrameIndex();
   canvas.dataset.obstacles = obstacles
     .map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}:${o.visual}:${o.approachSpeed}`)
     .join('|');
   canvas.dataset.playerY = String(Math.round(playerY));
+  canvas.dataset.playerVy = String(Math.round(playerVy));
   canvas.dataset.playerX = String(Math.round(playerX));
   canvas.dataset.groundY = String(Math.round(groundY));
   canvas.dataset.state = playerState;
   canvas.dataset.character = selectedCharacter.id;
   canvas.dataset.action = PLAYER_ACTIONS[playerState];
   canvas.dataset.slidePhase = slidePhase ?? 'none';
+  canvas.dataset.jumpFrame = jumpFrameIndex === null
+    ? 'none'
+    : String(jumpFrameIndex + 1);
   canvas.dataset.jumpsUsed = String(jumpsUsed);
   canvas.dataset.speed = String(Math.round(speed));
   canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
@@ -757,6 +816,7 @@ function startGame() {
   playerVy = 0;
   jumpsUsed = 0;
   playerState = 'running';
+  landingEndAt = 0;
   slidePhase = null;
   slidePhaseEndAt = 0;
   slideHoldEndAt = 0;
@@ -834,10 +894,10 @@ function updatePhysics(dt: number, now: number) {
     playerY += playerVy * dt;
     if (playerY >= groundY) {
       playerY = groundY;
-      playerVy = 0;
-      jumpsUsed = 0;
-      playerState = 'running';
+      beginLanding(now);
     }
+  } else if (playerState === 'landing') {
+    if (now >= landingEndAt) playerState = 'running';
   } else if (playerState === 'sliding') {
     if (slidePhase === 'enter' && now >= slidePhaseEndAt) {
       slidePhase = 'hold';
@@ -893,9 +953,9 @@ function horizontallyOverlapsPlatform(platform: Obstacle): boolean {
 
 function leavePlatform() {
   standingPlatform = null;
-  if (playerState !== 'running' && playerState !== 'sliding') return;
+  if (playerState !== 'running' && playerState !== 'landing' && playerState !== 'sliding') return;
   playerState = 'jumping';
-  playerVy = 0;
+  setJumpVelocity(0);
   jumpsUsed = 0;
   slidePhase = null;
   slidePhaseEndAt = 0;
@@ -927,12 +987,9 @@ function resolvePlatformLanding(previousPlayerY: number, wasJumping: boolean) {
 
   standingPlatform = landingPlatform;
   playerY = obstacleGeometry(landingPlatform).top;
-  playerVy = 0;
-  jumpsUsed = 0;
-  playerState = 'running';
+  beginLanding(performance.now());
   slidePhase = null;
   keyboardSlideHeld = false;
-  syncPlayerVisual(true);
 }
 
 function checkCollisions(): boolean {

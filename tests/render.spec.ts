@@ -2112,8 +2112,10 @@ interface RunnerState {
   phase: string | undefined;
   playerX: number;
   playerY: number;
+  playerVy: number;
   groundY: number;
   playerState: string | undefined;
+  jumpFrame: number | null;
   standingPlatform: string | undefined;
   obstacles: RunnerObstacle[];
   coinPaths: RunnerCoinPath[];
@@ -2147,8 +2149,10 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       phase: canvas.dataset.phase,
       playerX: Number(canvas.dataset.playerX),
       playerY: Number(canvas.dataset.playerY),
+      playerVy: Number(canvas.dataset.playerVy),
       groundY: Number(canvas.dataset.groundY),
       playerState: canvas.dataset.state,
+      jumpFrame: canvas.dataset.jumpFrame === 'none' ? null : Number(canvas.dataset.jumpFrame),
       standingPlatform: canvas.dataset.standingPlatform,
       obstacles,
       coinPaths,
@@ -2163,7 +2167,7 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
   });
 }
 
-test('endless runner: selects one of two character GIF sets and reflects every action state', async ({ page }) => {
+test('endless runner: selects one of two character animation sets and reflects every action state', async ({ page }) => {
   test.setTimeout(40_000);
   await page.addInitScript(() => {
     Math.random = () => 0.1;
@@ -2277,7 +2281,27 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await expect(player).toHaveAttribute('data-action', 'jump');
   const firstJumpSource = await player.getAttribute('src');
   const firstJumpReplay = await player.getAttribute('data-replay');
-  expect(firstJumpSource).toMatch(/^blob:/);
+  expect(firstJumpSource).toMatch(/\.png(?:$|[?#])/);
+  expect(Number(await player.getAttribute('data-frame'))).toBeGreaterThanOrEqual(1);
+  expect(Number(await player.getAttribute('data-frame'))).toBeLessThanOrEqual(5);
+  await page.waitForFunction(() => {
+    const runner = document.querySelector('#er-canvas') as HTMLElement | null;
+    const velocity = Number(runner?.dataset.playerVy);
+    return runner?.dataset.state === 'jumping'
+      && Math.abs(velocity) <= 80
+      && runner.dataset.jumpFrame === '5';
+  }, null, { polling: 'raf' });
+  await page.waitForFunction(() => {
+    const runner = document.querySelector('#er-canvas') as HTMLElement | null;
+    return runner?.dataset.state === 'jumping'
+      && Number(runner.dataset.playerVy) > 500
+      && runner.dataset.jumpFrame === '7';
+  }, null, { polling: 'raf' });
+  await page.waitForFunction(() => {
+    const runner = document.querySelector('#er-canvas') as HTMLElement | null;
+    return runner?.dataset.state === 'landing' && runner.dataset.jumpFrame === '8';
+  }, null, { polling: 'raf' });
+  await expect(player).toHaveAttribute('data-frame', '8');
   await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 3_000 });
   await expect(player).toHaveAttribute('data-action', 'run');
 
@@ -2286,8 +2310,9 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await expect(player).toHaveAttribute('data-action', 'jump');
   const secondJumpSource = await player.getAttribute('src');
   const secondJumpReplay = await player.getAttribute('data-replay');
-  expect(secondJumpSource).toMatch(/^blob:/);
-  expect(secondJumpSource).not.toBe(firstJumpSource);
+  expect(secondJumpSource).toMatch(/\.png(?:$|[?#])/);
+  expect(Number(await player.getAttribute('data-frame'))).toBeGreaterThanOrEqual(1);
+  expect(Number(await player.getAttribute('data-frame'))).toBeLessThanOrEqual(5);
   expect(Number(secondJumpReplay)).toBeGreaterThan(Number(firstJumpReplay));
   await expect.poll(() => player.evaluate((element) => {
     const image = element as HTMLImageElement;
@@ -2512,10 +2537,17 @@ test('endless runner: floating grass terrain is safe from below and supports lan
   }, { timeout: 10_000, intervals: [20] }).toBe(true);
   await canvas.click();
 
-  await expect.poll(async () => (await readRunnerState(page)).standingPlatform, {
-    timeout: 3_000,
+  await page.waitForFunction(() => {
+    const runner = document.querySelector('#er-canvas') as HTMLElement | null;
+    return runner?.dataset.standingPlatform === 'floating-grass-platform'
+      && runner.dataset.state === 'landing'
+      && runner.dataset.jumpFrame === '8';
+  }, null, { polling: 'raf', timeout: 3_000 });
+  await expect(page.locator('#runner-character')).toHaveAttribute('data-frame', '8');
+  await expect.poll(async () => (await readRunnerState(page)).playerState, {
+    timeout: 1_000,
     intervals: [16]
-  }).toBe('floating-grass-platform');
+  }).toBe('running');
   const landed = await readRunnerState(page);
   expect(landed.phase).toBe('playing');
   expect(landed.playerState).toBe('running');
