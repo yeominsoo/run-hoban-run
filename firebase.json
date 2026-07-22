@@ -171,7 +171,7 @@
         ]
       },
       {
-        "source": "/endless-runner",
+        "source": "/2an2el-runner",
         "headers": [
           {
             "key": "Cache-Control",
@@ -180,7 +180,7 @@
         ]
       },
       {
-        "source": "/endless-runner/**",
+        "source": "/2an2el-runner/**",
         "headers": [
           {
             "key": "Cache-Control",
@@ -304,6 +304,18 @@
             "value": "no-cache"
           }
         ]
+      }
+    ],
+    "redirects": [
+      {
+        "source": "/endless-runner",
+        "destination": "/2an2el-runner/",
+        "type": 301
+      },
+      {
+        "source": "/endless-runner/**",
+        "destination": "/2an2el-runner/",
+        "type": 301
       }
     ],
     "rewrites": [
@@ -436,12 +448,12 @@
         "destination": "/2048-hex/index.html"
       },
       {
-        "source": "/endless-runner",
-        "destination": "/endless-runner/index.html"
+        "source": "/2an2el-runner",
+        "destination": "/2an2el-runner/index.html"
       },
       {
-        "source": "/endless-runner/**",
-        "destination": "/endless-runner/index.html"
+        "source": "/2an2el-runner/**",
+        "destination": "/2an2el-runner/index.html"
       },
       {
         "source": "/idle-farm",

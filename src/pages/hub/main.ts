@@ -22,7 +22,7 @@ const GAMES: GameEntry[] = [
   { slug: 'snake', icon: 'snake-mark', name: '스네이크 비틀기', desc: '방향키·WASD·스와이프로 뱀을 조종해 먹이를 먹으세요. 벽이 없어 반대편으로 통과하고, 시간이 지날수록 빨라지며 색이 바뀝니다.', category: 'single' },
   { slug: 'typing-survival', icon: 'typing-survival-mark', name: '타이핑 생존', desc: '떨어지는 영어·한국어 단어를 바닥에 닿기 전에 타이핑하세요. HP 3, 10초마다 더 빠르고 많아집니다.', category: 'single' },
   { slug: '2048-hex', icon: 'hex2048-mark', name: '2048 변형(육각형)', desc: '육각형 격자에서 같은 숫자 타일을 밀어 합쳐 2048을 만들어보세요. 키보드 6방향 또는 스와이프로 조작.', category: 'single' },
-  { slug: 'endless-runner', icon: 'endless-runner-mark', name: '안엘런', desc: '탭=점프, 아래 스와이프=슬라이드! 장애물과 구덩이를 피해 최대한 멀리 달려 코인을 모으세요.', category: 'single' },
+  { slug: '2an2el-runner', icon: 'endless-runner-mark', name: '안엘런', desc: '탭=점프, 아래 스와이프=슬라이드! 장애물과 구덩이를 피해 최대한 멀리 달려 코인을 모으세요.', category: 'single' },
   { slug: 'idle-farm', icon: 'idle-farm-mark', name: '방치형 농장', desc: '씨앗을 심고 기다렸다가 수확! 업그레이드로 수확량과 성장 속도를 올리고, 자동 수확기로 방치 수익도 챙기세요.', category: 'single' },
   { slug: 'rps', icon: 'rps-mark', name: '가위바위보 대결', desc: '방을 만들어 코드를 공유하면 친구와 실시간 1:1 대결. 승패가 쌓이는 스코어보드 포함.', category: 'multi' },
   { slug: 'liar', icon: 'liar-mark', name: '라이어게임', desc: '3~12명이 참여하는 눈치게임. 라이어 혼자만 제시어를 모른 채 설명하고, 나머지는 투표로 라이어를 찾아낸다.', category: 'multi' },

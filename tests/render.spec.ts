@@ -1393,7 +1393,10 @@ test('hub: splits games into single-player and multiplayer categories', async ({
   await expect(page.locator('#hub-list-title')).toHaveText('싱글플레이');
   await expect(page.locator('.game-card[data-slug="race"]')).toBeVisible();
   await expect(page.locator('.game-card[data-slug="aim-trainer"]')).toBeVisible();
-  await expect(page.locator('.game-card[data-slug="endless-runner"] .game-card-name')).toHaveText('안엘런');
+  const runnerCard = page.locator('.game-card[data-slug="2an2el-runner"]');
+  await expect(runnerCard.locator('.game-card-name')).toHaveText('안엘런');
+  await runnerCard.locator('.game-card-toggle').click();
+  await expect(runnerCard.locator('.game-card-start-btn')).toHaveAttribute('href', '/2an2el-runner/');
   await expect(page.locator('.game-card[data-slug="rps"]')).toHaveCount(0);
 
   await page.locator('#hub-back-btn').click();
@@ -2165,7 +2168,7 @@ test('endless runner: selects one of two character GIF sets and reflects every a
   await page.addInitScript(() => {
     Math.random = () => 0.1;
   });
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   await page.evaluate(() => {
     localStorage.setItem('rhh_endless-runner_character', 'checkered-vest-boy-flat-sticker');
   });
@@ -2300,7 +2303,7 @@ test('endless runner: an eight-frame slide enters, stays low while held, and exi
   await page.addInitScript(() => {
     Math.random = () => 0.5;
   });
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   await page.locator('#start-btn').click();
 
   const canvas = page.locator('#er-canvas');
@@ -2329,7 +2332,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   await page.addInitScript(() => {
     Math.random = () => 0.5;
   });
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
 
   const characterId = 'pink-glasses-girl-soft-3d-toy';
   const canvas = page.locator('#er-canvas');
@@ -2393,7 +2396,7 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
       return seed / 0x100000000;
     };
   });
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   await expect(page.locator('.game-title')).toHaveText('안엘런');
 
   await page.locator('#start-btn').click();
@@ -2472,7 +2475,7 @@ test('endless runner: floating grass terrain is safe from below and supports lan
     // 1라운드 high 스폰을 계속 선택해 착지형 공중 잔디 지형만 생성한다.
     Math.random = () => 0.75;
   });
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   const canvas = page.locator('#er-canvas');
   await page.locator('#start-btn').click();
 
@@ -2513,7 +2516,7 @@ test('endless runner: bees actively approach faster than the scrolling terrain',
     // 1라운드에는 안전한 공중 발판, 2라운드부터는 벌을 선택하는 결정론적 스폰이다.
     Math.random = () => 0.75;
   });
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   await page.locator('#start-btn').click();
 
   let firstSample: { obstacle: RunnerObstacle; speed: number; sampledAt: number } | null = null;
@@ -2541,7 +2544,7 @@ test('endless runner: bees actively approach faster than the scrolling terrain',
 });
 
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   await page.evaluate(() => localStorage.removeItem('rhh_endless-runner_ranking'));
   await page.reload();
 
@@ -2550,11 +2553,11 @@ test('endless runner: colliding with an obstacle ends the game and saves a ranki
   await expect(page.locator('#er-canvas')).toHaveAttribute('data-phase', 'ended', { timeout: 20_000 });
   await expect(page.locator('#result-overlay')).toBeVisible();
 
-  await verifyRankingSaveAndView(page, '/endless-runner/');
+  await verifyRankingSaveAndView(page, '/2an2el-runner/');
 });
 
 test('endless runner: a second tap while airborne performs a double jump and ignores a third jump', async ({ page }) => {
-  await page.goto('/endless-runner/');
+  await page.goto('/2an2el-runner/');
   await page.locator('#start-btn').click();
   const canvas = page.locator('#er-canvas');
   const box = await canvas.boundingBox();

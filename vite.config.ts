@@ -22,7 +22,7 @@ export default defineConfig({
         snake: resolve(__dirname, 'snake/index.html'),
         'typing-survival': resolve(__dirname, 'typing-survival/index.html'),
         '2048-hex': resolve(__dirname, '2048-hex/index.html'),
-        'endless-runner': resolve(__dirname, 'endless-runner/index.html'),
+        '2an2el-runner': resolve(__dirname, '2an2el-runner/index.html'),
         'idle-farm': resolve(__dirname, 'idle-farm/index.html'),
         'mole-hunt': resolve(__dirname, 'mole-hunt/index.html'),
         'memory-sequence': resolve(__dirname, 'memory-sequence/index.html'),
