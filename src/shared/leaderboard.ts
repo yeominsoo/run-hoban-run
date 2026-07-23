@@ -1,5 +1,6 @@
 const NICKNAME_KEY = 'rhh_last_nickname';
 const MAX_ENTRIES = 20;
+const MAX_GLOBAL_ENTRIES = 50;
 const MAX_NAME_LENGTH = 12;
 const GLOBAL_SYNC_SUFFIX = '_global_sync';
 const syncPromises = new Map<string, Promise<boolean>>();
@@ -38,6 +39,35 @@ function scoreRankingUrl(gameSlug: string): string {
   return `${scoreRankingApiBase()}/${encodeURIComponent(gameSlug)}`;
 }
 
+function collapseBestScores(values: unknown[], limit: number): RankingEntry[] {
+  const bestByName = new Map<string, RankingEntry>();
+
+  for (const value of values) {
+    if (!value || typeof value !== 'object') continue;
+    const candidate = value as Partial<RankingEntry>;
+    const name = typeof candidate.name === 'string'
+      ? candidate.name.trim().slice(0, MAX_NAME_LENGTH)
+      : '';
+    const score = Number(candidate.score);
+    const at = Number(candidate.at);
+    if (!name || !Number.isSafeInteger(score) || score < 0) continue;
+
+    const entry = {
+      name,
+      score,
+      at: Number.isSafeInteger(at) && at > 0 ? at : 0,
+    };
+    const current = bestByName.get(name);
+    if (!current || entry.score > current.score || (entry.score === current.score && entry.at < current.at)) {
+      bestByName.set(name, entry);
+    }
+  }
+
+  return [...bestByName.values()]
+    .sort((a, b) => b.score - a.score || a.at - b.at || a.name.localeCompare(b.name, 'ko'))
+    .slice(0, limit);
+}
+
 export function loadLastNickname(): string {
   return localStorage.getItem(NICKNAME_KEY) ?? '';
 }
@@ -48,40 +78,32 @@ export function loadRanking(gameSlug: string): RankingEntry[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed as RankingEntry[];
+    const collapsed = collapseBestScores(parsed, MAX_ENTRIES);
+    if (JSON.stringify(collapsed) !== JSON.stringify(parsed)) {
+      localStorage.setItem(rankingKey(gameSlug), JSON.stringify(collapsed));
+    }
+    return collapsed;
   } catch {
     return [];
   }
 }
 
-/** 닉네임을 기록하고(다음 방문 시 재사용) 게임별 랭킹에 점수를 추가한다. 상위 20개만 유지. */
+/** 닉네임을 기록하고 게임별 랭킹에 점수를 추가한다. 닉네임별 최고점 하나, 상위 20명만 유지. */
 export function addRankingEntry(gameSlug: string, name: string, score: number): RankingEntry[] {
   const trimmed = name.trim().slice(0, MAX_NAME_LENGTH) || '익명';
   localStorage.setItem(NICKNAME_KEY, trimmed);
 
-  const list = loadRanking(gameSlug);
-  list.push({ name: trimmed, score, at: Date.now() });
-  list.sort((a, b) => b.score - a.score);
-  const trimmedList = list.slice(0, MAX_ENTRIES);
+  const trimmedList = collapseBestScores([
+    ...loadRanking(gameSlug),
+    { name: trimmed, score, at: Date.now() },
+  ], MAX_ENTRIES);
   localStorage.setItem(rankingKey(gameSlug), JSON.stringify(trimmedList));
   return trimmedList;
 }
 
 function parseRemoteRanking(value: unknown): RankingEntry[] {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { entries?: unknown }).entries)) return [];
-
-  return (value as { entries: unknown[] }).entries
-    .map((entry) => {
-      if (!entry || typeof entry !== 'object') return null;
-      const { name, score, at } = entry as Partial<RankingEntry>;
-      if (typeof name !== 'string' || !Number.isSafeInteger(score) || Number(score) < 0) return null;
-      return {
-        name: name.slice(0, MAX_NAME_LENGTH),
-        score: Number(score),
-        at: Number.isSafeInteger(at) && Number(at) > 0 ? Number(at) : Date.now(),
-      };
-    })
-    .filter((entry): entry is RankingEntry => entry !== null);
+  return collapseBestScores((value as { entries: unknown[] }).entries, MAX_GLOBAL_ENTRIES);
 }
 
 async function syncRanking(gameSlug: string, entries: RankingEntry[]): Promise<boolean> {

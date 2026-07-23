@@ -26,8 +26,17 @@ function normalizeEntry(value) {
   };
 }
 
-function sortEntries(entries) {
-  return entries
+function collapseBestScores(entries) {
+  const bestByName = new Map();
+
+  for (const entry of entries) {
+    const current = bestByName.get(entry.name);
+    if (!current || entry.score > current.score || (entry.score === current.score && entry.at < current.at)) {
+      bestByName.set(entry.name, entry);
+    }
+  }
+
+  return [...bestByName.values()]
     .sort((a, b) => b.score - a.score || a.at - b.at || a.name.localeCompare(b.name, 'ko'))
     .slice(0, MAX_RANKING_ENTRIES);
 }
@@ -45,7 +54,7 @@ export function createScoreRankingStore(gameKey, { dataDir = DEFAULT_DATA_DIR } 
     const parsed = JSON.parse(readFileSync(file, 'utf8'));
     const rawEntries = Array.isArray(parsed) ? parsed : parsed?.entries;
     if (Array.isArray(rawEntries)) {
-      entries = sortEntries(rawEntries.map(normalizeEntry).filter(Boolean));
+      entries = collapseBestScores(rawEntries.map(normalizeEntry).filter(Boolean));
     }
   } catch {
     // 첫 실행이거나 파일이 손상됨 — 빈 상태로 시작
@@ -65,19 +74,11 @@ export function createScoreRankingStore(gameKey, { dataDir = DEFAULT_DATA_DIR } 
 
     if (incoming.length === 0) return { accepted: 0, changed: false };
 
-    const byName = new Map(entries.map((entry) => [entry.name, entry]));
-    let changed = false;
-
-    for (const entry of incoming) {
-      const current = byName.get(entry.name);
-      if (!current || entry.score > current.score) {
-        byName.set(entry.name, entry);
-        changed = true;
-      }
-    }
+    const merged = collapseBestScores([...entries, ...incoming]);
+    const changed = JSON.stringify(merged) !== JSON.stringify(entries);
 
     if (changed) {
-      entries = sortEntries([...byName.values()]);
+      entries = merged;
       persist();
     }
 

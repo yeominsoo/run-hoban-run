@@ -1337,7 +1337,9 @@ test('single-player ranking: migrates device records and shows other users globa
   });
   await page.addInitScript(() => {
     localStorage.setItem('rhh_aim-trainer_ranking', JSON.stringify([
+      { name: '기존플레이어', score: 800, at: 50 },
       { name: '기존플레이어', score: 1234, at: 100 },
+      { name: '기존플레이어', score: 1000, at: 150 },
     ]));
   });
 
@@ -1351,6 +1353,8 @@ test('single-player ranking: migrates device records and shows other users globa
   await expect(page.locator('.ranking-row').nth(0).locator('.ranking-name')).toHaveText('다른사용자');
   await expect(page.locator('.ranking-row').nth(0).locator('.ranking-score')).toHaveText('9876');
   await expect(page.locator('.ranking-row').nth(1).locator('.ranking-name')).toHaveText('기존플레이어');
+  await expect(page.locator('.ranking-row').filter({ hasText: '기존플레이어' })).toHaveCount(1);
+  await expect(page.locator('.ranking-row').nth(1).locator('.ranking-score')).toHaveText('1234');
 });
 
 test('aim trainer: starts, registers hits and misses, tracks level and best score', async ({ page }) => {
