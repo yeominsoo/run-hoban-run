@@ -1,6 +1,8 @@
 const NICKNAME_KEY = 'rhh_last_nickname';
 const MAX_ENTRIES = 20;
 const MAX_NAME_LENGTH = 12;
+const GLOBAL_SYNC_SUFFIX = '_global_sync';
+const syncPromises = new Map<string, Promise<boolean>>();
 
 export interface RankingEntry {
   name: string;
@@ -10,6 +12,30 @@ export interface RankingEntry {
 
 function rankingKey(gameSlug: string): string {
   return `rhh_${gameSlug}_ranking`;
+}
+
+function globalSyncKey(gameSlug: string): string {
+  return `${rankingKey(gameSlug)}${GLOBAL_SYNC_SUFFIX}`;
+}
+
+function scoreRankingApiBase(): string {
+  const configured = import.meta.env.VITE_SCORE_RANKING_URL as string | undefined;
+  if (configured) return configured.replace(/\/+$/, '');
+
+  const rpsWsUrl = import.meta.env.VITE_RPS_WS_URL as string | undefined;
+  if (rpsWsUrl) {
+    return rpsWsUrl
+      .replace(/^wss:/, 'https:')
+      .replace(/^ws:/, 'http:')
+      .replace(/\/rps\/?$/, '/ranking/score');
+  }
+
+  const protocol = location.protocol === 'https:' ? 'https:' : 'http:';
+  return `${protocol}//${location.hostname}:8787/ranking/score`;
+}
+
+function scoreRankingUrl(gameSlug: string): string {
+  return `${scoreRankingApiBase()}/${encodeURIComponent(gameSlug)}`;
 }
 
 export function loadLastNickname(): string {
@@ -39,6 +65,61 @@ export function addRankingEntry(gameSlug: string, name: string, score: number): 
   const trimmedList = list.slice(0, MAX_ENTRIES);
   localStorage.setItem(rankingKey(gameSlug), JSON.stringify(trimmedList));
   return trimmedList;
+}
+
+function parseRemoteRanking(value: unknown): RankingEntry[] {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as { entries?: unknown }).entries)) return [];
+
+  return (value as { entries: unknown[] }).entries
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const { name, score, at } = entry as Partial<RankingEntry>;
+      if (typeof name !== 'string' || !Number.isSafeInteger(score) || Number(score) < 0) return null;
+      return {
+        name: name.slice(0, MAX_NAME_LENGTH),
+        score: Number(score),
+        at: Number.isSafeInteger(at) && Number(at) > 0 ? Number(at) : Date.now(),
+      };
+    })
+    .filter((entry): entry is RankingEntry => entry !== null);
+}
+
+async function syncRanking(gameSlug: string, entries: RankingEntry[]): Promise<boolean> {
+  if (entries.length === 0) return true;
+
+  const signature = JSON.stringify(entries);
+  if (localStorage.getItem(globalSyncKey(gameSlug)) === signature) return true;
+
+  try {
+    const response = await fetch(scoreRankingUrl(gameSlug), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entries }),
+    });
+    if (!response.ok) return false;
+    localStorage.setItem(globalSyncKey(gameSlug), signature);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function queueRankingSync(gameSlug: string, entries: RankingEntry[]): Promise<boolean> {
+  const pending = syncRanking(gameSlug, entries);
+  syncPromises.set(gameSlug, pending);
+  void pending.finally(() => {
+    if (syncPromises.get(gameSlug) === pending) syncPromises.delete(gameSlug);
+  });
+  return pending;
+}
+
+async function loadGlobalRanking(gameSlug: string): Promise<RankingEntry[]> {
+  const pendingSync = syncPromises.get(gameSlug);
+  if (pendingSync) await pendingSync;
+
+  const response = await fetch(scoreRankingUrl(gameSlug));
+  if (!response.ok) throw new Error(`ranking HTTP ${response.status}`);
+  return parseRemoteRanking(await response.json());
 }
 
 function escapeHtml(s: string): string {
@@ -194,6 +275,14 @@ export interface RankingUIRefs {
  */
 export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
   refs.nameInput.value = loadLastNickname();
+  let displayedEntries = loadRanking(refs.gameSlug);
+
+  const rankingTitle = refs.rankingOverlay.querySelector<HTMLElement>('.overlay-card h2');
+  if (rankingTitle) rankingTitle.textContent = '전체 점수 랭킹';
+  const rankingScope = document.createElement('p');
+  rankingScope.className = 'ranking-scope';
+  rankingScope.textContent = '전체 사용자 기록을 불러옵니다.';
+  rankingTitle?.after(rankingScope);
 
   // 싱글 게임의 랭킹 버튼은 원래 시작 오버레이 안에만 있었다. 공용 헤더를 쓰는
   // 게임에서는 같은 버튼을 헤더 우측으로 옮겨 시작 전/플레이 중/결과 화면 모두에서
@@ -201,19 +290,35 @@ export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
   const gameHeader = document.querySelector<HTMLElement>('.game-header');
   if (gameHeader && !gameHeader.contains(refs.viewRankingBtn)) {
     refs.viewRankingBtn.classList.add('header-ranking-btn');
-    refs.viewRankingBtn.setAttribute('aria-label', `${refs.gameTitle} 랭킹 보기`);
+    refs.viewRankingBtn.setAttribute('aria-label', `${refs.gameTitle} 전체 랭킹 보기`);
     gameHeader.append(refs.viewRankingBtn);
   }
 
   refs.saveBtn.addEventListener('click', () => {
-    addRankingEntry(refs.gameSlug, refs.nameInput.value, getScore());
+    const entries = addRankingEntry(refs.gameSlug, refs.nameInput.value, getScore());
+    displayedEntries = entries;
+    void queueRankingSync(refs.gameSlug, entries);
     refs.savedMsg.classList.remove('hidden');
     refs.saveBtn.disabled = true;
   });
 
   refs.viewRankingBtn.addEventListener('click', () => {
-    renderRankingList(refs.rankingList, loadRanking(refs.gameSlug));
+    displayedEntries = loadRanking(refs.gameSlug);
+    renderRankingList(refs.rankingList, displayedEntries);
+    rankingScope.textContent = '전체 사용자 기록을 불러오는 중…';
     refs.rankingOverlay.classList.remove('hidden');
+
+    // 첫 진입 때 서버가 잠시 불안정했더라도 랭킹을 열면 로컬 기록 병합을 다시 시도한다.
+    void queueRankingSync(refs.gameSlug, displayedEntries);
+    void loadGlobalRanking(refs.gameSlug)
+      .then((entries) => {
+        displayedEntries = entries;
+        renderRankingList(refs.rankingList, displayedEntries);
+        rankingScope.textContent = '모든 기기에서 등록한 최고 점수';
+      })
+      .catch(() => {
+        rankingScope.textContent = '서버 연결이 원활하지 않아 이 기기 기록을 표시합니다.';
+      });
   });
 
   refs.closeRankingBtn.addEventListener('click', () => {
@@ -225,11 +330,14 @@ export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
   if (!shareSupported) refs.rankingShareImageBtn.classList.add('hidden');
 
   refs.rankingSaveImageBtn.addEventListener('click', () => {
-    void downloadRankingImage(refs.gameTitle, loadRanking(refs.gameSlug));
+    void downloadRankingImage(refs.gameTitle, displayedEntries);
   });
   refs.rankingShareImageBtn.addEventListener('click', () => {
-    void shareRankingImage(refs.gameTitle, loadRanking(refs.gameSlug));
+    void shareRankingImage(refs.gameTitle, displayedEntries);
   });
+
+  // 업데이트 전 이 기기에 저장돼 있던 기록도 첫 방문 때 전체 랭킹으로 합친다.
+  void queueRankingSync(refs.gameSlug, displayedEntries);
 }
 
 /** 새 판이 끝나 결과 화면을 다시 보여줄 때, 직전 저장 상태(비활성화된 버튼 등)를 초기화한다. */

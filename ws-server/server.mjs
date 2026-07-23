@@ -23,6 +23,7 @@ import { registerLightGuessServer } from './light-guess.mjs';
 import { registerReversiServer } from './reversi.mjs';
 import { registerGomokuServer } from './gomoku.mjs';
 import { isoWeekKey } from './ranking-store.mjs';
+import { createScoreRankingService } from './score-ranking-store.mjs';
 
 const PORT = Number(process.env.PORT) || 8787;
 const MOVES = new Set(['rock', 'paper', 'scissors']);
@@ -76,9 +77,22 @@ function getRanking(week) {
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
   'access-control-allow-headers': 'content-type',
 };
+
+const scoreRankingService = createScoreRankingService([
+  'aim-trainer',
+  'color-slider',
+  'ball-dodge',
+  'tower-stack',
+  'snake',
+  'typing-survival',
+  '2048-hex',
+  '2an2el-runner',
+  'idle-farm',
+  'sum-ten-puzzle',
+], { corsHeaders: CORS_HEADERS });
 
 /** rps 이외의 승/패 랭킹(라이어/마피아/할리갈리/윷놀이/전략윷놀이) 공용 응답 헬퍼. */
 function respondGameRanking(req, res, getRankingFn) {
@@ -105,6 +119,7 @@ const httpServer = createServer((req, res) => {
     return;
   }
   const pathname = req.url?.split('?')[0];
+  if (pathname && scoreRankingService.handle(req, res, pathname)) return;
   if (pathname && pathname.startsWith('/ranking/')) {
     const gameKey = pathname.slice('/ranking/'.length);
     const getRankingFn = GAME_RANKING_HANDLERS[gameKey];

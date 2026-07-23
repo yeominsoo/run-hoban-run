@@ -226,6 +226,13 @@ button { border: 0; cursor: pointer; font: inherit; }
 .rank-saved-msg.hidden { display: none; }
 
 /* ── 랭킹 보기 오버레이 ─────────────────────────── */
+.ranking-scope {
+  margin: -8px 0 0 !important;
+  color: var(--color-page-faint) !important;
+  font-size: 0.74rem !important;
+  line-height: 1.4 !important;
+}
+
 .ranking-list {
   list-style: none;
   margin: 0;

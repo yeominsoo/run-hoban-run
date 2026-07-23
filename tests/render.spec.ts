@@ -1309,6 +1309,50 @@ test('local ranking games: keep the ranking button in the top-right header on ev
   }
 });
 
+test('single-player ranking: migrates device records and shows other users global scores', async ({ page }) => {
+  let submittedEntries: { name: string; score: number; at: number }[] = [];
+
+  await page.route('**/ranking/score/aim-trainer', async (route) => {
+    if (route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON() as { entries?: typeof submittedEntries };
+      submittedEntries = payload.entries ?? [];
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ accepted: submittedEntries.length, changed: true, entries: submittedEntries }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        entries: [
+          { name: '다른사용자', score: 9876, at: 200 },
+          { name: '기존플레이어', score: 1234, at: 100 },
+        ],
+      }),
+    });
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('rhh_aim-trainer_ranking', JSON.stringify([
+      { name: '기존플레이어', score: 1234, at: 100 },
+    ]));
+  });
+
+  await page.goto('/aim-trainer/');
+  await expect.poll(() => submittedEntries).toEqual([
+    { name: '기존플레이어', score: 1234, at: 100 },
+  ]);
+
+  await page.locator('#view-ranking-btn').click();
+  await expect(page.locator('.ranking-scope')).toHaveText('모든 기기에서 등록한 최고 점수');
+  await expect(page.locator('.ranking-row').nth(0).locator('.ranking-name')).toHaveText('다른사용자');
+  await expect(page.locator('.ranking-row').nth(0).locator('.ranking-score')).toHaveText('9876');
+  await expect(page.locator('.ranking-row').nth(1).locator('.ranking-name')).toHaveText('기존플레이어');
+});
+
 test('aim trainer: starts, registers hits and misses, tracks level and best score', async ({ page }) => {
   await page.goto('/aim-trainer/');
   await expect(page.locator('.game-title')).toHaveText('에임 트레이너');
