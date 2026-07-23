@@ -2815,11 +2815,13 @@ test('endless runner: mobile resize keeps an appearing coin anchored to the grou
   await page.locator('#start-btn').click();
 
   let beforeResize: RunnerCoinPath | null = null;
+  let beforeGroundY = 0;
   await expect.poll(async () => {
     const state = await readRunnerState(page);
     const coin = state.coinPaths[0];
     if (!coin) return false;
     beforeResize = coin;
+    beforeGroundY = state.groundY;
     return Math.abs((state.groundY - coin.y) - coin.groundOffset) <= 1.5;
   }, { timeout: 8_000, intervals: [20] }).toBe(true);
   if (!beforeResize) throw new Error('coin did not appear before resize');
@@ -2831,7 +2833,8 @@ test('endless runner: mobile resize keeps an appearing coin anchored to the grou
     const coin = state.coinPaths[0];
     if (!coin || state.groundY === 0) return false;
     afterResize = state;
-    return Math.abs((state.groundY - coin.y) - coin.groundOffset) <= 1.5;
+    return state.groundY !== beforeGroundY
+      && Math.abs((state.groundY - coin.y) - coin.groundOffset) <= 1.5;
   }, { timeout: 2_000, intervals: [16] }).toBe(true);
   if (!afterResize) throw new Error('runner state did not settle after mobile resize');
   const resizedCoin = afterResize.coinPaths[0];
@@ -2845,6 +2848,7 @@ test('endless runner: mobile resize keeps an appearing coin anchored to the grou
   const settledState = await readRunnerState(page);
   const settledCoin = settledState.coinPaths[0];
   if (!settledCoin) throw new Error('coin disappeared before its settled position was checked');
+  expect(settledState.groundY).toBe(afterResize.groundY);
   expect(settledCoin.y).toBe(resizedCoin.y);
   expect(settledCoin.safeAction).toBe(resizedCoin.safeAction);
   await expect(canvas).toHaveAttribute('data-phase', 'playing');
