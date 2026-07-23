@@ -41,7 +41,8 @@ const OBSTACLE_MIN_GAP_FLOOR = 270;
 const COIN_INTERVAL_START_S = 1.35;
 const COIN_INTERVAL_STEP_S = 0.07;
 const COIN_INTERVAL_FLOOR_S = 0.9;
-const COIN_OBSTACLE_ALIGN_DISTANCE = 135;
+const COIN_HAZARD_CLEARANCE = 180;
+const MAX_CREATURE_APPROACH_SPEED = 102;
 const PIT_MIN_WIDTH = 70;
 const PIT_MAX_WIDTH = 110;
 const FALL_ANIMATION_MS = 1100;
@@ -63,7 +64,7 @@ interface Obstacle {
 
 interface Coin {
   x: number;
-  y: number;
+  groundOffset: number;
   collected: boolean;
   safeAction: CoinSafeAction;
   approachSpeed: number;
@@ -128,7 +129,7 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>안엘런</h2>
-          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>잔디 절벽·가시·공중 지형과 날아오는 생물이 라운드마다 추가됩니다. 코인은 안전한 회피 동선을 안내합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>잔디 절벽·가시·공중 지형과 날아오는 생물이 라운드마다 추가됩니다. 코인은 장애물과 떨어진 안전한 길에 등장합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -288,6 +289,7 @@ setupRankingUI(
 void prepareSelectedCharacterVisuals();
 
 function resizeCanvas() {
+  const previousGroundY = groundY;
   dpr = Math.max(1, window.devicePixelRatio || 1);
   const rect = stage.getBoundingClientRect();
   stageWidth = rect.width;
@@ -303,6 +305,9 @@ function resizeCanvas() {
     playerY = groundY;
     draw();
   } else {
+    // 모바일 브라우저 주소창/도구막대가 접히며 높이가 바뀌어도 캐릭터의 지면 기준
+    // 높이를 보존한다. 코인은 groundOffset으로 그려져 별도의 좌표 보정이 필요 없다.
+    if (previousGroundY > 0) playerY += groundY - previousGroundY;
     syncPlayerVisual();
   }
 }
@@ -684,61 +689,85 @@ function creatureApproachSpeed(visual: ObstacleVisual, tier: number): number {
   return 0;
 }
 
-function spawnObstacle() {
+function canSpawnObstacleAt(x: number): boolean {
+  return coins.every((coin) => {
+    if (coin.collected) return true;
+    const visibleTimeLeft = Math.max(0, coin.x + 20) / Math.max(BASE_SPEED, speed);
+    const catchUpBuffer = MAX_CREATURE_APPROACH_SPEED * visibleTimeLeft;
+    return x - coin.x > COIN_HAZARD_CLEARANCE + catchUpBuffer;
+  });
+}
+
+function spawnObstacle(): boolean {
+  const spawnX = stageWidth + 20;
+  if (!canSpawnObstacleAt(spawnX)) return false;
+
   const roll = Math.random();
   const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
   const pitChance = tier === 1 ? 0 : Math.min(0.3, (tier - 1) * 0.075);
   const highChance = Math.min(0.4, 0.32 + (tier - 1) * 0.015);
   const lowChance = 1 - highChance - pitChance;
-  let obstacle: Obstacle;
+  const spawned: Obstacle[] = [];
 
   if (roll < lowChance) {
     const visual = lowVisualForTier(tier);
     const baseWidth = visual === 'thorn-patch' ? 54 : visual === 'mossy-rock' ? 46 : 42;
-    obstacle = {
+    spawned.push({
       type: 'low',
       visual,
       phase: Math.random() * Math.PI * 2,
-      x: stageWidth + 20,
+      x: spawnX,
       width: baseWidth + Math.min(6, tier * 2),
       approachSpeed: 0
-    };
+    });
   } else if (roll < lowChance + highChance) {
     const visual = highVisualForTier(tier);
     const baseWidth = visual === 'floating-grass-platform' ? 96 : visual === 'bluebird' ? 42 : 38;
-    obstacle = {
+    const platform: Obstacle = {
       type: 'high',
       visual,
       phase: Math.random() * Math.PI * 2,
-      x: stageWidth + 20,
+      x: spawnX,
       width: baseWidth + Math.min(8, tier * 2),
       approachSpeed: creatureApproachSpeed(visual, tier)
     };
+    spawned.push(platform);
+    if (isLandingPlatform(platform)) {
+      // 공중 지형은 선택 장식이 아니라 실제 착지 구간이다. 발판 바로 아래 지면을 같은
+      // 폭의 구덩이로 비워 점프로 올라타야만 안전하게 통과할 수 있게 한다.
+      spawned.push({
+        type: 'pit',
+        visual: 'thorn-patch',
+        phase: platform.phase,
+        x: platform.x - 9,
+        width: platform.width + 18,
+        approachSpeed: 0
+      });
+    }
   } else {
     const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
-    obstacle = {
+    spawned.push({
       type: 'pit',
       visual: 'thorn-patch',
       phase: Math.random() * Math.PI * 2,
-      x: stageWidth + 20,
+      x: spawnX,
       width,
       approachSpeed: 0
-    };
+    });
   }
 
-  obstacles.push(obstacle);
-  alignNearbyCoinsWithObstacle(obstacle);
+  obstacles.push(...spawned);
+  return true;
 }
 
-function requiredActionForObstacle(obstacle: Obstacle): CoinSafeAction {
-  if (isLandingPlatform(obstacle)) return 'jump';
-  return obstacle.type === 'high' ? 'slide' : 'jump';
+function coinGroundOffsetForAction(action: CoinSafeAction): number {
+  if (action === 'jump') return 78;
+  if (action === 'slide') return SLIDE_HEIGHT * 0.55;
+  return PLAYER_HEIGHT * 0.52;
 }
 
-function coinYForAction(action: CoinSafeAction): number {
-  if (action === 'jump') return groundY - 78;
-  if (action === 'slide') return groundY - SLIDE_HEIGHT * 0.55;
-  return groundY - PLAYER_HEIGHT * 0.52;
+function coinY(coin: Coin): number {
+  return groundY - coin.groundOffset;
 }
 
 function horizontalDistanceToObstacle(x: number, obstacle: Obstacle): number {
@@ -747,38 +776,27 @@ function horizontalDistanceToObstacle(x: number, obstacle: Obstacle): number {
   return 0;
 }
 
-function alignCoinWithObstacle(coin: Coin, obstacle: Obstacle) {
-  coin.safeAction = requiredActionForObstacle(obstacle);
-  coin.approachSpeed = obstacle.approachSpeed;
-  coin.y = isLandingPlatform(obstacle)
-    ? obstacleGeometry(obstacle).top - 20
-    : coinYForAction(coin.safeAction);
+function isCoinSpawnAreaClear(x: number): boolean {
+  return obstacles.every((obstacle) => (
+    horizontalDistanceToObstacle(x, obstacle) > COIN_HAZARD_CLEARANCE
+  ));
 }
 
-function alignNearbyCoinsWithObstacle(obstacle: Obstacle) {
-  for (const coin of coins) {
-    if (coin.collected) continue;
-    if (horizontalDistanceToObstacle(coin.x, obstacle) <= COIN_OBSTACLE_ALIGN_DISTANCE) {
-      alignCoinWithObstacle(coin, obstacle);
-    }
-  }
-}
-
-function spawnCoin() {
+function spawnCoin(): boolean {
   const x = stageWidth + 20;
-  const nearbyObstacle = obstacles
-    .filter((obstacle) => horizontalDistanceToObstacle(x, obstacle) <= COIN_OBSTACLE_ALIGN_DISTANCE)
-    .sort((a, b) => horizontalDistanceToObstacle(x, a) - horizontalDistanceToObstacle(x, b))[0];
-  const safeAction = nearbyObstacle ? requiredActionForObstacle(nearbyObstacle) : 'run';
-  const coin: Coin = {
+  if (!isCoinSpawnAreaClear(x)) return false;
+
+  // 코인은 이미 보인 뒤 장애물에 맞춰 순간 이동하지 않는다. 생성 시 정한 안전한
+  // 달리기/점프 높이와 지형 스크롤 속도를 수명 내내 유지한다.
+  const safeAction: CoinSafeAction = Math.random() < 0.28 ? 'jump' : 'run';
+  coins.push({
     x,
-    y: coinYForAction(safeAction),
+    groundOffset: coinGroundOffsetForAction(safeAction),
     collected: false,
     safeAction,
-    approachSpeed: nearbyObstacle?.approachSpeed ?? 0
-  };
-  if (nearbyObstacle) alignCoinWithObstacle(coin, nearbyObstacle);
-  coins.push(coin);
+    approachSpeed: 0
+  });
+  return true;
 }
 
 function triggerJump() {
@@ -891,7 +909,9 @@ function updateTestAttrs() {
   );
   canvas.dataset.coinPaths = coins
     .filter((coin) => !coin.collected)
-    .map((coin) => `${Math.round(coin.x)}:${Math.round(coin.y)}:${coin.safeAction}:${coin.approachSpeed}`)
+    .map((coin) => (
+      `${Math.round(coin.x)}:${Math.round(coinY(coin))}:${coin.safeAction}:${coin.approachSpeed}:${coin.groundOffset}`
+    ))
     .join('|');
 }
 
@@ -1014,20 +1034,22 @@ function updateWorld(dt: number) {
   }
   obstacles = obstacles.filter((o) => o.x + o.width > -10);
 
-  for (const c of coins) c.x -= travel + c.approachSpeed * dt;
+  for (const c of coins) c.x -= travel;
   coins = coins.filter((c) => !c.collected && c.x > -20);
 
   distanceSinceSpawn += travel;
+  let obstacleSpawned = false;
   if (distanceSinceSpawn >= currentMinGap()) {
-    distanceSinceSpawn = 0;
-    spawnObstacle();
+    obstacleSpawned = spawnObstacle();
+    if (obstacleSpawned) distanceSinceSpawn = 0;
   }
 
   distanceSinceCoin += travel;
   const coinGap = currentCoinInterval() * speed;
-  if (distanceSinceCoin >= coinGap) {
-    distanceSinceCoin = 0;
-    spawnCoin();
+  // 장애물 생성이 코인 때문에 대기 중이면 새 코인을 더 쌓지 않는다. 기존 코인이 충분히
+  // 멀어진 뒤 장애물을 먼저 놓고, 그 장애물과도 간격이 확보된 뒤 다음 코인을 생성한다.
+  if (distanceSinceCoin >= coinGap && !obstacleSpawned && distanceSinceSpawn < currentMinGap()) {
+    if (spawnCoin()) distanceSinceCoin = 0;
   }
 }
 
@@ -1101,7 +1123,7 @@ function checkCollisions(): boolean {
 
   for (const c of coins) {
     if (c.collected) continue;
-    const dist = Math.hypot(playerX - c.x, (pTop + pHeight / 2) - c.y);
+    const dist = Math.hypot(playerX - c.x, (pTop + pHeight / 2) - coinY(c));
     if (dist < 24) {
       c.collected = true;
       coinsCollected += 1;
@@ -1187,15 +1209,6 @@ function drawSky() {
   ctx.closePath();
   ctx.fill();
 
-  const platformImage = preloadedVisuals.get(OBSTACLE_ASSET_URLS['floating-grass-platform']);
-  if (platformImage?.complete && platformImage.naturalWidth > 0) {
-    ctx.save();
-    ctx.globalAlpha = 0.34;
-    const drift = (distancePx * 0.075) % (stageWidth + 260);
-    ctx.drawImage(platformImage, stageWidth - drift, groundY * 0.3, 112, 72);
-    ctx.drawImage(platformImage, stageWidth * 0.38 - drift * 0.46, groundY * 0.48, 78, 50);
-    ctx.restore();
-  }
 }
 
 function pointIsOnGround(x: number, pits: Obstacle[]): boolean {
@@ -1220,7 +1233,7 @@ function drawGroundTextureSegment(
   const top = groundY - 16;
   const height = stageHeight - top;
   const tileWidth = Math.max(170, height * 1.45);
-  const offset = (distancePx * 0.96) % tileWidth;
+  const offset = distancePx % tileWidth;
   ctx.save();
   ctx.beginPath();
   ctx.rect(start, top, end - start, height);
@@ -1262,7 +1275,7 @@ function drawGround() {
       ctx.fillRect(0, bandY, stageWidth, 3);
     }
 
-    const pebbleOffset = (distancePx * 0.58) % 58;
+    const pebbleOffset = distancePx % 58;
     for (let x = -pebbleOffset; x < stageWidth + 20; x += 58) {
       if (!pointIsOnGround(x, pits)) continue;
       const row = Math.abs(Math.floor((x + distancePx) / 58)) % 3;
@@ -1286,7 +1299,7 @@ function drawGround() {
     ctx.fill();
   }
 
-  const flowerOffset = (distancePx * 0.9) % 190;
+  const flowerOffset = distancePx % 190;
   for (let x = 70 - flowerOffset; x < stageWidth + 190; x += 190) {
     if (!pointIsOnGround(x, pits)) continue;
     ctx.strokeStyle = '#4eaa55';
@@ -1428,7 +1441,7 @@ function drawCoin(c: Coin, now: number) {
   const spin = Math.sin(now / 260 + c.x * 0.05);
   const scaleX = Math.max(0.18, Math.abs(spin));
   ctx.save();
-  ctx.translate(c.x, c.y);
+  ctx.translate(c.x, coinY(c));
   ctx.scale(scaleX, 1);
   ctx.shadowColor = 'rgba(255,200,67,0.65)';
   ctx.shadowBlur = 9;

@@ -2192,6 +2192,7 @@ interface RunnerCoinPath {
   y: number;
   safeAction: string;
   approachSpeed: number;
+  groundOffset: number;
 }
 
 interface RunnerState {
@@ -2228,8 +2229,14 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       .split('|')
       .filter(Boolean)
       .map((entry) => {
-        const [x, y, safeAction, approachSpeed] = entry.split(':');
-        return { x: Number(x), y: Number(y), safeAction, approachSpeed: Number(approachSpeed) };
+        const [x, y, safeAction, approachSpeed, groundOffset] = entry.split(':');
+        return {
+          x: Number(x),
+          y: Number(y),
+          safeAction,
+          approachSpeed: Number(approachSpeed),
+          groundOffset: Number(groundOffset)
+        };
       });
     return {
       phase: canvas.dataset.phase,
@@ -2579,7 +2586,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
   await expect(player).toHaveAttribute('data-asset', new RegExp(`${characterId}-run`));
 });
 
-test('endless runner: jumping/sliding at the right moment clears obstacles and pits', async ({ page }) => {
+test('endless runner: safe coin lanes stay clear while timed actions avoid obstacles and pits', async ({ page }) => {
   test.setTimeout(60_000);
   await page.addInitScript(() => {
     let seed = 0x6d2b79f5;
@@ -2599,34 +2606,44 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
   if (!box) throw new Error('endless-runner canvas has no bounding box');
   const deadline = Date.now() + 18_000;
   let highestRound = 1;
-  let alignedCoinSamples = 0;
+  let safeCoinSamples = 0;
   const encounteredVisuals = new Set<string>();
 
   while (Date.now() < deadline) {
     const state = await readRunnerState(page);
     if (state.phase !== 'playing') break;
     highestRound = Math.max(highestRound, state.round);
-    for (const obstacle of state.obstacles) encounteredVisuals.add(obstacle.visual);
+    for (const obstacle of state.obstacles) {
+      encounteredVisuals.add(obstacle.visual);
+      if (obstacle.visual !== 'honeybee' && obstacle.visual !== 'bluebird') {
+        expect(obstacle.approachSpeed).toBe(0);
+      }
+    }
 
     for (const coin of state.coinPaths) {
-      const nearbyObstacle = state.obstacles.find((obstacle) => {
+      expect(['run', 'jump']).toContain(coin.safeAction);
+      expect(coin.approachSpeed).toBe(0);
+      expect(Math.abs((state.groundY - coin.y) - coin.groundOffset)).toBeLessThanOrEqual(1.5);
+      for (const obstacle of state.obstacles) {
         const distance = coin.x < obstacle.x
           ? obstacle.x - coin.x
           : coin.x > obstacle.x + obstacle.width
             ? coin.x - (obstacle.x + obstacle.width)
             : 0;
-        return distance <= 135;
-      });
-      if (!nearbyObstacle) continue;
-      const expectedAction = nearbyObstacle.type === 'high'
-        && nearbyObstacle.visual !== 'floating-grass-platform'
-        ? 'slide'
-        : 'jump';
-      expect(coin.safeAction).toBe(expectedAction);
-      expect(coin.approachSpeed).toBe(nearbyObstacle.approachSpeed);
-      if (expectedAction === 'slide') expect(coin.y).toBeGreaterThanOrEqual(state.groundY - 20);
-      else expect(coin.y).toBeLessThanOrEqual(state.groundY - 60);
-      alignedCoinSamples += 1;
+        expect(distance).toBeGreaterThanOrEqual(170);
+      }
+      safeCoinSamples += 1;
+    }
+
+    const landingPlatform = state.obstacles.find((obstacle) => (
+      obstacle.visual === 'floating-grass-platform'
+      && obstacle.x - state.playerX >= 115
+      && obstacle.x - state.playerX <= 150
+    ));
+    if (landingPlatform && state.playerState === 'running') {
+      await canvas.click();
+      await page.waitForTimeout(35);
+      continue;
     }
 
     // 반응 창을 장애물 바로 앞(약 0.2초 거리)까지 좁혀야 한다 — 너무 일찍(예: 140px 밖)
@@ -2655,12 +2672,12 @@ test('endless runner: jumping/sliding at the right moment clears obstacles and p
   expect(finalState.phase).toBe('playing');
   expect(finalState.score).toBeGreaterThan(0);
   expect(highestRound).toBeGreaterThanOrEqual(2);
-  expect(alignedCoinSamples).toBeGreaterThan(0);
+  expect(safeCoinSamples).toBeGreaterThan(0);
   expect(encounteredVisuals.size).toBeGreaterThanOrEqual(2);
   expect([...encounteredVisuals].every((visual) => finalState.obstacleCatalog.includes(visual))).toBe(true);
 });
 
-test('endless runner: floating grass terrain is safe from below and supports landing', async ({ page }) => {
+test('endless runner: every floating grass platform covers a pit and supports landing', async ({ page }) => {
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
@@ -2671,24 +2688,26 @@ test('endless runner: floating grass terrain is safe from below and supports lan
   const canvas = page.locator('#er-canvas');
   await page.locator('#start-btn').click();
 
-  // 첫 발판은 조작 없이 아래로 통과한다. 옆면·아랫면 접촉은 사망 판정이 아니어야 한다.
+  // 공중 발판은 바로 아래 구덩이를 완전히 덮는 한 쌍으로 생성되어야 한다.
+  let pairedPlatform: RunnerObstacle | null = null;
   await expect.poll(async () => {
     const state = await readRunnerState(page);
-    return state.phase === 'playing' && state.obstacles.some((obstacle) => (
-      obstacle.visual === 'floating-grass-platform'
-      && obstacle.x + obstacle.width < state.playerX - 20
-    ));
-  }, { timeout: 10_000, intervals: [25] }).toBe(true);
-
-  // 다음 발판 윗면을 향해 점프해 실제로 발 위치가 발판 높이에 고정되는지 확인한다.
-  await expect.poll(async () => {
-    const state = await readRunnerState(page);
-    return state.obstacles.some((obstacle) => (
+    const platform = state.obstacles.find((obstacle) => (
       obstacle.visual === 'floating-grass-platform'
       && obstacle.x - state.playerX >= 120
       && obstacle.x - state.playerX <= 150
     ));
+    if (!platform) return false;
+    const pit = state.obstacles.find((obstacle) => (
+      obstacle.type === 'pit'
+      && obstacle.x <= platform.x
+      && obstacle.x + obstacle.width >= platform.x + platform.width
+    ));
+    if (!pit) return false;
+    pairedPlatform = platform;
+    return platform.approachSpeed === 0 && pit.approachSpeed === 0;
   }, { timeout: 10_000, intervals: [20] }).toBe(true);
+  expect(pairedPlatform).not.toBeNull();
   await canvas.click();
 
   await page.waitForFunction(() => {
@@ -2716,16 +2735,26 @@ test('endless runner: bees actively approach faster than the scrolling terrain',
     Math.random = () => 0.75;
   });
   await page.goto('/2an2el-runner/');
+  const canvas = page.locator('#er-canvas');
   await page.locator('#start-btn').click();
 
   let firstSample: { obstacle: RunnerObstacle; speed: number; sampledAt: number } | null = null;
-  await expect.poll(async () => {
+  const deadline = Date.now() + 22_000;
+  while (Date.now() < deadline && !firstSample) {
     const state = await readRunnerState(page);
     const bee = state.obstacles.find((obstacle) => obstacle.visual === 'honeybee');
-    if (!bee) return false;
-    firstSample = { obstacle: bee, speed: state.speed, sampledAt: Date.now() };
-    return true;
-  }, { timeout: 20_000, intervals: [25] }).toBe(true);
+    if (bee) {
+      firstSample = { obstacle: bee, speed: state.speed, sampledAt: Date.now() };
+      break;
+    }
+    const platform = state.obstacles.find((obstacle) => (
+      obstacle.visual === 'floating-grass-platform'
+      && obstacle.x - state.playerX >= 115
+      && obstacle.x - state.playerX <= 150
+    ));
+    if (platform && state.playerState === 'running') await canvas.click();
+    await page.waitForTimeout(25);
+  }
   if (!firstSample) throw new Error('honeybee approach sample was not captured');
 
   await page.waitForTimeout(260);
@@ -2740,6 +2769,85 @@ test('endless runner: bees actively approach faster than the scrolling terrain',
   expect(firstSample.obstacle.approachSpeed).toBeGreaterThan(0);
   expect(actualTravel).toBeGreaterThan(terrainTravel + expectedExtraTravel * 0.55);
   expect(secondState.phase).toBe('playing');
+});
+
+test('endless runner: fixed obstacles share terrain speed while only creatures approach', async ({ page }) => {
+  test.setTimeout(15_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    // 낮은 고정 장애물(stump)만 선택한다.
+    Math.random = () => 0.1;
+  });
+  await page.goto('/2an2el-runner/');
+  await page.locator('#start-btn').click();
+
+  let firstSample: { obstacle: RunnerObstacle; speed: number; sampledAt: number } | null = null;
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    const fixed = state.obstacles.find((obstacle) => obstacle.visual === 'stump');
+    if (!fixed) return false;
+    firstSample = { obstacle: fixed, speed: state.speed, sampledAt: Date.now() };
+    return true;
+  }, { timeout: 10_000, intervals: [25] }).toBe(true);
+  if (!firstSample) throw new Error('fixed obstacle sample was not captured');
+
+  await page.waitForTimeout(260);
+  const secondState = await readRunnerState(page);
+  const secondFixed = secondState.obstacles.find((obstacle) => obstacle.visual === 'stump');
+  if (!secondFixed) throw new Error('fixed obstacle disappeared before terrain speed could be measured');
+
+  const elapsedSeconds = (Date.now() - firstSample.sampledAt) / 1000;
+  const actualTravel = firstSample.obstacle.x - secondFixed.x;
+  const terrainTravel = firstSample.speed * elapsedSeconds;
+  expect(firstSample.obstacle.approachSpeed).toBe(0);
+  expect(actualTravel).toBeGreaterThan(terrainTravel * 0.7);
+  expect(actualTravel).toBeLessThan(terrainTravel + 12);
+});
+
+test('endless runner: mobile resize keeps an appearing coin anchored to the ground', async ({ page }) => {
+  test.setTimeout(15_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Math.random = () => 0.1;
+  });
+  await page.goto('/2an2el-runner/');
+  const canvas = page.locator('#er-canvas');
+  await page.locator('#start-btn').click();
+
+  let beforeResize: RunnerCoinPath | null = null;
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    const coin = state.coinPaths[0];
+    if (!coin) return false;
+    beforeResize = coin;
+    return Math.abs((state.groundY - coin.y) - coin.groundOffset) <= 1.5;
+  }, { timeout: 8_000, intervals: [20] }).toBe(true);
+  if (!beforeResize) throw new Error('coin did not appear before resize');
+
+  await page.setViewportSize({ width: 390, height: 760 });
+  let afterResize: RunnerState | null = null;
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    const coin = state.coinPaths[0];
+    if (!coin || state.groundY === 0) return false;
+    afterResize = state;
+    return Math.abs((state.groundY - coin.y) - coin.groundOffset) <= 1.5;
+  }, { timeout: 2_000, intervals: [16] }).toBe(true);
+  if (!afterResize) throw new Error('runner state did not settle after mobile resize');
+  const resizedCoin = afterResize.coinPaths[0];
+  if (!resizedCoin) throw new Error('coin disappeared during mobile resize');
+  expect(resizedCoin.safeAction).toBe(beforeResize.safeAction);
+  expect(resizedCoin.approachSpeed).toBe(0);
+  expect(resizedCoin.groundOffset).toBe(beforeResize.groundOffset);
+  expect(Math.abs((afterResize.groundY - resizedCoin.y) - resizedCoin.groundOffset)).toBeLessThanOrEqual(1.5);
+
+  await page.waitForTimeout(220);
+  const settledState = await readRunnerState(page);
+  const settledCoin = settledState.coinPaths[0];
+  if (!settledCoin) throw new Error('coin disappeared before its settled position was checked');
+  expect(settledCoin.y).toBe(resizedCoin.y);
+  expect(settledCoin.safeAction).toBe(resizedCoin.safeAction);
+  await expect(canvas).toHaveAttribute('data-phase', 'playing');
 });
 
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
