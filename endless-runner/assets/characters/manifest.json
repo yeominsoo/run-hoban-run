@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "generatedOn": "2026-07-21",
+  "generatedOn": "2026-07-23",
   "canvas": {
     "width": 256,
     "height": 256,
@@ -251,7 +251,7 @@
         "jump"
       ],
       "path": "endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png",
-      "sha256": "06950465b6ac3dc5d583e06142194de20f604568facbd8e86461df35978db9bd"
+      "sha256": "3ce411539aa2c4c5425cf80ff7278abcdf9ad5aeecba16bab50bf064843db258"
     },
     {
       "characterId": "checkered-vest-boy-soft-3d-toy",

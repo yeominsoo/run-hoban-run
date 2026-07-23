@@ -151,3 +151,25 @@ npm run test:render
 
 - 2026-07-15 생성 작업의 Git 상태 기록은 당시 시점의 이력이다.
 - 2026-07-21 소프트 3D 런타임 품질 승격은 검증 후 별도 커밋으로 `master`에 푸시한다.
+
+## 2026-07-23 이안이 달리기 주기 전면 교체
+
+달리는 동안 머리와 몸통이 좌우로 흔들린다는 피드백에 따라 이안이의 소프트 3D 달리기
+8프레임을 새로 제작했다. 기존 프레임은 포즈마다 머리 크기와 카메라 각도가 달랐고, 머리의
+수평 중심 편차가 17.2px까지 벌어졌다. 새 프레임은 같은 크기와 시점에서
+`오른발 접지 → 하강 → 통과 → 상승 → 왼발 접지 → 하강 → 통과 → 상승` 순서로 구성했다.
+머리의 수평 중심 편차는 9.7px로 줄었으며, 남은 상하 움직임은 달리기 착지와 도약에 필요한
+반동으로 유지했다.
+
+- 생성 방식: Codex 내장 `image_gen` 사용, CLI/API 폴백 미사용
+- 프롬프트 핵심: 기존 이안이의 얼굴·체크 조끼·비율을 고정하고, 카메라 이동·확대·몸통
+  좌우 흔들림 없이 8단계 러닝 사이클을 제작
+- 생성 원본: `output/imagegen/endless-runner-8frame-2026-07-23/`
+- 프로젝트 원화:
+  `endless-runner/assets/characters/frame-sheets/checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png`
+- 프로젝트 원화 SHA-256:
+  `3ce411539aa2c4c5425cf80ff7278abcdf9ad5aeecba16bab50bf064843db258`
+- 런타임 결과:
+  `endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-run.gif`
+- 변경 범위: 이안이 달리기 원화·8개 투명 프레임·대표 PNG·GIF만 교체하고 점프·슬라이드·
+  넘어짐 프레임과 게임 물리·판정·타이밍은 유지

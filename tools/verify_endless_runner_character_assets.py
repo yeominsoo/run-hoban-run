@@ -24,6 +24,9 @@ PIVOT = (128, 232)
 FRAME_COUNT = 8
 ACTIONS = ("run", "jump", "slide", "fall")
 METHOD = "eight model-generated chronological poses from approved identity references; no transform tween"
+IAN_RUN_CHARACTER_ID = "checkered-vest-boy-soft-3d-toy"
+IAN_RUN_HEAD_X_SPREAD_MAX = 12.0
+IAN_RUN_HEAD_Y_SPREAD_MAX = 22.5
 ACTION_DURATIONS = {
     "run": [80, 80, 80, 80, 80, 80, 80, 80],
     "jump": [70, 70, 80, 90, 100, 90, 90, 100],
@@ -178,6 +181,55 @@ def alpha_mask(image: Image.Image) -> Image.Image:
 
 def visible_bounds(image: Image.Image) -> tuple[int, int, int, int] | None:
     return alpha_mask(image).getbbox()
+
+
+def verify_ian_run_head_stability(frames: list[Image.Image], errors: list[str]) -> None:
+    """Keep Ian's head anchored while allowing the smaller vertical run-cycle bob."""
+
+    if len(frames) != FRAME_COUNT:
+        return
+    centers: list[tuple[float, float]] = []
+    for frame_index, frame in enumerate(frames, start=1):
+        hair_pixels: list[tuple[int, int]] = []
+        for y in range(25, 125):
+            for x in range(35, 220):
+                red, green, blue, alpha = frame.getpixel((x, y))
+                if (
+                    alpha > 128
+                    and red < 95
+                    and green < 75
+                    and blue < 65
+                    and red > green * 0.9
+                ):
+                    hair_pixels.append((x, y))
+        if len(hair_pixels) < 500:
+            error(
+                errors,
+                f"{IAN_RUN_CHARACTER_ID}/run frame {frame_index}: "
+                f"cannot locate a stable hair/head anchor ({len(hair_pixels)} pixels)",
+            )
+            return
+        centers.append(
+            (
+                sum(x for x, _ in hair_pixels) / len(hair_pixels),
+                sum(y for _, y in hair_pixels) / len(hair_pixels),
+            )
+        )
+
+    horizontal_spread = max(x for x, _ in centers) - min(x for x, _ in centers)
+    vertical_spread = max(y for _, y in centers) - min(y for _, y in centers)
+    if horizontal_spread > IAN_RUN_HEAD_X_SPREAD_MAX:
+        error(
+            errors,
+            f"{IAN_RUN_CHARACTER_ID}/run: head horizontal spread "
+            f"{horizontal_spread:.1f}px exceeds {IAN_RUN_HEAD_X_SPREAD_MAX:.1f}px",
+        )
+    if vertical_spread > IAN_RUN_HEAD_Y_SPREAD_MAX:
+        error(
+            errors,
+            f"{IAN_RUN_CHARACTER_ID}/run: head vertical spread "
+            f"{vertical_spread:.1f}px exceeds {IAN_RUN_HEAD_Y_SPREAD_MAX:.1f}px",
+        )
 
 
 def connected_component_stats(
@@ -682,6 +734,8 @@ def verify_characters(
                             clip_context,
                             errors,
                         )
+        if character_id == IAN_RUN_CHARACTER_ID:
+            verify_ian_run_head_stability(loaded_actions.get("run", []), errors)
 
 
 def verify_inventory(
