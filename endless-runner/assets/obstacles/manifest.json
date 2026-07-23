@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedOn": "2026-07-21",
+  "generatedOn": "2026-07-23",
   "sourceAtlas": {
     "path": "endless-runner/assets/obstacles/source/endless-runner-obstacle-atlas.png",
     "grid": {
@@ -105,6 +105,24 @@
       ],
       "anchor": "ground",
       "sha256": "788b3a4b3ab70f6e84b8ee759bc7369f71bb0192c791109d7837ff7cac33c453"
+    },
+    {
+      "id": "hanging-vine-snake",
+      "path": "endless-runner/assets/obstacles/hanging-vine-snake.png",
+      "source": "endless-runner/assets/obstacles/source/hanging-vine-snake-source.png",
+      "sourceSha256": "f8c2b16920ebaaceecace0de32b9f87f90fed1990b275000ace7a631f8d4c195",
+      "size": [
+        256,
+        256
+      ],
+      "visibleBounds": [
+        72,
+        0,
+        183,
+        248
+      ],
+      "anchor": "top",
+      "sha256": "5c2b7cdee63505095bcf642daf5bffe1845963072082f6f229bff1a3860faea4"
     }
   ]
 }

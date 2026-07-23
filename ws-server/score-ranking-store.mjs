@@ -19,11 +19,16 @@ function normalizeEntry(value) {
 
   if (!name || !Number.isSafeInteger(score) || score < 0) return null;
 
-  return {
+  const entry = {
     name,
     score,
     at: Number.isSafeInteger(at) && at > 0 ? at : Date.now(),
   };
+  const distance = Number(value.distance);
+  const coins = Number(value.coins);
+  if (Number.isSafeInteger(distance) && distance >= 0) entry.distance = distance;
+  if (Number.isSafeInteger(coins) && coins >= 0) entry.coins = coins;
+  return entry;
 }
 
 function collapseBestScores(entries) {
@@ -31,7 +36,21 @@ function collapseBestScores(entries) {
 
   for (const entry of entries) {
     const current = bestByName.get(entry.name);
-    if (!current || entry.score > current.score || (entry.score === current.score && entry.at < current.at)) {
+    const entryDetailCount = Number(entry.distance !== undefined) + Number(entry.coins !== undefined);
+    const currentDetailCount = current
+      ? Number(current.distance !== undefined) + Number(current.coins !== undefined)
+      : -1;
+    if (
+      !current
+      || entry.score > current.score
+      || (
+        entry.score === current.score
+        && (
+          entryDetailCount > currentDetailCount
+          || (entryDetailCount === currentDetailCount && entry.at < current.at)
+        )
+      )
+    ) {
       bestByName.set(entry.name, entry);
     }
   }

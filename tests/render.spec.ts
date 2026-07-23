@@ -2213,6 +2213,7 @@ interface RunnerState {
   jumpsUsed: number;
   groundRatio: number;
   obstacleCatalog: string[];
+  terrainBiomes: string[];
 }
 
 async function readRunnerState(page: Page): Promise<RunnerState> {
@@ -2255,7 +2256,8 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       speed: Number(canvas.dataset.speed ?? 0),
       jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0),
       groundRatio: Number(canvas.dataset.groundRatio ?? 0),
-      obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean)
+      obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean),
+      terrainBiomes: (canvas.dataset.terrainBiomes ?? '').split('|').filter(Boolean)
     };
   });
 }
@@ -2360,8 +2362,10 @@ test('endless runner: selects one of two character animation sets and reflects e
     'floating-grass-platform',
     'honeybee',
     'bluebird',
-    'mossy-rock'
+    'mossy-rock',
+    'hanging-vine-snake'
   ]);
+  expect(initialScene.terrainBiomes).toEqual(['meadow', 'wildflowers', 'rocky']);
   const playerImageSource = await player.evaluate((element) => {
     const image = element as HTMLImageElement;
     return image.currentSrc || image.src;
@@ -2804,6 +2808,45 @@ test('endless runner: fixed obstacles share terrain speed while only creatures a
   expect(actualTravel).toBeLessThan(terrainTravel + 12);
 });
 
+test('endless runner: a hanging vine snake is a fixed slide-only obstacle', async ({ page }) => {
+  test.setTimeout(15_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    // 1라운드 high 스폰 범위이면서 뱀 선택 범위인 값을 고정한다.
+    Math.random = () => 0.7;
+  });
+  await page.goto('/2an2el-runner/');
+  const canvas = page.locator('#er-canvas');
+  await page.locator('#start-btn').click();
+
+  let snakeSample: RunnerObstacle | null = null;
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    const snake = state.obstacles.find((obstacle) => (
+      obstacle.visual === 'hanging-vine-snake'
+      && obstacle.x - state.playerX >= 85
+      && obstacle.x - state.playerX <= 120
+    ));
+    if (!snake) return false;
+    snakeSample = snake;
+    return true;
+  }, { timeout: 10_000, intervals: [20] }).toBe(true);
+  if (!snakeSample) throw new Error('hanging vine snake did not spawn');
+  expect(snakeSample.approachSpeed).toBe(0);
+
+  await page.keyboard.down('ArrowDown');
+  await expect(canvas).toHaveAttribute('data-state', 'sliding');
+  await expect.poll(async () => {
+    const state = await readRunnerState(page);
+    const snake = state.obstacles.find((obstacle) => obstacle.visual === 'hanging-vine-snake');
+    return Boolean(snake && snake.x + snake.width < state.playerX - 10);
+  }, { timeout: 3_000, intervals: [16] }).toBe(true);
+  await page.keyboard.up('ArrowDown');
+
+  await expect(canvas).toHaveAttribute('data-phase', 'playing');
+  await expect(canvas).toHaveAttribute('data-state', 'running', { timeout: 1_000 });
+});
+
 test('endless runner: mobile resize keeps an appearing coin anchored to the ground', async ({ page }) => {
   test.setTimeout(15_000);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2855,6 +2898,28 @@ test('endless runner: mobile resize keeps an appearing coin anchored to the grou
 });
 
 test('endless runner: colliding with an obstacle ends the game and saves a ranking entry', async ({ page }) => {
+  let submittedEntries: Array<{
+    name: string;
+    score: number;
+    at: number;
+    distance?: number;
+    coins?: number;
+  }> = [];
+  await page.route('**/ranking/score/endless-runner', async (route) => {
+    if (route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON() as { entries?: typeof submittedEntries };
+      submittedEntries = payload.entries ?? [];
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        accepted: submittedEntries.length,
+        changed: true,
+        entries: submittedEntries,
+      }),
+    });
+  });
   await page.goto('/2an2el-runner/');
   await page.evaluate(() => localStorage.removeItem('rhh_endless-runner_ranking'));
   await page.reload();
@@ -2863,8 +2928,20 @@ test('endless runner: colliding with an obstacle ends the game and saves a ranki
   // 착지형 공중 발판을 제외한 낮은 장애물/비행 생물/구덩이 중 하나에는 반드시 걸린다.
   await expect(page.locator('#er-canvas')).toHaveAttribute('data-phase', 'ended', { timeout: 20_000 });
   await expect(page.locator('#result-overlay')).toBeVisible();
+  const resultState = await readRunnerState(page);
+  const expectedDistance = resultState.score - resultState.coins * 10;
 
   await verifyRankingSaveAndView(page, '/2an2el-runner/');
+  expect(submittedEntries).toHaveLength(1);
+  expect(submittedEntries[0]).toMatchObject({
+    score: resultState.score,
+    distance: expectedDistance,
+    coins: resultState.coins,
+  });
+  const runnerRanking = page.locator('.runner-ranking-row').filter({ hasText: '테스터' });
+  await expect(runnerRanking.locator('.ranking-score')).toHaveText(`점수 ${resultState.score}`);
+  await expect(runnerRanking.locator('.ranking-details')).toContainText(`거리 ${expectedDistance}m`);
+  await expect(runnerRanking.locator('.ranking-details')).toContainText(`코인 ${resultState.coins}개`);
 });
 
 test('endless runner: a second tap while airborne performs a double jump and ignores a third jump', async ({ page }) => {

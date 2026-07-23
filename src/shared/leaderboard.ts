@@ -9,7 +9,11 @@ export interface RankingEntry {
   name: string;
   score: number;
   at: number;
+  distance?: number;
+  coins?: number;
 }
+
+export type RankingEntryDetails = Pick<RankingEntry, 'distance' | 'coins'>;
 
 function rankingKey(gameSlug: string): string {
   return `rhh_${gameSlug}_ranking`;
@@ -52,13 +56,32 @@ function collapseBestScores(values: unknown[], limit: number): RankingEntry[] {
     const at = Number(candidate.at);
     if (!name || !Number.isSafeInteger(score) || score < 0) continue;
 
-    const entry = {
+    const entry: RankingEntry = {
       name,
       score,
       at: Number.isSafeInteger(at) && at > 0 ? at : 0,
     };
+    const distance = Number(candidate.distance);
+    const coins = Number(candidate.coins);
+    if (Number.isSafeInteger(distance) && distance >= 0) entry.distance = distance;
+    if (Number.isSafeInteger(coins) && coins >= 0) entry.coins = coins;
+
     const current = bestByName.get(name);
-    if (!current || entry.score > current.score || (entry.score === current.score && entry.at < current.at)) {
+    const entryDetailCount = Number(entry.distance !== undefined) + Number(entry.coins !== undefined);
+    const currentDetailCount = current
+      ? Number(current.distance !== undefined) + Number(current.coins !== undefined)
+      : -1;
+    if (
+      !current
+      || entry.score > current.score
+      || (
+        entry.score === current.score
+        && (
+          entryDetailCount > currentDetailCount
+          || (entryDetailCount === currentDetailCount && entry.at < current.at)
+        )
+      )
+    ) {
       bestByName.set(name, entry);
     }
   }
@@ -89,13 +112,18 @@ export function loadRanking(gameSlug: string): RankingEntry[] {
 }
 
 /** 닉네임을 기록하고 게임별 랭킹에 점수를 추가한다. 닉네임별 최고점 하나, 상위 20명만 유지. */
-export function addRankingEntry(gameSlug: string, name: string, score: number): RankingEntry[] {
+export function addRankingEntry(
+  gameSlug: string,
+  name: string,
+  score: number,
+  details: RankingEntryDetails = {},
+): RankingEntry[] {
   const trimmed = name.trim().slice(0, MAX_NAME_LENGTH) || '익명';
   localStorage.setItem(NICKNAME_KEY, trimmed);
 
   const trimmedList = collapseBestScores([
     ...loadRanking(gameSlug),
-    { name: trimmed, score, at: Date.now() },
+    { name: trimmed, score, at: Date.now(), ...details },
   ], MAX_ENTRIES);
   localStorage.setItem(rankingKey(gameSlug), JSON.stringify(trimmedList));
   return trimmedList;
@@ -148,18 +176,27 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function renderRankingList(container: HTMLElement, entries: RankingEntry[]) {
+function renderRankingList(container: HTMLElement, entries: RankingEntry[], gameSlug: string) {
   if (entries.length === 0) {
     container.innerHTML = '<li class="ranking-empty">아직 기록이 없어요</li>';
     return;
   }
+  const showsRunnerDetails = gameSlug === 'endless-runner';
   container.innerHTML = entries
     .map(
       (e, i) => `
-    <li class="ranking-row">
+    <li class="ranking-row${showsRunnerDetails ? ' runner-ranking-row' : ''}">
       <span class="ranking-rank">${i + 1}</span>
       <span class="ranking-name">${escapeHtml(e.name)}</span>
-      <span class="ranking-score">${e.score}</span>
+      <span class="ranking-record">
+        <span class="ranking-score">${showsRunnerDetails ? `점수 ${e.score}` : e.score}</span>
+        ${showsRunnerDetails ? `
+          <span class="ranking-details">
+            <span>거리 ${e.distance === undefined ? '-' : `${e.distance}m`}</span>
+            <span>코인 ${e.coins === undefined ? '-' : `${e.coins}개`}</span>
+          </span>
+        ` : ''}
+      </span>
     </li>`
     )
     .join('');
@@ -175,9 +212,14 @@ function drawRoundedRect(c: CanvasRenderingContext2D, x: number, y: number, w: n
   c.closePath();
 }
 
-function buildRankingImageCanvas(gameTitle: string, entries: RankingEntry[]): HTMLCanvasElement {
+function buildRankingImageCanvas(
+  gameTitle: string,
+  entries: RankingEntry[],
+  gameSlug: string,
+): HTMLCanvasElement {
   const width = 640;
-  const rowHeight = 44;
+  const showsRunnerDetails = gameSlug === 'endless-runner';
+  const rowHeight = showsRunnerDetails ? 58 : 44;
   const headerHeight = 96;
   const footerHeight = 44;
   const rowsHeight = (entries.length === 0 ? 1 : entries.length) * rowHeight;
@@ -227,7 +269,18 @@ function buildRankingImageCanvas(gameTitle: string, entries: RankingEntry[]): HT
       c.textAlign = 'right';
       c.font = '900 17px Inter, sans-serif';
       c.fillStyle = isFirst ? '#ffe08a' : '#eaf6ff';
-      c.fillText(String(entry.score), width - 40, y + rowHeight / 2 + 6);
+      c.fillText(
+        showsRunnerDetails ? `점수 ${entry.score}` : String(entry.score),
+        width - 40,
+        y + rowHeight / 2 + (showsRunnerDetails ? 0 : 6),
+      );
+      if (showsRunnerDetails) {
+        c.font = '700 12px Inter, sans-serif';
+        c.fillStyle = isFirst ? 'rgba(255,232,170,0.82)' : 'rgba(232,244,255,0.66)';
+        const distanceText = entry.distance === undefined ? '거리 -' : `거리 ${entry.distance}m`;
+        const coinsText = entry.coins === undefined ? '코인 -' : `코인 ${entry.coins}개`;
+        c.fillText(`${distanceText}  ·  ${coinsText}`, width - 40, y + rowHeight / 2 + 18);
+      }
     });
   }
 
@@ -239,14 +292,19 @@ function buildRankingImageCanvas(gameTitle: string, entries: RankingEntry[]): HT
   return canvas;
 }
 
-function rankingImageBlob(gameTitle: string, entries: RankingEntry[]): Promise<Blob | null> {
+function rankingImageBlob(
+  gameTitle: string,
+  entries: RankingEntry[],
+  gameSlug: string,
+): Promise<Blob | null> {
   return new Promise((resolve) => {
-    buildRankingImageCanvas(gameTitle, entries).toBlob((blob) => resolve(blob), 'image/png');
+    buildRankingImageCanvas(gameTitle, entries, gameSlug)
+      .toBlob((blob) => resolve(blob), 'image/png');
   });
 }
 
-async function downloadRankingImage(gameTitle: string, entries: RankingEntry[]) {
-  const blob = await rankingImageBlob(gameTitle, entries);
+async function downloadRankingImage(gameTitle: string, entries: RankingEntry[], gameSlug: string) {
+  const blob = await rankingImageBlob(gameTitle, entries, gameSlug);
   if (!blob) return;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -264,8 +322,8 @@ type ShareNav = Navigator & {
   canShare?: (data: ShareData) => boolean;
 };
 
-async function shareRankingImage(gameTitle: string, entries: RankingEntry[]) {
-  const blob = await rankingImageBlob(gameTitle, entries);
+async function shareRankingImage(gameTitle: string, entries: RankingEntry[], gameSlug: string) {
+  const blob = await rankingImageBlob(gameTitle, entries, gameSlug);
   if (!blob) return;
   const file = new File([blob], 'ranking.png', { type: 'image/png' });
   const nav = navigator as ShareNav;
@@ -295,7 +353,11 @@ export interface RankingUIRefs {
  * 결과 화면의 닉네임 저장 폼 + 랭킹 보기 오버레이(목록 + 이미지 저장/공유) 동작을
  * 한 번에 연결한다.
  */
-export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
+export function setupRankingUI(
+  refs: RankingUIRefs,
+  getScore: () => number,
+  getDetails?: () => RankingEntryDetails,
+) {
   refs.nameInput.value = loadLastNickname();
   let displayedEntries = loadRanking(refs.gameSlug);
 
@@ -317,7 +379,12 @@ export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
   }
 
   refs.saveBtn.addEventListener('click', () => {
-    const entries = addRankingEntry(refs.gameSlug, refs.nameInput.value, getScore());
+    const entries = addRankingEntry(
+      refs.gameSlug,
+      refs.nameInput.value,
+      getScore(),
+      getDetails?.() ?? {},
+    );
     displayedEntries = entries;
     void queueRankingSync(refs.gameSlug, entries);
     refs.savedMsg.classList.remove('hidden');
@@ -326,7 +393,7 @@ export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
 
   refs.viewRankingBtn.addEventListener('click', () => {
     displayedEntries = loadRanking(refs.gameSlug);
-    renderRankingList(refs.rankingList, displayedEntries);
+    renderRankingList(refs.rankingList, displayedEntries, refs.gameSlug);
     rankingScope.textContent = '전체 사용자 기록을 불러오는 중…';
     refs.rankingOverlay.classList.remove('hidden');
 
@@ -335,7 +402,7 @@ export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
     void loadGlobalRanking(refs.gameSlug)
       .then((entries) => {
         displayedEntries = entries;
-        renderRankingList(refs.rankingList, displayedEntries);
+        renderRankingList(refs.rankingList, displayedEntries, refs.gameSlug);
         rankingScope.textContent = '모든 기기에서 등록한 최고 점수';
       })
       .catch(() => {
@@ -352,10 +419,10 @@ export function setupRankingUI(refs: RankingUIRefs, getScore: () => number) {
   if (!shareSupported) refs.rankingShareImageBtn.classList.add('hidden');
 
   refs.rankingSaveImageBtn.addEventListener('click', () => {
-    void downloadRankingImage(refs.gameTitle, displayedEntries);
+    void downloadRankingImage(refs.gameTitle, displayedEntries, refs.gameSlug);
   });
   refs.rankingShareImageBtn.addEventListener('click', () => {
-    void shareRankingImage(refs.gameTitle, displayedEntries);
+    void shareRankingImage(refs.gameTitle, displayedEntries, refs.gameSlug);
   });
 
   // 업데이트 전 이 기기에 저장돼 있던 기록도 첫 방문 때 전체 랭킹으로 합친다.

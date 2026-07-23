@@ -286,6 +286,31 @@ button { border: 0; cursor: pointer; font: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
+.ranking-record {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ranking-details {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--color-page-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.runner-ranking-row {
+  grid-template-columns: 24px minmax(58px, 1fr) auto;
+  gap: 7px;
+  padding-inline: 8px;
+}
+
 .ranking-empty {
   padding: 20px 0;
   font-size: 0.84rem;

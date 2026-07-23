@@ -19,6 +19,7 @@ EXPECTED_IDS = (
     "honeybee",
     "bluebird",
     "mossy-rock",
+    "hanging-vine-snake",
 )
 
 
@@ -87,6 +88,13 @@ def main() -> int:
             errors.append(f"{asset_id}: manifest size must be 256x256")
         if entry.get("sha256") != sha256(path):
             errors.append(f"{asset_id}: sha256 does not match manifest")
+        source_value = entry.get("source")
+        if source_value:
+            source_path = REPO_ROOT / str(source_value)
+            if not source_path.is_file():
+                errors.append(f"{asset_id}: standalone source is missing")
+            elif entry.get("sourceSha256") != sha256(source_path):
+                errors.append(f"{asset_id}: source sha256 does not match manifest")
 
     if errors:
         print("FAIL endless-runner obstacle assets")
@@ -94,7 +102,7 @@ def main() -> int:
             print(f"- {message}")
         return 1
 
-    print("PASS endless-runner obstacle assets: 1 atlas, 6 transparent 256x256 sprites")
+    print("PASS endless-runner obstacle assets: 1 atlas, 7 transparent 256x256 sprites")
     return 0
 
 

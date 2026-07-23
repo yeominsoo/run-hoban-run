@@ -4,7 +4,8 @@ export type ObstacleVisual =
   | 'floating-grass-platform'
   | 'honeybee'
   | 'bluebird'
-  | 'mossy-rock';
+  | 'mossy-rock'
+  | 'hanging-vine-snake';
 
 const importedAssets = import.meta.glob(
   '../../../endless-runner/assets/obstacles/*.png',
@@ -24,5 +25,6 @@ export const OBSTACLE_ASSET_URLS: Record<ObstacleVisual, string> = {
   'floating-grass-platform': assetUrl('floating-grass-platform'),
   honeybee: assetUrl('honeybee'),
   bluebird: assetUrl('bluebird'),
-  'mossy-rock': assetUrl('mossy-rock')
+  'mossy-rock': assetUrl('mossy-rock'),
+  'hanging-vine-snake': assetUrl('hanging-vine-snake')
 };

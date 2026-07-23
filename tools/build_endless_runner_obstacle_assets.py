@@ -23,6 +23,7 @@ GENERATED_ATLAS = Path(
 )
 ASSET_ROOT = Path("endless-runner/assets/obstacles")
 ARCHIVED_ATLAS = ASSET_ROOT / "source/endless-runner-obstacle-atlas.png"
+HANGING_SNAKE_SOURCE = ASSET_ROOT / "source/hanging-vine-snake-source.png"
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,13 @@ class SpriteSpec:
     anchor: str
 
 
+@dataclass(frozen=True)
+class StandaloneSpriteSpec:
+    name: str
+    source: Path
+    anchor: str
+
+
 SPRITES = (
     SpriteSpec("stump", 0, 0, "ground"),
     SpriteSpec("thorn-patch", 0, 1, "ground"),
@@ -40,6 +48,10 @@ SPRITES = (
     SpriteSpec("honeybee", 1, 1, "center"),
     SpriteSpec("bluebird", 2, 0, "center"),
     SpriteSpec("mossy-rock", 2, 1, "ground"),
+)
+
+STANDALONE_SPRITES = (
+    StandaloneSpriteSpec("hanging-vine-snake", HANGING_SNAKE_SOURCE, "top"),
 )
 
 
@@ -85,8 +97,8 @@ def visible_bounds(image: Image.Image) -> tuple[int, int, int, int]:
 
 def normalize_sprite(cell: Image.Image, anchor: str) -> Image.Image:
     subject = cell.crop(visible_bounds(cell))
-    max_width = 232
-    max_height = 220 if anchor == "ground" else 216
+    max_width = 232 if anchor != "top" else 220
+    max_height = 220 if anchor == "ground" else 216 if anchor == "center" else 248
     scale = min(max_width / subject.width, max_height / subject.height)
     size = (
         max(1, round(subject.width * scale)),
@@ -95,7 +107,12 @@ def normalize_sprite(cell: Image.Image, anchor: str) -> Image.Image:
     subject = subject.resize(size, Image.Resampling.LANCZOS)
     canvas = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
     x = round((CANVAS_SIZE[0] - subject.width) / 2)
-    y = 236 - subject.height if anchor == "ground" else round((CANVAS_SIZE[1] - subject.height) / 2)
+    if anchor == "ground":
+        y = 236 - subject.height
+    elif anchor == "top":
+        y = 0
+    else:
+        y = round((CANVAS_SIZE[1] - subject.height) / 2)
     canvas.alpha_composite(subject, (x, y))
     return canvas
 
@@ -156,9 +173,33 @@ def build(repo_root: Path) -> None:
                 }
             )
 
+        for spec in STANDALONE_SPRITES:
+            source_path = repo_root / spec.source
+            if not source_path.is_file():
+                raise FileNotFoundError(f"Missing standalone obstacle source: {source_path}")
+            transparent_source = Path(temporary_directory) / f"{spec.name}-transparent.png"
+            remove_chroma_key(source_path, transparent_source)
+            with Image.open(transparent_source) as opened:
+                sprite = normalize_sprite(opened.convert("RGBA"), spec.anchor)
+            destination = asset_root / f"{spec.name}.png"
+            sprite.save(destination, format="PNG", optimize=True)
+            bounds = visible_bounds(sprite)
+            manifest_assets.append(
+                {
+                    "id": spec.name,
+                    "path": (ASSET_ROOT / destination.name).as_posix(),
+                    "source": spec.source.as_posix(),
+                    "sourceSha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+                    "size": list(CANVAS_SIZE),
+                    "visibleBounds": list(bounds),
+                    "anchor": spec.anchor,
+                    "sha256": hashlib.sha256(destination.read_bytes()).hexdigest(),
+                }
+            )
+
         manifest = {
             "version": 1,
-            "generatedOn": "2026-07-21",
+            "generatedOn": "2026-07-23",
             "sourceAtlas": {
                 "path": ARCHIVED_ATLAS.as_posix(),
                 "grid": {"columns": ATLAS_COLUMNS, "rows": ATLAS_ROWS},
@@ -176,7 +217,10 @@ def build(repo_root: Path) -> None:
         for path in (asset_root, *asset_root.rglob("*")):
             os.chown(path, project_stat.st_uid, project_stat.st_gid)
 
-    print(f"Built {len(SPRITES)} Endless Runner obstacle sprites at {asset_root}")
+    print(
+        f"Built {len(SPRITES) + len(STANDALONE_SPRITES)} "
+        f"Endless Runner obstacle sprites at {asset_root}"
+    )
 
 
 def main() -> int:

@@ -508,6 +508,9 @@ nginx의 기존 `/ranking` prefix 프록시를 그대로 사용하므로 별도 
 - `DATA_DIR/score-ranking-<game>.json`에 즉시 영속화하며 기존 RPS/멀티게임 랭킹 파일과 분리
 - 프론트엔드는 `VITE_SCORE_RANKING_URL`이 있으면 그 값을 사용하고, 없으면
   `VITE_RPS_WS_URL`의 호스트와 `/ranking/score` 경로를 자동 사용
+- 안엘런(`endless-runner`) 기록은 선택 필드 `distance`(m), `coins`(개)를 함께 저장해 랭킹에
+  `점수·거리·코인`을 표시한다. 업데이트 전 기록처럼 상세 필드가 없는 JSON도 그대로 읽으며,
+  같은 닉네임·같은 점수라면 상세 필드가 있는 기록을 우선해 점진적으로 보강한다.
 
 ## WAS(58.228.188.17) 배포 상태 — 완료, `docker run` 두 개로 운영
 

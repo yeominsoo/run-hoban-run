@@ -43,6 +43,7 @@ const COIN_INTERVAL_STEP_S = 0.07;
 const COIN_INTERVAL_FLOOR_S = 0.9;
 const COIN_HAZARD_CLEARANCE = 180;
 const MAX_CREATURE_APPROACH_SPEED = 102;
+const TERRAIN_BIOME_SPAN = 560;
 const PIT_MIN_WIDTH = 70;
 const PIT_MAX_WIDTH = 110;
 const FALL_ANIMATION_MS = 1100;
@@ -52,6 +53,9 @@ type Phase = 'idle' | 'playing' | 'falling' | 'ended';
 type PlayerState = 'running' | 'jumping' | 'landing' | 'sliding' | 'falling';
 type ObstacleType = 'low' | 'high' | 'pit';
 type CoinSafeAction = 'run' | 'jump' | 'slide';
+type TerrainBiome = 'meadow' | 'wildflowers' | 'rocky';
+
+const TERRAIN_BIOMES: TerrainBiome[] = ['meadow', 'wildflowers', 'rocky'];
 
 interface Obstacle {
   type: ObstacleType;
@@ -129,7 +133,7 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>안엘런</h2>
-          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>잔디 절벽·가시·공중 지형과 날아오는 생물이 라운드마다 추가됩니다. 코인은 장애물과 떨어진 안전한 길에 등장합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>초원·꽃밭·바위 지형과 공중 발판이 이어지고, 줄을 타고 내려온 뱀은 슬라이드로 피합니다. 코인은 장애물과 떨어진 안전한 길에 등장합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -284,7 +288,11 @@ setupRankingUI(
     rankingSaveImageBtn,
     rankingShareImageBtn
   },
-  () => score
+  () => score,
+  () => ({
+    distance: Math.floor(distancePx / PX_PER_METER),
+    coins: coinsCollected,
+  }),
 );
 void prepareSelectedCharacterVisuals();
 
@@ -663,6 +671,9 @@ function obstacleGeometry(o: Obstacle): { top: number; height: number } {
       const bob = Math.sin(elapsedS * 4.4 + o.phase) * 3;
       return { top: groundY - 64 + bob, height: 30 };
     }
+    if (o.visual === 'hanging-vine-snake') {
+      return { top: groundY - 66, height: 32 };
+    }
     const bottom = groundY - highObstacleClearance() - 2;
     const height = 56;
     return { top: bottom - height, height };
@@ -678,8 +689,11 @@ function lowVisualForTier(tier: number): ObstacleVisual {
 }
 
 function highVisualForTier(tier: number): ObstacleVisual {
-  if (tier < 2 || Math.random() < 0.55) return 'floating-grass-platform';
-  if (tier >= 3 && Math.random() > 0.55) return 'bluebird';
+  const roll = Math.random();
+  if (tier < 2) return roll > 0.72 ? 'floating-grass-platform' : 'hanging-vine-snake';
+  if (roll < 0.42) return 'floating-grass-platform';
+  if (roll < 0.66) return 'hanging-vine-snake';
+  if (tier >= 3 && roll > 0.82) return 'bluebird';
   return 'honeybee';
 }
 
@@ -722,7 +736,13 @@ function spawnObstacle(): boolean {
     });
   } else if (roll < lowChance + highChance) {
     const visual = highVisualForTier(tier);
-    const baseWidth = visual === 'floating-grass-platform' ? 96 : visual === 'bluebird' ? 42 : 38;
+    const baseWidth = visual === 'floating-grass-platform'
+      ? 96
+      : visual === 'hanging-vine-snake'
+        ? 48
+        : visual === 'bluebird'
+          ? 42
+          : 38;
     const platform: Obstacle = {
       type: 'high',
       visual,
@@ -902,6 +922,7 @@ function updateTestAttrs() {
   canvas.dataset.speed = String(Math.round(speed));
   canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
   canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
+  canvas.dataset.terrainBiomes = TERRAIN_BIOMES.join('|');
   canvas.dataset.standingPlatform = standingPlatform?.visual ?? 'none';
   const terrainTexture = preloadedVisuals.get(TERRAIN_ASSET_URLS.meadowGround);
   canvas.dataset.terrainTextureReady = String(
@@ -1215,6 +1236,12 @@ function pointIsOnGround(x: number, pits: Obstacle[]): boolean {
   return !pits.some((pit) => x >= pit.x && x <= pit.x + pit.width);
 }
 
+function terrainBiomeAt(x: number): TerrainBiome {
+  const worldX = Math.max(0, distancePx + x);
+  const index = Math.floor(worldX / TERRAIN_BIOME_SPAN) % TERRAIN_BIOMES.length;
+  return TERRAIN_BIOMES[index];
+}
+
 function drawGroundTextureSegment(
   start: number,
   end: number,
@@ -1269,6 +1296,18 @@ function drawGround() {
     drawGroundTextureSegment(cursor, stageWidth, terrainTexture, soil);
   }
 
+  // 모든 지형 장식은 distancePx에 고정된 월드 좌표로 계산한다. 초원·야생화·바위 구간이
+  // 화면 안에서 자연스럽게 이어지면서도 지면과 다른 속도로 미끄러지지 않는다.
+  for (let x = 0; x < stageWidth; x += 12) {
+    if (!pointIsOnGround(x + 6, pits)) continue;
+    const biome = terrainBiomeAt(x + 6);
+    if (biome === 'meadow') continue;
+    ctx.fillStyle = biome === 'wildflowers'
+      ? 'rgba(240,190,92,0.075)'
+      : 'rgba(91,103,121,0.13)';
+    ctx.fillRect(x, groundY - 10, 13, stageHeight - groundY + 10);
+  }
+
   if (!terrainReady) {
     ctx.fillStyle = 'rgba(255,209,135,0.12)';
     for (let bandY = groundY + 34; bandY < stageHeight; bandY += 42) {
@@ -1290,35 +1329,58 @@ function drawGround() {
   const grassOffset = distancePx % 18;
   for (let x = -grassOffset; x < stageWidth + 18; x += 18) {
     if (!pointIsOnGround(x, pits)) continue;
-    ctx.fillStyle = Math.floor((x + distancePx) / 18) % 2 === 0 ? '#8ddb58' : '#74cb4e';
+    const biome = terrainBiomeAt(x);
+    const grassHeight = biome === 'rocky' ? 7 : biome === 'wildflowers' ? 13 : 10;
+    const grassColors = biome === 'rocky'
+      ? ['#7f9f55', '#698b49']
+      : biome === 'wildflowers'
+        ? ['#96dc55', '#7fca49']
+        : ['#8ddb58', '#74cb4e'];
+    ctx.fillStyle = grassColors[Math.abs(Math.floor((x + distancePx) / 18)) % 2];
     ctx.beginPath();
     ctx.moveTo(x - 7, groundY - 5);
-    ctx.quadraticCurveTo(x - 2, groundY - 13, x, groundY - 5);
-    ctx.quadraticCurveTo(x + 5, groundY - 15, x + 8, groundY - 5);
+    ctx.quadraticCurveTo(x - 2, groundY - 5 - grassHeight, x, groundY - 5);
+    ctx.quadraticCurveTo(x + 5, groundY - 7 - grassHeight, x + 8, groundY - 5);
     ctx.closePath();
     ctx.fill();
   }
 
-  const flowerOffset = distancePx % 190;
-  for (let x = 70 - flowerOffset; x < stageWidth + 190; x += 190) {
+  const flowerOffset = distancePx % 96;
+  for (let x = 48 - flowerOffset; x < stageWidth + 96; x += 96) {
     if (!pointIsOnGround(x, pits)) continue;
+    const biome = terrainBiomeAt(x);
+    if (biome === 'rocky') continue;
+    if (biome === 'meadow' && Math.abs(Math.floor((x + distancePx) / 96)) % 2 === 1) continue;
     ctx.strokeStyle = '#4eaa55';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, groundY - 5);
     ctx.lineTo(x, groundY - 18);
     ctx.stroke();
-    ctx.fillStyle = '#fff2a6';
+    ctx.fillStyle = biome === 'wildflowers' ? '#f9b7d4' : '#fff2a6';
     for (let petal = 0; petal < 5; petal += 1) {
       const angle = petal * Math.PI * 0.4;
       ctx.beginPath();
       ctx.arc(x + Math.cos(angle) * 4, groundY - 20 + Math.sin(angle) * 4, 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = '#f49a5a';
+    ctx.fillStyle = biome === 'wildflowers' ? '#8b67c9' : '#f49a5a';
     ctx.beginPath();
     ctx.arc(x, groundY - 20, 2.2, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  const rockOffset = distancePx % 62;
+  for (let x = 31 - rockOffset; x < stageWidth + 62; x += 62) {
+    if (!pointIsOnGround(x, pits) || terrainBiomeAt(x) !== 'rocky') continue;
+    const size = 5 + Math.abs(Math.floor((x + distancePx) / 62)) % 3;
+    ctx.fillStyle = '#7b796d';
+    ctx.beginPath();
+    ctx.ellipse(x, groundY - 7, size, size * 0.55, -0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   for (const pit of pits) {
@@ -1414,6 +1476,30 @@ function drawHighObstacle(o: Obstacle, top: number, height: number) {
   const centerY = top + height / 2;
   if (o.visual === 'floating-grass-platform') {
     if (drawObstacleSprite(o.visual, centerX, centerY, o.width + 32, 112)) return;
+  } else if (o.visual === 'hanging-vine-snake') {
+    const sway = Math.sin(elapsedS * 2.4 + o.phase) * 3;
+    const snakeCenterX = centerX + sway;
+    const snakeHeight = 154;
+    const snakeBottom = groundY - 28;
+    const snakeCenterY = snakeBottom - snakeHeight / 2;
+
+    ctx.save();
+    ctx.strokeStyle = '#a86f32';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(centerX, -8);
+    ctx.quadraticCurveTo(centerX - sway, snakeCenterY - snakeHeight / 2 - 18, snakeCenterX, snakeCenterY - snakeHeight / 2 + 3);
+    ctx.stroke();
+    const drawn = drawObstacleSprite(
+      o.visual,
+      snakeCenterX,
+      snakeCenterY,
+      96,
+      snakeHeight,
+    );
+    ctx.restore();
+    if (drawn) return;
   } else {
     const spriteSize = o.visual === 'bluebird' ? 58 : 62;
     drawApproachTrails(o, centerX, centerY, spriteSize);
