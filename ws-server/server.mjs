@@ -89,7 +89,7 @@ const scoreRankingService = createScoreRankingService([
   'snake',
   'typing-survival',
   '2048-hex',
-  '2an2el-runner',
+  'endless-runner',
   'idle-farm',
   'sum-ten-puzzle',
 ], { corsHeaders: CORS_HEADERS });

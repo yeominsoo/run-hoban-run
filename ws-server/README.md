@@ -503,7 +503,7 @@ nginx의 기존 `/ranking` prefix 프록시를 그대로 사용하므로 별도 
 - `GET /ranking/score/<game>` → `{"entries":[{"name":"...","score":1234,"at":...}]}`
 - `POST /ranking/score/<game>` + `{"entries":[...]}` → 현재 기기의 로컬 기록을 서버 랭킹에 병합
 - 지원 게임: `aim-trainer`, `color-slider`, `ball-dodge`, `tower-stack`, `snake`,
-  `typing-survival`, `2048-hex`, `2an2el-runner`, `idle-farm`, `sum-ten-puzzle`
+  `typing-survival`, `2048-hex`, `endless-runner`, `idle-farm`, `sum-ten-puzzle`
 - 닉네임별 최고 점수 1개만 유지하고 점수 내림차순으로 최대 50명까지 반환
 - `DATA_DIR/score-ranking-<game>.json`에 즉시 영속화하며 기존 RPS/멀티게임 랭킹 파일과 분리
 - 프론트엔드는 `VITE_SCORE_RANKING_URL`이 있으면 그 값을 사용하고, 없으면
@@ -556,7 +556,7 @@ $SSH 'docker rm -f rps-server 2>/dev/null; docker run -d --name rps-server --res
 
 # 4. 확인
 $SSH 'curl -s http://localhost:30081/healthz; curl -s http://localhost:30081/ranking; \
-  curl -s http://localhost:30081/ranking/score/2an2el-runner'
+  curl -s http://localhost:30081/ranking/score/endless-runner'
 curl -sk https://toris-arcade.duckdns.org:30080/healthz
 ```
 

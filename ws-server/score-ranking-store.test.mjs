@@ -7,7 +7,7 @@ import test from 'node:test';
 import { createScoreRankingService } from './score-ranking-store.mjs';
 
 async function startService(dataDir) {
-  const service = createScoreRankingService(['aim-trainer'], { dataDir });
+  const service = createScoreRankingService(['aim-trainer', 'endless-runner'], { dataDir });
   const server = createServer((req, res) => {
     const pathname = req.url?.split('?')[0] || '';
     if (!service.handle(req, res, pathname)) {
@@ -70,6 +70,9 @@ test('싱글게임 점수를 닉네임별 최고 기록으로 합쳐 전체 랭�
 
     const invalidGame = await fetch(`${running.baseUrl}/ranking/score/not-a-game`);
     assert.equal(invalidGame.status, 404);
+
+    const runnerRanking = await fetch(`${running.baseUrl}/ranking/score/endless-runner`);
+    assert.equal(runnerRanking.status, 200);
   } finally {
     if (running) await running.close().catch(() => {});
     await rm(dataDir, { recursive: true, force: true });
