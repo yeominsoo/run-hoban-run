@@ -10,7 +10,10 @@ import {
   guaranteedSpecialForRound,
   movingPlatformSpec,
   runnerRoundCatalog,
+  runnerRoundNumberForElapsed,
   runnerRoundProfile,
+  runnerSequenceGap,
+  selectRoundPattern,
   selectSpecialPattern
 } from '../src/pages/endless-runner/difficulty';
 
@@ -2232,6 +2235,9 @@ interface RunnerState {
   groundRatio: number;
   maxDifficultyTier: number;
   roundPattern: string;
+  roundChapter: string;
+  roundLabel: string;
+  roundHint: string;
   roundCatalog: string[];
   obstacleCatalog: string[];
   terrainBiomes: string[];
@@ -2301,6 +2307,9 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       groundRatio: Number(canvas.dataset.groundRatio ?? 0),
       maxDifficultyTier: Number(canvas.dataset.maxDifficultyTier ?? 0),
       roundPattern: canvas.dataset.roundPattern ?? '',
+      roundChapter: canvas.dataset.roundChapter ?? '',
+      roundLabel: canvas.dataset.roundLabel ?? '',
+      roundHint: canvas.dataset.roundHint ?? '',
       roundCatalog: (canvas.dataset.roundCatalog ?? '').split('|').filter(Boolean),
       obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean),
       terrainBiomes: (canvas.dataset.terrainBiomes ?? '').split('|').filter(Boolean)
@@ -2308,35 +2317,62 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
   });
 }
 
-test('endless runner: defines twelve difficulty tiers and cycles mastery patterns forever', () => {
-  expect(RUNNER_MAX_DIFFICULTY_TIER).toBe(12);
-  expect(RUNNER_ROUND_PROFILES).toHaveLength(12);
-  expect(RUNNER_ROUND_PROFILES.map((profile) => profile.id)).toEqual([
-    'basics',
-    'terrain-breaks',
-    'creature-rush',
-    'moving-platforms',
-    'air-lane',
-    'double-jump',
-    'moving-gauntlet',
-    'high-road',
-    'air-crossfire',
-    'double-jump-rush',
-    'precision-mix',
-    'marathon'
+test('endless runner: defines fifty detailed rounds and caps progression at the summit', () => {
+  expect(RUNNER_MAX_DIFFICULTY_TIER).toBe(50);
+  expect(RUNNER_ROUND_PROFILES).toHaveLength(50);
+  expect(RUNNER_ROUND_PROFILES.map((profile) => profile.tier)).toEqual(
+    Array.from({ length: 50 }, (_, index) => index + 1)
+  );
+  expect(new Set(RUNNER_ROUND_PROFILES.map((profile) => profile.id))).toHaveProperty('size', 50);
+  expect(new Set(RUNNER_ROUND_PROFILES.map((profile) => profile.label))).toHaveProperty('size', 50);
+  expect(RUNNER_ROUND_PROFILES.every((profile) => profile.hint.length >= 10)).toBe(true);
+  expect(RUNNER_ROUND_PROFILES.map((profile) => profile.chapter)).toEqual([
+    ...Array(10).fill('초원 학교'),
+    ...Array(10).fill('숲속 리듬'),
+    ...Array(10).fill('바위 협곡'),
+    ...Array(10).fill('폭풍 고원'),
+    ...Array(10).fill('별빛 정상')
   ]);
-  expect(runnerRoundCatalog().split('|')).toHaveLength(13);
-  expect(runnerRoundProfile(99).tier).toBe(12);
+  expect(runnerRoundCatalog().split('|')).toHaveLength(50);
+  expect(runnerRoundProfile(99).tier).toBe(50);
+  expect(runnerRoundNumberForElapsed(0)).toBe(1);
+  expect(runnerRoundNumberForElapsed(15 * 49)).toBe(50);
+  expect(runnerRoundNumberForElapsed(15 * 500)).toBe(50);
 
   expect(selectSpecialPattern(4, 0, 0.99)).toBe('moving-platform');
   expect(selectSpecialPattern(5, 0, 0.99)).toBe('jump-lane-creature');
   expect(selectSpecialPattern(6, 0, 0.99)).toBe('double-jump-stack');
-  expect([13, 14, 15, 16].map(guaranteedSpecialForRound)).toEqual([
+  expect([4, 5, 6, 10, 15, 50].map(guaranteedSpecialForRound)).toEqual([
     'moving-platform',
     'jump-lane-creature',
     'double-jump-stack',
-    'moving-platform'
+    null,
+    null,
+    null
   ]);
+  expect(selectRoundPattern(10, 0, 0.99)).toBe('mixed-relay');
+  expect(selectRoundPattern(15, 0, 0.99)).toBe('single-jump');
+  expect(selectRoundPattern(50, 0, 0.99)).toBe('mixed-relay');
+
+  for (const profile of RUNNER_ROUND_PROFILES) {
+    expect(profile.minGap).toBeGreaterThanOrEqual(300);
+    expect(profile.highChance + profile.pitChance).toBeLessThan(1);
+    expect(profile.patternChance).toBeLessThanOrEqual(0.6);
+    expect(profile.patternPool.length).toBeGreaterThan(0);
+  }
+  for (const recoveryRound of [15, 25, 35, 45]) {
+    const recovery = runnerRoundProfile(recoveryRound);
+    const previous = runnerRoundProfile(recoveryRound - 1);
+    expect(recovery.focus).toBe('recovery');
+    expect(recovery.minGap).toBeGreaterThan(previous.minGap);
+    expect(recovery.baseSpeed).toBeLessThan(previous.baseSpeed);
+  }
+  expect(runnerRoundProfile(50).baseSpeed).toBeGreaterThan(runnerRoundProfile(40).baseSpeed);
+  expect(runnerRoundProfile(50).baseSpeed).toBeGreaterThanOrEqual(500);
+  const summitSpeed = runnerRoundProfile(50).baseSpeed;
+  expect(runnerSequenceGap(50, 'jump') / summitSpeed).toBeGreaterThanOrEqual(0.93);
+  expect(runnerSequenceGap(50, 'slide') / summitSpeed).toBeGreaterThanOrEqual(0.57);
+  expect(runnerSequenceGap(50, 'platform') / summitSpeed).toBeGreaterThanOrEqual(0.89);
 
   const singleJumpApex = (760 ** 2) / (2 * 2200);
   const doubleJumpReach = singleJumpApex + (690 ** 2) / (2 * 2200);
@@ -2350,18 +2386,45 @@ test('endless runner: defines twelve difficulty tiers and cycles mastery pattern
   expect(singleJumpApex).toBeLessThan(creatureTopOffset);
 
   const movingRound4 = movingPlatformSpec(4);
-  const movingRound12 = movingPlatformSpec(12);
+  const movingRound50 = movingPlatformSpec(50);
   expect(movingRound4).toEqual({
     width: 122,
     motionAmplitude: 16,
     motionSpeed: 1.1,
     pitPadding: 6
   });
-  expect(movingRound12.width).toBeGreaterThan(movingRound4.width);
-  expect(movingRound12.motionAmplitude).toBeGreaterThan(movingRound4.motionAmplitude);
-  expect(movingRound12.motionSpeed).toBeGreaterThan(movingRound4.motionSpeed);
+  expect(movingRound50.width).toBeGreaterThan(movingRound4.width);
+  expect(movingRound50.motionAmplitude).toBeGreaterThan(movingRound4.motionAmplitude);
+  expect(movingRound50.motionSpeed).toBeGreaterThan(movingRound4.motionSpeed);
   expect(doubleJumpStackWidth(6)).toBe(70);
-  expect(doubleJumpStackWidth(99)).toBe(74);
+  expect(doubleJumpStackWidth(99)).toBe(76);
+});
+
+test('endless runner: mobile round guide introduces the current chapter without covering the HUD', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/2an2el-runner/');
+  await page.locator('#start-btn').click();
+
+  const hud = page.locator('#hud');
+  const banner = page.locator('#round-banner');
+  await expect(page.locator('#hud-round')).toHaveText('1/50');
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('초원 학교');
+  await expect(banner).toContainText('첫 발걸음');
+  await expect(banner).toContainText('낮은 장애물은 한 번 점프');
+
+  const hudBox = await hud.boundingBox();
+  const bannerBox = await banner.boundingBox();
+  expect(hudBox).not.toBeNull();
+  expect(bannerBox).not.toBeNull();
+  expect(bannerBox!.x).toBeGreaterThanOrEqual(10);
+  expect(bannerBox!.x + bannerBox!.width).toBeLessThanOrEqual(380);
+  expect(bannerBox!.y).toBeGreaterThanOrEqual(hudBox!.y + hudBox!.height + 4);
+
+  await page.screenshot({
+    path: 'test-results/endless-runner-mobile-round-banner.png',
+    fullPage: true
+  });
 });
 
 test('endless runner: selects one of two character animation sets and reflects every action state', async ({ page }) => {
@@ -2443,6 +2506,11 @@ test('endless runner: selects one of two character animation sets and reflects e
   await expect(canvas).toHaveAttribute('data-character', characterId);
   await page.locator('#start-btn').click();
   await expect(canvas).toHaveAttribute('data-phase', 'playing');
+  await expect(page.locator('#hud-round')).toHaveText('1/50');
+  await expect(page.locator('#round-banner')).toBeVisible();
+  await expect(page.locator('#round-banner-chapter')).toHaveText('초원 학교 · ROUND 1/50');
+  await expect(page.locator('#round-banner-title')).toHaveText('첫 발걸음');
+  await expect(page.locator('#round-banner-hint')).toHaveText('낮은 장애물은 한 번 점프');
   await expect(canvas).toHaveAttribute('data-scene-assets-ready', 'true');
   await expect(canvas).toHaveAttribute('data-terrain-texture-ready', 'true');
   await expect(canvas).toHaveAttribute('data-character', characterId);
@@ -2458,8 +2526,11 @@ test('endless runner: selects one of two character animation sets and reflects e
   expect(playerBounds?.height).toBeGreaterThanOrEqual(92);
   const initialScene = await readRunnerState(page);
   expect(initialScene.groundRatio).toBe(0.82);
-  expect(initialScene.maxDifficultyTier).toBe(12);
-  expect(initialScene.roundPattern).toBe('basics');
+  expect(initialScene.maxDifficultyTier).toBe(50);
+  expect(initialScene.roundPattern).toBe('first-steps');
+  expect(initialScene.roundChapter).toBe('초원 학교');
+  expect(initialScene.roundLabel).toBe('첫 발걸음');
+  expect(initialScene.roundHint).toBe('낮은 장애물은 한 번 점프');
   expect(initialScene.roundCatalog).toEqual(runnerRoundCatalog().split('|'));
   expect(initialScene.obstacleCatalog).toEqual([
     'stump',
@@ -2790,7 +2861,7 @@ test('endless runner: every floating grass platform covers a pit and supports la
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
-    // 1라운드 high 스폰을 계속 선택해 착지형 공중 잔디 지형만 생성한다.
+    // 첫 보장 통나무 뒤에는 착지형 공중 잔디 지형을 계속 선택한다.
     Math.random = () => 0.75;
   });
   await page.goto('/2an2el-runner/');
@@ -2801,6 +2872,15 @@ test('endless runner: every floating grass platform covers a pit and supports la
   let pairedPlatform: RunnerObstacle | null = null;
   await expect.poll(async () => {
     const state = await readRunnerState(page);
+    const low = state.obstacles.find((obstacle) => (
+      obstacle.type === 'low'
+      && obstacle.x - state.playerX >= 35
+      && obstacle.x - state.playerX <= 60
+    ));
+    if (low && state.playerState === 'running') {
+      await canvas.click();
+      return false;
+    }
     const platform = state.obstacles.find((obstacle) => (
       obstacle.visual === 'floating-grass-platform'
       && obstacle.x - state.playerX >= 120
@@ -2861,7 +2941,12 @@ test('endless runner: bees actively approach faster than the scrolling terrain',
       && obstacle.x - state.playerX >= 115
       && obstacle.x - state.playerX <= 150
     ));
-    if (platform && state.playerState === 'running') await canvas.click();
+    const low = state.obstacles.find((obstacle) => (
+      obstacle.type === 'low'
+      && obstacle.x - state.playerX >= 35
+      && obstacle.x - state.playerX <= 60
+    ));
+    if ((platform || low) && state.playerState === 'running') await canvas.click();
     await page.waitForTimeout(25);
   }
   if (!firstSample) throw new Error('honeybee approach sample was not captured');
@@ -2917,7 +3002,7 @@ test('endless runner: a hanging vine snake is a fixed slide-only obstacle', asyn
   test.setTimeout(15_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
-    // 1라운드 high 스폰 범위이면서 뱀 선택 범위인 값을 고정한다.
+    // 첫 보장 통나무 뒤의 일반 high 스폰을 줄에 매달린 뱀으로 고정한다.
     Math.random = () => 0.7;
   });
   await page.goto('/2an2el-runner/');
@@ -2927,6 +3012,15 @@ test('endless runner: a hanging vine snake is a fixed slide-only obstacle', asyn
   let snakeSample: RunnerObstacle | null = null;
   await expect.poll(async () => {
     const state = await readRunnerState(page);
+    const low = state.obstacles.find((obstacle) => (
+      obstacle.type === 'low'
+      && obstacle.x - state.playerX >= 35
+      && obstacle.x - state.playerX <= 60
+    ));
+    if (low && state.playerState === 'running') {
+      await canvas.click();
+      return false;
+    }
     const snake = state.obstacles.find((obstacle) => (
       obstacle.visual === 'hanging-vine-snake'
       && obstacle.x - state.playerX >= 85

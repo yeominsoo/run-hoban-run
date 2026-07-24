@@ -20,8 +20,11 @@ import {
   doubleJumpStackWidth,
   movingPlatformSpec,
   runnerRoundCatalog,
+  runnerRoundNumberForElapsed,
   runnerRoundProfile,
-  selectSpecialPattern,
+  runnerSequenceGap,
+  selectRoundPattern,
+  type RunnerCoursePattern,
   type RunnerSpecialPattern
 } from './difficulty';
 
@@ -56,7 +59,7 @@ const CHARACTER_STORAGE_KEY = 'rhh_endless-runner_character';
 type Phase = 'idle' | 'playing' | 'falling' | 'ended';
 type PlayerState = 'running' | 'jumping' | 'landing' | 'sliding' | 'falling';
 type ObstacleType = 'low' | 'high' | 'pit';
-type ObstaclePattern = 'standard' | 'platform-gap' | RunnerSpecialPattern;
+type ObstaclePattern = 'standard' | 'platform-gap' | RunnerCoursePattern;
 type CoinSafeAction = 'run' | 'jump' | 'slide';
 type TerrainBiome = 'meadow' | 'wildflowers' | 'rocky';
 
@@ -135,13 +138,19 @@ app.innerHTML = `
       <div class="hud" id="hud" hidden>
         <div class="hud-item"><span class="hud-label">점수</span><span class="hud-value" id="hud-score">0</span></div>
         <div class="hud-item"><span class="hud-label">코인</span><span class="hud-value" id="hud-coins">0</span></div>
-        <div class="hud-item"><span class="hud-label">라운드</span><span class="hud-value" id="hud-round">1</span></div>
+        <div class="hud-item"><span class="hud-label">라운드</span><span class="hud-value" id="hud-round">1/50</span></div>
+      </div>
+
+      <div class="round-banner hidden" id="round-banner" role="status" aria-live="polite">
+        <span class="round-banner-chapter" id="round-banner-chapter"></span>
+        <strong id="round-banner-title"></strong>
+        <span id="round-banner-hint"></span>
       </div>
 
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>안엘런</h2>
-          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>4라운드부터 움직이는 발판, 5라운드부터 점프 높이의 비행몹, 6라운드부터 2단 점프 바위탑이 등장합니다. 12단계 이후에도 마스터 라운드가 계속됩니다. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>50라운드 정상까지 새 패턴을 단독으로 익힌 뒤 연속 조합에 도전합니다. 라운드 시작 안내와 장애물 표지를 먼저 확인하세요. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -199,6 +208,10 @@ const hud = document.getElementById('hud')!;
 const hudScore = document.getElementById('hud-score')!;
 const hudCoins = document.getElementById('hud-coins')!;
 const hudRound = document.getElementById('hud-round')!;
+const roundBanner = document.getElementById('round-banner')!;
+const roundBannerChapter = document.getElementById('round-banner-chapter')!;
+const roundBannerTitle = document.getElementById('round-banner-title')!;
+const roundBannerHint = document.getElementById('round-banner-hint')!;
 const bestScoreEl = document.getElementById('best-score')!;
 const startOverlay = document.getElementById('start-overlay')!;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
@@ -259,6 +272,7 @@ let standingPlatform: Obstacle | null = null;
 let distanceSinceSpawn = 0;
 let distanceSinceCoin = 0;
 let roundSpawnIndex = 0;
+let roundBannerTimer: number | null = null;
 
 let lastFrameAt = 0;
 let rafId: number | null = null;
@@ -811,80 +825,215 @@ function spawnSpecialObstacle(
   });
 }
 
-function spawnObstacle(): boolean {
-  const spawnX = stageWidth + 20;
-  if (!canSpawnObstacleAt(spawnX)) return false;
+function pushJumpObstacle(
+  spawned: Obstacle[],
+  tier: number,
+  x: number,
+  pattern: ObstaclePattern
+) {
+  const visual = lowVisualForTier(tier);
+  const baseWidth = visual === 'thorn-patch' ? 54 : visual === 'mossy-rock' ? 46 : 42;
+  spawned.push({
+    type: 'low',
+    visual,
+    phase: Math.random() * Math.PI * 2,
+    x,
+    width: baseWidth + Math.min(8, tier),
+    approachSpeed: 0,
+    pattern,
+    motionAmplitude: 0,
+    motionSpeed: 0
+  });
+}
 
-  const profile = runnerRoundProfile(roundNumber);
+function pushSlideObstacle(
+  spawned: Obstacle[],
+  tier: number,
+  x: number,
+  pattern: ObstaclePattern
+) {
+  spawned.push({
+    type: 'high',
+    visual: 'hanging-vine-snake',
+    phase: Math.random() * Math.PI * 2,
+    x,
+    width: 48 + Math.min(10, Math.floor(tier / 5)),
+    approachSpeed: 0,
+    pattern,
+    motionAmplitude: 0,
+    motionSpeed: 0
+  });
+}
+
+function pushGroundGap(
+  spawned: Obstacle[],
+  tier: number,
+  x: number,
+  pattern: ObstaclePattern
+) {
+  const tierRatio = Math.min(1, Math.max(0, tier - 1) / 49);
+  spawned.push({
+    type: 'pit',
+    visual: 'thorn-patch',
+    phase: Math.random() * Math.PI * 2,
+    x,
+    width: PIT_MIN_WIDTH + tierRatio * (PIT_MAX_WIDTH - PIT_MIN_WIDTH),
+    approachSpeed: 0,
+    pattern,
+    motionAmplitude: 0,
+    motionSpeed: 0
+  });
+}
+
+function pushCreature(
+  spawned: Obstacle[],
+  tier: number,
+  x: number,
+  visual: 'honeybee' | 'bluebird',
+  pattern: ObstaclePattern
+) {
+  spawned.push({
+    type: 'high',
+    visual,
+    phase: Math.random() * Math.PI * 2,
+    x,
+    width: visual === 'bluebird' ? 48 : 44,
+    approachSpeed: creatureApproachSpeed(visual, tier),
+    pattern,
+    motionAmplitude: 0,
+    motionSpeed: 0
+  });
+}
+
+function pushFixedPlatform(
+  spawned: Obstacle[],
+  tier: number,
+  x: number,
+  pattern: ObstaclePattern
+) {
+  const platform: Obstacle = {
+    type: 'high',
+    visual: 'floating-grass-platform',
+    phase: Math.random() * Math.PI * 2,
+    x,
+    width: 100 + Math.min(18, tier),
+    approachSpeed: 0,
+    pattern,
+    motionAmplitude: 0,
+    motionSpeed: 0
+  };
+  pushLandingPlatformWithGap(spawned, platform);
+}
+
+function spawnCoursePattern(
+  pattern: RunnerCoursePattern,
+  profile: ReturnType<typeof runnerRoundProfile>,
+  spawnX: number,
+  spawned: Obstacle[]
+) {
   const tier = profile.tier;
-  const spawned: Obstacle[] = [];
-  const specialPattern = selectSpecialPattern(roundNumber, roundSpawnIndex, Math.random());
+  if (
+    pattern === 'moving-platform'
+    || pattern === 'jump-lane-creature'
+    || pattern === 'double-jump-stack'
+  ) {
+    spawnSpecialObstacle(pattern, tier, spawnX, spawned);
+    return;
+  }
 
-  if (specialPattern) {
-    spawnSpecialObstacle(specialPattern, tier, spawnX, spawned);
+  const jumpGap = runnerSequenceGap(tier, 'jump');
+  const slideGap = runnerSequenceGap(tier, 'slide');
+  const platformGap = runnerSequenceGap(tier, 'platform');
+
+  if (pattern === 'single-jump') {
+    pushJumpObstacle(spawned, tier, spawnX, pattern);
+  } else if (pattern === 'single-slide') {
+    pushSlideObstacle(spawned, tier, spawnX, pattern);
+  } else if (pattern === 'ground-gap') {
+    pushGroundGap(spawned, tier, spawnX, pattern);
+  } else if (pattern === 'jump-pair') {
+    pushJumpObstacle(spawned, tier, spawnX, pattern);
+    pushJumpObstacle(spawned, tier, spawnX + jumpGap, pattern);
+  } else if (pattern === 'jump-slide') {
+    pushJumpObstacle(spawned, tier, spawnX, pattern);
+    pushSlideObstacle(spawned, tier, spawnX + jumpGap, pattern);
+  } else if (pattern === 'slide-jump') {
+    pushSlideObstacle(spawned, tier, spawnX, pattern);
+    pushJumpObstacle(spawned, tier, spawnX + slideGap, pattern);
+  } else if (pattern === 'creature-wave') {
+    const creatureGap = Math.round(Math.max(190, profile.baseSpeed * 0.42));
+    pushCreature(spawned, tier, spawnX, 'honeybee', pattern);
+    pushCreature(spawned, tier, spawnX + creatureGap, 'bluebird', pattern);
+  } else if (pattern === 'platform-pair') {
+    pushFixedPlatform(spawned, tier, spawnX, pattern);
+    spawnSpecialObstacle('moving-platform', tier, spawnX + platformGap, spawned);
   } else {
-    const roll = Math.random();
-    const lowChance = 1 - profile.highChance - profile.pitChance;
-    if (roll < lowChance) {
-      const visual = lowVisualForTier(tier);
-      const baseWidth = visual === 'thorn-patch' ? 54 : visual === 'mossy-rock' ? 46 : 42;
+    pushJumpObstacle(spawned, tier, spawnX, pattern);
+    pushSlideObstacle(spawned, tier, spawnX + jumpGap, pattern);
+    spawnSpecialObstacle(
+      'double-jump-stack',
+      tier,
+      spawnX + jumpGap + slideGap,
+      spawned
+    );
+  }
+}
+
+function spawnRandomObstacle(
+  profile: ReturnType<typeof runnerRoundProfile>,
+  spawnX: number,
+  spawned: Obstacle[]
+) {
+  const tier = profile.tier;
+  const roll = Math.random();
+  const lowChance = 1 - profile.highChance - profile.pitChance;
+  if (roll < lowChance) {
+    pushJumpObstacle(spawned, tier, spawnX, 'standard');
+    return;
+  }
+  if (roll < lowChance + profile.highChance) {
+    const visual = highVisualForTier(tier);
+    if (visual === 'floating-grass-platform') {
+      pushFixedPlatform(spawned, tier, spawnX, 'standard');
+    } else {
+      const baseWidth = visual === 'hanging-vine-snake'
+        ? 48
+        : visual === 'bluebird'
+          ? 42
+          : 38;
       spawned.push({
-        type: 'low',
-        visual,
-        phase: Math.random() * Math.PI * 2,
-        x: spawnX,
-        width: baseWidth + Math.min(6, tier * 2),
-        approachSpeed: 0,
-        pattern: 'standard',
-        motionAmplitude: 0,
-        motionSpeed: 0
-      });
-    } else if (roll < lowChance + profile.highChance) {
-      const visual = highVisualForTier(tier);
-      const baseWidth = visual === 'floating-grass-platform'
-        ? 96
-        : visual === 'hanging-vine-snake'
-          ? 48
-          : visual === 'bluebird'
-            ? 42
-            : 38;
-      const platform: Obstacle = {
         type: 'high',
         visual,
         phase: Math.random() * Math.PI * 2,
         x: spawnX,
-        width: baseWidth + Math.min(8, tier * 2),
+        width: baseWidth + Math.min(10, tier),
         approachSpeed: creatureApproachSpeed(visual, tier),
-        pattern: 'standard',
-        motionAmplitude: 0,
-        motionSpeed: 0
-      };
-      if (isLandingPlatform(platform)) {
-        // 공중 지형은 선택 장식이 아니라 실제 착지 구간이다. 발판 바로 아래 지면을 같은
-        // 폭의 구덩이로 비워 점프로 올라타야만 안전하게 통과할 수 있게 한다.
-        pushLandingPlatformWithGap(spawned, platform);
-      } else {
-        spawned.push(platform);
-      }
-    } else {
-      const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
-      spawned.push({
-        type: 'pit',
-        visual: 'thorn-patch',
-        phase: Math.random() * Math.PI * 2,
-        x: spawnX,
-        width,
-        approachSpeed: 0,
         pattern: 'standard',
         motionAmplitude: 0,
         motionSpeed: 0
       });
     }
+    return;
+  }
+  pushGroundGap(spawned, tier, spawnX, 'standard');
+}
+
+function spawnObstacle(): number | null {
+  const spawnX = stageWidth + 20;
+  if (!canSpawnObstacleAt(spawnX)) return null;
+
+  const profile = runnerRoundProfile(roundNumber);
+  const spawned: Obstacle[] = [];
+  const coursePattern = selectRoundPattern(roundNumber, roundSpawnIndex, Math.random());
+  if (coursePattern) {
+    spawnCoursePattern(coursePattern, profile, spawnX, spawned);
+  } else {
+    spawnRandomObstacle(profile, spawnX, spawned);
   }
 
   obstacles.push(...spawned);
   roundSpawnIndex += 1;
-  return true;
+  return Math.max(...spawned.map((obstacle) => obstacle.x + obstacle.width)) - spawnX;
 }
 
 function coinGroundOffsetForAction(action: CoinSafeAction): number {
@@ -1000,10 +1149,23 @@ function releaseKeyboardSlide() {
   syncPlayerVisual();
 }
 
+function showRoundBanner() {
+  const profile = runnerRoundProfile(roundNumber);
+  roundBannerChapter.textContent = `${profile.chapter} · ROUND ${profile.tier}/${RUNNER_MAX_DIFFICULTY_TIER}`;
+  roundBannerTitle.textContent = profile.label;
+  roundBannerHint.textContent = profile.hint;
+  roundBanner.classList.remove('hidden');
+  if (roundBannerTimer !== null) window.clearTimeout(roundBannerTimer);
+  roundBannerTimer = window.setTimeout(() => {
+    roundBanner.classList.add('hidden');
+    roundBannerTimer = null;
+  }, roundNumber === 1 ? 2600 : 1900);
+}
+
 function updateHudNumbers() {
   hudScore.textContent = String(score);
   hudCoins.textContent = String(coinsCollected);
-  hudRound.textContent = String(roundNumber);
+  hudRound.textContent = `${roundNumber}/${RUNNER_MAX_DIFFICULTY_TIER}`;
   canvas.dataset.score = String(score);
   canvas.dataset.coins = String(coinsCollected);
   canvas.dataset.round = String(roundNumber);
@@ -1045,6 +1207,9 @@ function updateTestAttrs() {
   canvas.dataset.maxDifficultyTier = String(RUNNER_MAX_DIFFICULTY_TIER);
   canvas.dataset.roundPattern = runnerRoundProfile(roundNumber).id;
   canvas.dataset.roundCatalog = runnerRoundCatalog();
+  canvas.dataset.roundChapter = runnerRoundProfile(roundNumber).chapter;
+  canvas.dataset.roundLabel = runnerRoundProfile(roundNumber).label;
+  canvas.dataset.roundHint = runnerRoundProfile(roundNumber).hint;
   canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
   canvas.dataset.terrainBiomes = TERRAIN_BIOMES.join('|');
   canvas.dataset.standingPlatform = standingPlatform?.visual ?? 'none';
@@ -1092,6 +1257,7 @@ function startGame() {
   hud.hidden = false;
   updateHudNumbers();
   updateTestAttrs();
+  showRoundBanner();
   syncPlayerVisual(true);
 
   lastFrameAt = performance.now();
@@ -1121,6 +1287,11 @@ function endGame() {
     rafId = null;
   }
   hud.hidden = true;
+  roundBanner.classList.add('hidden');
+  if (roundBannerTimer !== null) {
+    window.clearTimeout(roundBannerTimer);
+    roundBannerTimer = null;
+  }
 
   const isRecord = saveBestScore(GAME_SLUG, score);
   bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
@@ -1169,10 +1340,11 @@ function updatePhysics(dt: number, now: number) {
 
 function updateWorld(dt: number) {
   elapsedS += dt;
-  const nextRound = Math.floor(elapsedS / RUNNER_ROUND_DURATION_S) + 1;
+  const nextRound = runnerRoundNumberForElapsed(elapsedS);
   if (nextRound !== roundNumber) {
     roundNumber = nextRound;
     roundSpawnIndex = 0;
+    showRoundBanner();
   }
   speed = speedForCurrentRound();
   const travel = speed * dt;
@@ -1190,8 +1362,9 @@ function updateWorld(dt: number) {
   distanceSinceSpawn += travel;
   let obstacleSpawned = false;
   if (distanceSinceSpawn >= currentMinGap()) {
-    obstacleSpawned = spawnObstacle();
-    if (obstacleSpawned) distanceSinceSpawn = 0;
+    const occupiedSpan = spawnObstacle();
+    obstacleSpawned = occupiedSpan !== null;
+    if (occupiedSpan !== null) distanceSinceSpawn = -occupiedSpan;
   }
 
   distanceSinceCoin += travel;
