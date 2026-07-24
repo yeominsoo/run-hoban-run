@@ -116,6 +116,6 @@ PLAYWRIGHT_BASE_URL=http://127.0.0.1:5173 npx playwright test tests/render.spec.
 | 캐릭터 에셋 정적 검증 | PASS — 디자인 6장, 프레임 시트 18장, PNG 288장, GIF 63개 |
 | `npm run build` | PASS — Vite 7.3.6, 222 modules transformed |
 | 안엘런 Playwright | PASS — 12/12, 12단계·무한 순환 규칙과 기존 플레이 회귀 포함 |
-| 전체 Playwright | PASS — 124 passed, 조건부 QR·게임아트 20 skipped, 실패 0 |
+| 전체 Playwright | PASS — 124 passed, 조건부 방 초대 20 skipped, 실패 0 |
 | 결정론적 자동 플레이 | PASS — 2라운드 생존, 코인 안전 동선 유지, 실제 장애물 화풍 2종 이상 조우 |
 | 모바일 2배 픽셀 시각 QA | PASS — 축소된 바닥, 잔디·흙 지층, 원경, 그루터기·공중 지형·벌 확인 |
