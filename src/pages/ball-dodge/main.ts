@@ -1,7 +1,7 @@
 import './ball-dodge.css';
 import { onDrag } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'ball-dodge';
 const PLAYER_RADIUS = 16;
@@ -181,7 +181,7 @@ canvas.dataset.phase = phase;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '볼 피하기 + 수집',
@@ -193,7 +193,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score
 );
@@ -287,7 +288,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultTime.textContent = `생존 ${(elapsedMs / 1000).toFixed(1)}초`;
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

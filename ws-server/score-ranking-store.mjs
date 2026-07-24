@@ -150,21 +150,39 @@ function respondJson(res, status, payload, corsHeaders) {
   res.end(JSON.stringify(payload));
 }
 
+const COMBINED_GAME_KEY = '_all';
+const MAX_COMBINED_ENTRIES = 100;
+
 /**
  * GET/POST /ranking/score/<game> 요청을 처리한다. nginx의 기존 /ranking 프록시를
- * 그대로 통과하도록 이 경로 아래에 두었다.
+ * 그대로 통과하도록 이 경로 아래에 두었다. `<game>`이 예약어 `_all`이면 모든 싱글게임의
+ * 기록을 한 목록으로 합친 통합 랭킹(GET 전용)을 반환한다.
  */
 export function createScoreRankingService(
   gameKeys,
   {
     dataDir = DEFAULT_DATA_DIR,
     corsHeaders = { 'access-control-allow-origin': '*' },
+    gameTitles = {},
   } = {},
 ) {
   const stores = new Map(
     gameKeys.map((gameKey) => [gameKey, createScoreRankingStore(gameKey, { dataDir })]),
   );
   const prefix = '/ranking/score/';
+
+  function getCombinedRanking() {
+    const all = [];
+    for (const [gameKey, store] of stores) {
+      const gameTitle = gameTitles[gameKey] || gameKey;
+      for (const entry of store.getRanking()) {
+        all.push({ ...entry, game: gameKey, gameTitle });
+      }
+    }
+    return all
+      .sort((a, b) => b.score - a.score || a.at - b.at || a.name.localeCompare(b.name, 'ko'))
+      .slice(0, MAX_COMBINED_ENTRIES);
+  }
 
   function handle(req, res, pathname) {
     if (!pathname.startsWith(prefix)) return false;
@@ -176,6 +194,16 @@ export function createScoreRankingService(
       respondJson(res, 400, { error: 'invalid game path' }, corsHeaders);
       return true;
     }
+
+    if (gameKey === COMBINED_GAME_KEY) {
+      if (req.method !== 'GET') {
+        respondJson(res, 405, { error: 'method not allowed' }, { ...corsHeaders, allow: 'GET' });
+        return true;
+      }
+      respondJson(res, 200, { entries: getCombinedRanking() }, corsHeaders);
+      return true;
+    }
+
     const store = stores.get(gameKey);
     if (!store) {
       respondJson(res, 404, { error: 'unknown game' }, corsHeaders);

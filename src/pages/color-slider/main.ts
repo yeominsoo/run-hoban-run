@@ -1,6 +1,6 @@
 import './color-slider.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'color-slider';
 const ROUND_COUNT = 10;
@@ -149,7 +149,7 @@ bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '색 맞추기 슬라이더',
@@ -161,7 +161,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score
 );
@@ -305,7 +306,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultAvg.textContent = `평균 정확도 ${avgAccuracy}%`;
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

@@ -81,18 +81,25 @@ const CORS_HEADERS = {
   'access-control-allow-headers': 'content-type',
 };
 
-const scoreRankingService = createScoreRankingService([
-  'aim-trainer',
-  'color-slider',
-  'ball-dodge',
-  'tower-stack',
-  'snake',
-  'typing-survival',
-  '2048-hex',
-  'endless-runner',
-  'idle-farm',
-  'sum-ten-puzzle',
-], { corsHeaders: CORS_HEADERS });
+// 싱글게임 통합 랭킹(GET /ranking/score/_all)에 표시할 게임별 한글 이름.
+// 이 목록이 곧 점수 랭킹을 지원하는 싱글게임 전체 목록이다.
+const SCORE_GAME_TITLES = {
+  'aim-trainer': '에임 트레이너',
+  'color-slider': '색 맞추기 슬라이더',
+  'ball-dodge': '볼 피하기 + 수집',
+  'tower-stack': '타워 쌓기',
+  'snake': '스네이크 비틀기',
+  'typing-survival': '타이핑 생존',
+  '2048-hex': '2048 변형(육각형)',
+  'endless-runner': '안엘런',
+  'idle-farm': '방치형 농장',
+  'sum-ten-puzzle': '합이 10 퍼즐',
+};
+
+const scoreRankingService = createScoreRankingService(Object.keys(SCORE_GAME_TITLES), {
+  corsHeaders: CORS_HEADERS,
+  gameTitles: SCORE_GAME_TITLES,
+});
 
 /** rps 이외의 승/패 랭킹(라이어/마피아/할리갈리/윷놀이/전략윷놀이) 공용 응답 헬퍼. */
 function respondGameRanking(req, res, getRankingFn) {

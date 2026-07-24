@@ -1,7 +1,7 @@
 import './aim-trainer.css';
 import { onTap } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'aim-trainer';
 const GAME_DURATION_MS = 30_000;
@@ -158,7 +158,7 @@ bestScoreEl.textContent = String(loadBestScore(GAME_SLUG));
 canvas.dataset.phase = phase;
 resizeCanvas();
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '에임 트레이너',
@@ -170,7 +170,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score
 );
@@ -278,7 +279,7 @@ function endGame() {
   resultMisses.textContent = `미스 ${misses}`;
   resultAccuracy.textContent = `정확도 ${accuracy}%`;
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

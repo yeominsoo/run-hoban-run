@@ -1,6 +1,6 @@
 import './endless-runner.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 import {
   DEFAULT_RUNNER_CHARACTER_ID,
   RUNNER_CHARACTERS,
@@ -307,7 +307,7 @@ canvas.dataset.character = selectedCharacter.id;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '안엘런',
@@ -319,7 +319,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score,
   () => ({
@@ -1367,7 +1368,7 @@ function endGame() {
   resultDistance.textContent = `거리 ${meters}m`;
   resultCoins.textContent = `코인 ${coinsCollected}개`;
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

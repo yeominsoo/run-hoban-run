@@ -1,6 +1,6 @@
 import './2048-hex.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 
 const GAME_SLUG = '2048-hex';
 const RADIUS = 2;
@@ -209,7 +209,7 @@ canvas.dataset.phase = phase;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '2048 변형(육각형)',
@@ -221,7 +221,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score
 );
@@ -418,7 +419,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultMaxTile.textContent = `최고 타일 ${maxTile}`;
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

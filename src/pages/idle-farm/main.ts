@@ -1,5 +1,5 @@
 import './idle-farm.css';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'idle-farm';
 const STORAGE_KEY = 'rhh_idle-farm_state';
@@ -333,7 +333,7 @@ function harvestPlot(index: number, now: number) {
   plot.crop = null;
   plot.plantedAt = null;
   saveState();
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   render(now);
 }
 
@@ -373,7 +373,7 @@ function showToast(message: string) {
 }
 
 // ── 랭킹 UI ───────────────────────────────
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '방치형 농장',
@@ -385,7 +385,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => state.totalEarned
 );

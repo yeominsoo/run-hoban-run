@@ -7,7 +7,10 @@ import test from 'node:test';
 import { createScoreRankingService } from './score-ranking-store.mjs';
 
 async function startService(dataDir) {
-  const service = createScoreRankingService(['aim-trainer', 'endless-runner'], { dataDir });
+  const service = createScoreRankingService(['aim-trainer', 'endless-runner'], {
+    dataDir,
+    gameTitles: { 'aim-trainer': '에임 트레이너', 'endless-runner': '안엘런' },
+  });
   const server = createServer((req, res) => {
     const pathname = req.url?.split('?')[0] || '';
     if (!service.handle(req, res, pathname)) {
@@ -90,6 +93,22 @@ test('싱글게임 점수를 닉네임별 최고 기록으로 합쳐 전체 랭�
       { name: '러너', score: 345, at: 500, distance: 285, coins: 6 },
       { name: '무효상세', score: 120, at: 600 },
     ]);
+
+    const combined = await fetch(`${running.baseUrl}/ranking/score/_all`);
+    assert.equal(combined.status, 200);
+    assert.deepEqual((await combined.json()).entries, [
+      { name: '이엘이', score: 2200, at: 400, game: 'aim-trainer', gameTitle: '에임 트레이너' },
+      { name: '이안이', score: 1800, at: 300, game: 'aim-trainer', gameTitle: '에임 트레이너' },
+      { name: '러너', score: 345, at: 500, distance: 285, coins: 6, game: 'endless-runner', gameTitle: '안엘런' },
+      { name: '무효상세', score: 120, at: 600, game: 'endless-runner', gameTitle: '안엘런' },
+    ]);
+
+    const combinedPost = await fetch(`${running.baseUrl}/ranking/score/_all`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entries: [{ name: '침입자', score: 1, at: 1 }] }),
+    });
+    assert.equal(combinedPost.status, 405);
   } finally {
     if (running) await running.close().catch(() => {});
     await rm(dataDir, { recursive: true, force: true });

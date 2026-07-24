@@ -1,6 +1,6 @@
 import './typing-survival.css';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 import { WORDS_EN, WORDS_KO } from './word-lists';
 
 const GAME_SLUG = 'typing-survival';
@@ -168,7 +168,7 @@ window.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('scroll', syncViewport);
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '타이핑 생존',
@@ -180,7 +180,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score
 );
@@ -285,7 +286,7 @@ function endGame() {
   resultScore.textContent = String(score);
   resultLevel.textContent = `레벨 ${level}까지 생존`;
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

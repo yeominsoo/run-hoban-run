@@ -1328,28 +1328,30 @@ test('local ranking games: keep the ranking button in the top-right header on ev
   }
 });
 
-test('single-player ranking: migrates device records and shows other users global scores', async ({ page }) => {
+test('single-player ranking: migrates device records and shows the combined multi-game ranking', async ({ page }) => {
   let submittedEntries: { name: string; score: number; at: number }[] = [];
 
   await page.route('**/ranking/score/aim-trainer', async (route) => {
-    if (route.request().method() === 'POST') {
-      const payload = route.request().postDataJSON() as { entries?: typeof submittedEntries };
-      submittedEntries = payload.entries ?? [];
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ accepted: submittedEntries.length, changed: true, entries: submittedEntries }),
-      });
+    if (route.request().method() !== 'POST') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) });
       return;
     }
-
+    const payload = route.request().postDataJSON() as { entries?: typeof submittedEntries };
+    submittedEntries = payload.entries ?? [];
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ accepted: submittedEntries.length, changed: true, entries: submittedEntries }),
+    });
+  });
+  await page.route('**/ranking/score/_all', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         entries: [
-          { name: '다른사용자', score: 9876, at: 200 },
-          { name: '기존플레이어', score: 1234, at: 100 },
+          { name: '다른사용자', score: 9876, at: 200, game: 'aim-trainer', gameTitle: '에임 트레이너' },
+          { name: '기존플레이어', score: 1234, at: 100, game: 'aim-trainer', gameTitle: '에임 트레이너' },
         ],
       }),
     });
@@ -1368,9 +1370,10 @@ test('single-player ranking: migrates device records and shows other users globa
   ]);
 
   await page.locator('#view-ranking-btn').click();
-  await expect(page.locator('.ranking-scope')).toHaveText('모든 기기에서 등록한 최고 점수');
+  await expect(page.locator('.ranking-scope')).toHaveText('모든 기기 · 모든 게임 통합 랭킹');
   await expect(page.locator('.ranking-row').nth(0).locator('.ranking-name')).toHaveText('다른사용자');
   await expect(page.locator('.ranking-row').nth(0).locator('.ranking-score')).toHaveText('9876');
+  await expect(page.locator('.ranking-row').nth(0).locator('.ranking-game')).toHaveText('에임 트레이너');
   await expect(page.locator('.ranking-row').nth(1).locator('.ranking-name')).toHaveText('기존플레이어');
   await expect(page.locator('.ranking-row').filter({ hasText: '기존플레이어' })).toHaveCount(1);
   await expect(page.locator('.ranking-row').nth(1).locator('.ranking-score')).toHaveText('1234');

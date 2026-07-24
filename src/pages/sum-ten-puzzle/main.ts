@@ -2,7 +2,7 @@ import './sum-ten-puzzle.css';
 import '../../shared/ws-ranking.css';
 import { onDrag, type PointerPos } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 import { prepareRoomInviteEntry, ROOM_SHARE_RETURN_EVENT, shareRoomLink } from '../../shared/share';
 import { createChatWidget } from '../../shared/chat-widget';
 import { setupWsRankingUI } from '../../shared/ws-ranking';
@@ -315,7 +315,7 @@ const closeRankingBtn = document.getElementById('close-ranking-btn') as HTMLButt
 const rankingSaveImageBtn = document.getElementById('ranking-save-image-btn') as HTMLButtonElement;
 const rankingShareImageBtn = document.getElementById('ranking-share-image-btn') as HTMLButtonElement;
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '합이 10 퍼즐',
@@ -328,6 +328,7 @@ setupRankingUI(
     closeRankingBtn,
     rankingSaveImageBtn,
     rankingShareImageBtn,
+    autoRecord: true,
   },
   () => score
 );
@@ -555,7 +556,7 @@ function endSoloGame() {
   gameOverBanner.className = 'set-over-result ' + (isRecord ? 'win' : '');
   rankEntryForm.classList.remove('hidden');
   finalBoard.classList.add('hidden');
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   setPhase('game_over');
 }
 

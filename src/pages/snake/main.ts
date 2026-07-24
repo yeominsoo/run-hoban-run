@@ -1,7 +1,7 @@
 import './snake.css';
 import { onSwipe } from '../../shared/pointer';
 import { loadBestScore, saveBestScore } from '../../shared/score-store';
-import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard';
+import { setupRankingUI } from '../../shared/leaderboard';
 
 const GAME_SLUG = 'snake';
 const GRID_COLS = 16;
@@ -148,7 +148,7 @@ canvas.dataset.phase = phase;
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-setupRankingUI(
+const resetRanking = setupRankingUI(
   {
     gameSlug: GAME_SLUG,
     gameTitle: '스네이크 비틀기',
@@ -160,7 +160,8 @@ setupRankingUI(
     rankingList,
     closeRankingBtn,
     rankingSaveImageBtn,
-    rankingShareImageBtn
+    rankingShareImageBtn,
+    autoRecord: true
   },
   () => score
 );
@@ -257,7 +258,7 @@ function endGame() {
 
   resultScore.textContent = String(score);
   recordBadge.classList.toggle('hidden', !isRecord);
-  resetRankingSubmission({ nameInput: rankNameInput, saveBtn: rankSaveBtn, savedMsg: rankSavedMsg });
+  resetRanking();
   resultOverlay.classList.remove('hidden');
 }
 

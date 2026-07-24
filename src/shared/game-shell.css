@@ -268,11 +268,29 @@ button { border: 0; cursor: pointer; font: inherit; }
 }
 .ranking-row:first-child .ranking-rank { color: var(--color-accent-strong); }
 
+.ranking-name-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .ranking-name {
   min-width: 0;
   font-size: 0.86rem;
   font-weight: 700;
   color: var(--color-page-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.ranking-game {
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: var(--color-page-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

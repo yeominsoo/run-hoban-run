@@ -502,15 +502,26 @@ nginx의 기존 `/ranking` prefix 프록시를 그대로 사용하므로 별도 
 
 - `GET /ranking/score/<game>` → `{"entries":[{"name":"...","score":1234,"at":...}]}`
 - `POST /ranking/score/<game>` + `{"entries":[...]}` → 현재 기기의 로컬 기록을 서버 랭킹에 병합
-- 지원 게임: `aim-trainer`, `color-slider`, `ball-dodge`, `tower-stack`, `snake`,
+- `GET /ranking/score/_all` → 아래 10개 싱글게임 전체를 점수 내림차순으로 합친 통합 랭킹
+  (`{"entries":[{"name":...,"score":...,"at":...,"game":"endless-runner","gameTitle":"안엘런"}]}`,
+  최대 100명). `_all`은 예약된 게임 키라 실제 게임 슬러그로 쓸 수 없다. POST는 지원하지 않음(405) —
+  각 게임은 여전히 자기 `<game>` 엔드포인트로만 기록을 올리고, `_all`은 그 값들을 모아 보여주기만 한다.
+- 지원 게임(=`_all`에 합쳐지는 게임 목록, `server.mjs`의 `SCORE_GAME_TITLES`가 단일 진실 공급원):
+  `aim-trainer`, `color-slider`, `ball-dodge`, `tower-stack`, `snake`,
   `typing-survival`, `2048-hex`, `endless-runner`, `idle-farm`, `sum-ten-puzzle`
-- 닉네임별 최고 점수 1개만 유지하고 점수 내림차순으로 최대 50명까지 반환
-- `DATA_DIR/score-ranking-<game>.json`에 즉시 영속화하며 기존 RPS/멀티게임 랭킹 파일과 분리
+- 닉네임별 최고 점수 1개만 유지하고 점수 내림차순으로 최대 50명까지 반환(게임별 엔드포인트 기준).
+  `_all` 통합 랭킹은 게임별로 닉네임이 겹쳐도 합치지 않는다 — 같은 사람이 여러 게임에서 기록을
+  올렸다면 게임마다 한 줄씩 별도로 나타난다(`game`/`gameTitle`로 구분).
+- `DATA_DIR/score-ranking-<game>.json`에 즉시 영속화하며 기존 RPS/멀티게임 랭킹 파일과 분리.
+  `_all`은 이 파일들을 읽을 때마다 즉석에서 합산할 뿐 별도 파일로 저장하지 않는다.
 - 프론트엔드는 `VITE_SCORE_RANKING_URL`이 있으면 그 값을 사용하고, 없으면
   `VITE_RPS_WS_URL`의 호스트와 `/ranking/score` 경로를 자동 사용
 - 안엘런(`endless-runner`) 기록은 선택 필드 `distance`(m), `coins`(개)를 함께 저장해 랭킹에
   `점수·거리·코인`을 표시한다. 업데이트 전 기록처럼 상세 필드가 없는 JSON도 그대로 읽으며,
   같은 닉네임·같은 점수라면 상세 필드가 있는 기록을 우선해 점진적으로 보강한다.
+- 프론트엔드는 신기록일 때 저장 버튼 클릭 없이 자동으로 기록을 올린다(닉네임이 이미 저장돼
+  있을 때만 — 최초 1회는 여전히 닉네임 입력이 필요). `src/shared/leaderboard.ts`의
+  `setupRankingUI`가 반환하는 `reset()`이 게임 종료 시점마다 이 비교·자동 저장을 수행한다.
 
 ## WAS(58.228.188.17) 배포 상태 — 완료, `docker run` 두 개로 운영
 
