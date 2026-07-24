@@ -545,7 +545,7 @@ def verify_sheet(path: Path, context: str, errors: list[str]) -> None:
             foreground_mask,
             rgb.width,
             rgb.height,
-            minimum_pixels=32,
+            minimum_pixels=97,
         )
         if len(components) != 16:
             error(

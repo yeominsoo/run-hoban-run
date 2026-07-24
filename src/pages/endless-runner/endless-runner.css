@@ -182,10 +182,10 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
-  display: grid;
-  justify-items: center;
-  width: min(430px, calc(100% - 28px));
-  padding: 9px 16px 10px;
+  width: max-content;
+  min-width: 132px;
+  max-width: calc(100% - 28px);
+  padding: 9px 18px;
   border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
@@ -200,25 +200,12 @@ body {
   display: none;
 }
 
-.round-banner-chapter {
-  color: var(--color-primary);
-  font-size: 0.62rem;
-  font-weight: 900;
-  letter-spacing: 0.07em;
-}
-
 .round-banner strong {
-  margin-top: 1px;
-  font-size: 1rem;
-  line-height: 1.25;
-}
-
-.round-banner > span:last-child {
-  margin-top: 2px;
-  color: var(--color-page-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1.35;
+  color: var(--color-primary);
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
 }
 
 @keyframes round-banner-in {
@@ -298,15 +285,13 @@ body {
 
   .round-banner {
     top: 76px;
-    width: min(330px, calc(100% - 20px));
-    padding: 7px 12px 8px;
+    min-width: 120px;
+    max-width: calc(100% - 20px);
+    padding: 8px 14px;
   }
 
   .round-banner strong {
     font-size: 0.9rem;
   }
 
-  .round-banner > span:last-child {
-    font-size: 0.66rem;
-  }
 }

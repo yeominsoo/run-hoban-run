@@ -5,6 +5,7 @@ import {
   JUMP_LANE_CREATURE_BOTTOM_OFFSET,
   JUMP_LANE_CREATURE_HEIGHT,
   RUNNER_MAX_DIFFICULTY_TIER,
+  RUNNER_ROUND_DURATION_S,
   RUNNER_ROUND_PROFILES,
   doubleJumpStackWidth,
   guaranteedSpecialForRound,
@@ -2234,6 +2235,8 @@ interface RunnerState {
   jumpsUsed: number;
   groundRatio: number;
   maxDifficultyTier: number;
+  roundDuration: number;
+  minGap: number;
   roundPattern: string;
   roundChapter: string;
   roundLabel: string;
@@ -2306,6 +2309,8 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0),
       groundRatio: Number(canvas.dataset.groundRatio ?? 0),
       maxDifficultyTier: Number(canvas.dataset.maxDifficultyTier ?? 0),
+      roundDuration: Number(canvas.dataset.roundDuration ?? 0),
+      minGap: Number(canvas.dataset.minGap ?? 0),
       roundPattern: canvas.dataset.roundPattern ?? '',
       roundChapter: canvas.dataset.roundChapter ?? '',
       roundLabel: canvas.dataset.roundLabel ?? '',
@@ -2335,9 +2340,10 @@ test('endless runner: defines fifty detailed rounds and caps progression at the 
   ]);
   expect(runnerRoundCatalog().split('|')).toHaveLength(50);
   expect(runnerRoundProfile(99).tier).toBe(50);
+  expect(RUNNER_ROUND_DURATION_S).toBe(25);
   expect(runnerRoundNumberForElapsed(0)).toBe(1);
-  expect(runnerRoundNumberForElapsed(15 * 49)).toBe(50);
-  expect(runnerRoundNumberForElapsed(15 * 500)).toBe(50);
+  expect(runnerRoundNumberForElapsed(RUNNER_ROUND_DURATION_S * 49)).toBe(50);
+  expect(runnerRoundNumberForElapsed(RUNNER_ROUND_DURATION_S * 500)).toBe(50);
 
   expect(selectSpecialPattern(4, 0, 0.99)).toBe('moving-platform');
   expect(selectSpecialPattern(5, 0, 0.99)).toBe('jump-lane-creature');
@@ -2355,11 +2361,13 @@ test('endless runner: defines fifty detailed rounds and caps progression at the 
   expect(selectRoundPattern(50, 0, 0.99)).toBe('mixed-relay');
 
   for (const profile of RUNNER_ROUND_PROFILES) {
-    expect(profile.minGap).toBeGreaterThanOrEqual(300);
+    expect(profile.minGap).toBeGreaterThanOrEqual(240);
     expect(profile.highChance + profile.pitChance).toBeLessThan(1);
     expect(profile.patternChance).toBeLessThanOrEqual(0.6);
     expect(profile.patternPool.length).toBeGreaterThan(0);
   }
+  expect(runnerRoundProfile(1).minGap).toBe(360);
+  expect(runnerRoundProfile(50).minGap).toBe(240);
   for (const recoveryRound of [15, 25, 35, 45]) {
     const recovery = runnerRoundProfile(recoveryRound);
     const previous = runnerRoundProfile(recoveryRound - 1);
@@ -2400,7 +2408,7 @@ test('endless runner: defines fifty detailed rounds and caps progression at the 
   expect(doubleJumpStackWidth(99)).toBe(76);
 });
 
-test('endless runner: mobile round guide introduces the current chapter without covering the HUD', async ({ page }) => {
+test('endless runner: mobile round banner shows only the round number without covering the HUD', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/2an2el-runner/');
   await page.locator('#start-btn').click();
@@ -2409,9 +2417,10 @@ test('endless runner: mobile round guide introduces the current chapter without 
   const banner = page.locator('#round-banner');
   await expect(page.locator('#hud-round')).toHaveText('1/50');
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText('초원 학교');
-  await expect(banner).toContainText('첫 발걸음');
-  await expect(banner).toContainText('낮은 장애물은 한 번 점프');
+  await expect(banner).toHaveText('ROUND 1');
+  await expect(page.locator('#round-banner-chapter')).toHaveCount(0);
+  await expect(page.locator('#round-banner-title')).toHaveCount(0);
+  await expect(page.locator('#round-banner-hint')).toHaveCount(0);
 
   const hudBox = await hud.boundingBox();
   const bannerBox = await banner.boundingBox();
@@ -2508,9 +2517,7 @@ test('endless runner: selects one of two character animation sets and reflects e
   await expect(canvas).toHaveAttribute('data-phase', 'playing');
   await expect(page.locator('#hud-round')).toHaveText('1/50');
   await expect(page.locator('#round-banner')).toBeVisible();
-  await expect(page.locator('#round-banner-chapter')).toHaveText('초원 학교 · ROUND 1/50');
-  await expect(page.locator('#round-banner-title')).toHaveText('첫 발걸음');
-  await expect(page.locator('#round-banner-hint')).toHaveText('낮은 장애물은 한 번 점프');
+  await expect(page.locator('#round-banner-label')).toHaveText('ROUND 1');
   await expect(canvas).toHaveAttribute('data-scene-assets-ready', 'true');
   await expect(canvas).toHaveAttribute('data-terrain-texture-ready', 'true');
   await expect(canvas).toHaveAttribute('data-character', characterId);
@@ -2527,6 +2534,8 @@ test('endless runner: selects one of two character animation sets and reflects e
   const initialScene = await readRunnerState(page);
   expect(initialScene.groundRatio).toBe(0.82);
   expect(initialScene.maxDifficultyTier).toBe(50);
+  expect(initialScene.roundDuration).toBe(25);
+  expect(initialScene.minGap).toBe(360);
   expect(initialScene.roundPattern).toBe('first-steps');
   expect(initialScene.roundChapter).toBe('초원 학교');
   expect(initialScene.roundLabel).toBe('첫 발걸음');
@@ -2767,7 +2776,7 @@ test('endless runner: rapid jump, slide, and stand inputs keep state and GIF cli
 });
 
 test('endless runner: safe coin lanes stay clear while timed actions avoid obstacles and pits', async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(75_000);
   await page.addInitScript(() => {
     let seed = 0x6d2b79f5;
     Math.random = () => {
@@ -2784,7 +2793,7 @@ test('endless runner: safe coin lanes stay clear while timed actions avoid obsta
   const canvas = page.locator('#er-canvas');
   const box = await canvas.boundingBox();
   if (!box) throw new Error('endless-runner canvas has no bounding box');
-  const deadline = Date.now() + 18_000;
+  const deadline = Date.now() + (RUNNER_ROUND_DURATION_S + 3) * 1_000;
   let highestRound = 1;
   let safeCoinSamples = 0;
   const encounteredVisuals = new Set<string>();
@@ -2917,7 +2926,7 @@ test('endless runner: every floating grass platform covers a pit and supports la
 });
 
 test('endless runner: bees actively approach faster than the scrolling terrain', async ({ page }) => {
-  test.setTimeout(25_000);
+  test.setTimeout(40_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     // 1라운드에는 안전한 공중 발판, 2라운드부터는 벌을 선택하는 결정론적 스폰이다.
@@ -2928,7 +2937,7 @@ test('endless runner: bees actively approach faster than the scrolling terrain',
   await page.locator('#start-btn').click();
 
   let firstSample: { obstacle: RunnerObstacle; speed: number; sampledAt: number } | null = null;
-  const deadline = Date.now() + 22_000;
+  const deadline = Date.now() + (RUNNER_ROUND_DURATION_S + 7) * 1_000;
   while (Date.now() < deadline && !firstSample) {
     const state = await readRunnerState(page);
     const bee = state.obstacles.find((obstacle) => obstacle.visual === 'honeybee');

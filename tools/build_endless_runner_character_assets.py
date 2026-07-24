@@ -56,7 +56,7 @@ FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-24")
 ASSET_DIR = Path("endless-runner/assets/characters")
 IAN_RUN_CHARACTER_ID = "checkered-vest-boy-soft-3d-toy"
 IAN_RUN_SUPPORT_FRAME_INDEXES = (0, 1, 2, 4, 5, 6)
-IAN_RUN_AIRBORNE_FRAME_INDEXES = (3, 7)
+IAN_RUN_AIRBORNE_CLEARANCE = {3: 8, 7: 3}
 
 
 @dataclass(frozen=True)
@@ -244,10 +244,10 @@ def find_foreground_components(sheet: Image.Image) -> list[ForegroundComponent]:
                         visited[neighbor] = 1
                         queue.append(neighbor)
 
-        # Chroma removal can leave a tiny isolated antialiasing speck.  A real
-        # authored pose is tens of thousands of pixels, so exclude 32px noise
-        # from the grid assignment as well as anything smaller.
-        if len(pixels) <= 32:
+        # Chroma removal can leave tiny isolated antialiasing specks.  A real
+        # authored pose is tens of thousands of pixels, so discard sub-100px
+        # fragments before assigning the sixteen pose components to the grid.
+        if len(pixels) <= 96:
             continue
         components.append(
             ForegroundComponent(
@@ -415,24 +415,69 @@ def ian_head_anchor(frame: Image.Image) -> tuple[float, float]:
 
 
 def stabilize_ian_run_frames(frames: list[Image.Image]) -> list[Image.Image]:
-    """Lock Ian's upper body while allowing the two airborne poses to clear the floor."""
+    """Normalize Ian's body scale, then anchor support and airborne poses naturally."""
 
     if len(frames) != FRAME_COUNT:
         raise RuntimeError(f"Ian run requires {FRAME_COUNT} frames, found {len(frames)}")
     anchors = [ian_head_anchor(frame) for frame in frames]
-    target_x = median(anchor[0] for anchor in anchors)
-    target_y = median(anchors[index][1] for index in IAN_RUN_SUPPORT_FRAME_INDEXES)
-    stabilized: list[Image.Image] = []
+    bounds = [
+        frame.getchannel("A").point(lambda alpha: 255 if alpha >= 96 else 0).getbbox()
+        for frame in frames
+    ]
+    if any(bound is None for bound in bounds):
+        raise RuntimeError("Ian run contains an empty verifier-visible frame")
+    visible_bounds = [bound for bound in bounds if bound is not None]
+    target_body_reach = median(
+        visible_bounds[index][3] - anchors[index][1]
+        for index in IAN_RUN_SUPPORT_FRAME_INDEXES
+    )
+    vertically_stabilized: list[Image.Image] = []
 
-    for index, (frame, (head_x, head_y)) in enumerate(zip(frames, anchors)):
+    for index, frame in enumerate(frames):
+        if index in IAN_RUN_SUPPORT_FRAME_INDEXES:
+            source_bounds = frame.getchannel("A").getbbox()
+            if source_bounds is None:
+                raise RuntimeError(f"Ian run frame {index + 1} has no alpha subject")
+            current_reach = visible_bounds[index][3] - anchors[index][1]
+            scale = target_body_reach / max(1, current_reach)
+            subject = frame.crop(source_bounds)
+            scaled_size = (
+                max(1, round(subject.width * scale)),
+                max(1, round(subject.height * scale)),
+            )
+            subject = subject.resize(scaled_size, Image.Resampling.LANCZOS)
+            canvas = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
+            canvas.alpha_composite(
+                subject,
+                (
+                    round(PIVOT[0] - subject.width / 2),
+                    PIVOT[1] - subject.height,
+                ),
+            )
+            current_bounds = canvas.getchannel("A").point(
+                lambda alpha: 255 if alpha >= 96 else 0
+            ).getbbox()
+            if current_bounds is None:
+                raise RuntimeError(f"Ian run frame {index + 1} vanished while scaling")
+            baseline_offset = PIVOT[1] - current_bounds[3]
+            if baseline_offset:
+                aligned = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
+                aligned.alpha_composite(canvas, (0, baseline_offset))
+                canvas = aligned
+        else:
+            desired_bottom = PIVOT[1] - IAN_RUN_AIRBORNE_CLEARANCE[index]
+            offset_y = desired_bottom - visible_bounds[index][3]
+            canvas = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
+            canvas.alpha_composite(frame, (0, offset_y))
+        vertically_stabilized.append(canvas)
+
+    stabilized_anchors = [ian_head_anchor(frame) for frame in vertically_stabilized]
+    target_x = median(anchor[0] for anchor in stabilized_anchors)
+    stabilized: list[Image.Image] = []
+    for index, (frame, (head_x, _)) in enumerate(zip(vertically_stabilized, stabilized_anchors)):
         offset_x = round(target_x - head_x)
-        offset_y = (
-            round(target_y - head_y)
-            if index in IAN_RUN_AIRBORNE_FRAME_INDEXES
-            else 0
-        )
         canvas = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
-        canvas.alpha_composite(frame, (offset_x, offset_y))
+        canvas.alpha_composite(frame, (offset_x, 0))
         if canvas.getchannel("A").getbbox() is None:
             raise RuntimeError(f"Ian run frame {index + 1} became empty while stabilizing")
         stabilized.append(canvas)

@@ -46,7 +46,7 @@ export interface RunnerRoundProfile extends RunnerRoundBlueprint {
   guaranteedSpecial: RunnerSpecialPattern | null;
 }
 
-export const RUNNER_ROUND_DURATION_S = 15;
+export const RUNNER_ROUND_DURATION_S = 25;
 export const DOUBLE_JUMP_STACK_HEIGHT = 154;
 export const JUMP_LANE_CREATURE_HEIGHT = 32;
 export const JUMP_LANE_CREATURE_BOTTOM_OFFSET = 112;
@@ -168,8 +168,13 @@ function buildRoundProfile(blueprint: RunnerRoundBlueprint, index: number): Runn
   const recoverySpeedRelief = recovery && tier > 1 ? 6 : 0;
   const baseSpeed = Math.round(245 + curve * 255 + blueprint.intensity * 1.5 - recoverySpeedRelief);
   const minGap = Math.max(
-    300,
-    Math.round(440 - progress ** 0.68 * 140 - blueprint.intensity * 2 + (recovery ? 24 : 0))
+    240,
+    Math.round(
+      360
+      - progress ** 0.68 * 120
+      - blueprint.intensity * 2
+      + (recovery && tier > 1 ? 24 : 0)
+    )
   );
   const coinInterval = roundTo(
     Math.max(0.9, 1.35 - progress ** 0.62 * 0.45 - (recovery ? 0.08 : 0)),

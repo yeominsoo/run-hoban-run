@@ -142,15 +142,13 @@ app.innerHTML = `
       </div>
 
       <div class="round-banner hidden" id="round-banner" role="status" aria-live="polite">
-        <span class="round-banner-chapter" id="round-banner-chapter"></span>
-        <strong id="round-banner-title"></strong>
-        <span id="round-banner-hint"></span>
+        <strong id="round-banner-label"></strong>
       </div>
 
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>안엘런</h2>
-          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>50라운드 정상까지 새 패턴을 단독으로 익힌 뒤 연속 조합에 도전합니다. 라운드 시작 안내와 장애물 표지를 먼저 확인하세요. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>라운드가 오를수록 속도와 장애물 밀도가 높아집니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -209,9 +207,7 @@ const hudScore = document.getElementById('hud-score')!;
 const hudCoins = document.getElementById('hud-coins')!;
 const hudRound = document.getElementById('hud-round')!;
 const roundBanner = document.getElementById('round-banner')!;
-const roundBannerChapter = document.getElementById('round-banner-chapter')!;
-const roundBannerTitle = document.getElementById('round-banner-title')!;
-const roundBannerHint = document.getElementById('round-banner-hint')!;
+const roundBannerLabel = document.getElementById('round-banner-label')!;
 const bestScoreEl = document.getElementById('best-score')!;
 const startOverlay = document.getElementById('start-overlay')!;
 const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
@@ -1150,16 +1146,13 @@ function releaseKeyboardSlide() {
 }
 
 function showRoundBanner() {
-  const profile = runnerRoundProfile(roundNumber);
-  roundBannerChapter.textContent = `${profile.chapter} · ROUND ${profile.tier}/${RUNNER_MAX_DIFFICULTY_TIER}`;
-  roundBannerTitle.textContent = profile.label;
-  roundBannerHint.textContent = profile.hint;
+  roundBannerLabel.textContent = `ROUND ${roundNumber}`;
   roundBanner.classList.remove('hidden');
   if (roundBannerTimer !== null) window.clearTimeout(roundBannerTimer);
   roundBannerTimer = window.setTimeout(() => {
     roundBanner.classList.add('hidden');
     roundBannerTimer = null;
-  }, roundNumber === 1 ? 2600 : 1900);
+  }, roundNumber === 1 ? 1500 : 1100);
 }
 
 function updateHudNumbers() {
@@ -1205,6 +1198,8 @@ function updateTestAttrs() {
   canvas.dataset.speed = String(Math.round(speed));
   canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
   canvas.dataset.maxDifficultyTier = String(RUNNER_MAX_DIFFICULTY_TIER);
+  canvas.dataset.roundDuration = String(RUNNER_ROUND_DURATION_S);
+  canvas.dataset.minGap = String(currentMinGap());
   canvas.dataset.roundPattern = runnerRoundProfile(roundNumber).id;
   canvas.dataset.roundCatalog = runnerRoundCatalog();
   canvas.dataset.roundChapter = runnerRoundProfile(roundNumber).chapter;
