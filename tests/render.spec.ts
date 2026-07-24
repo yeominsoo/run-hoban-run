@@ -1,5 +1,18 @@
 import { stat } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import {
+  DOUBLE_JUMP_STACK_HEIGHT,
+  JUMP_LANE_CREATURE_BOTTOM_OFFSET,
+  JUMP_LANE_CREATURE_HEIGHT,
+  RUNNER_MAX_DIFFICULTY_TIER,
+  RUNNER_ROUND_PROFILES,
+  doubleJumpStackWidth,
+  guaranteedSpecialForRound,
+  movingPlatformSpec,
+  runnerRoundCatalog,
+  runnerRoundProfile,
+  selectSpecialPattern
+} from '../src/pages/endless-runner/difficulty';
 
 const viewports = [
   { name: 'desktop', size: { width: 1440, height: 900 } },
@@ -2185,6 +2198,11 @@ interface RunnerObstacle {
   width: number;
   visual: string;
   approachSpeed: number;
+  pattern: string;
+  motionAmplitude: number;
+  motionSpeed: number;
+  top: number;
+  height: number;
 }
 
 interface RunnerCoinPath {
@@ -2212,6 +2230,9 @@ interface RunnerState {
   speed: number;
   jumpsUsed: number;
   groundRatio: number;
+  maxDifficultyTier: number;
+  roundPattern: string;
+  roundCatalog: string[];
   obstacleCatalog: string[];
   terrainBiomes: string[];
 }
@@ -2223,8 +2244,30 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       .split('|')
       .filter(Boolean)
       .map((entry) => {
-        const [type, x, width, visual, approachSpeed] = entry.split(':');
-        return { type, x: Number(x), width: Number(width), visual, approachSpeed: Number(approachSpeed) };
+        const [
+          type,
+          x,
+          width,
+          visual,
+          approachSpeed,
+          pattern,
+          motionAmplitude,
+          motionSpeed,
+          top,
+          height
+        ] = entry.split(':');
+        return {
+          type,
+          x: Number(x),
+          width: Number(width),
+          visual,
+          approachSpeed: Number(approachSpeed),
+          pattern,
+          motionAmplitude: Number(motionAmplitude),
+          motionSpeed: Number(motionSpeed),
+          top: Number(top),
+          height: Number(height)
+        };
       });
     const coinPaths = (canvas.dataset.coinPaths ?? '')
       .split('|')
@@ -2256,11 +2299,70 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       speed: Number(canvas.dataset.speed ?? 0),
       jumpsUsed: Number(canvas.dataset.jumpsUsed ?? 0),
       groundRatio: Number(canvas.dataset.groundRatio ?? 0),
+      maxDifficultyTier: Number(canvas.dataset.maxDifficultyTier ?? 0),
+      roundPattern: canvas.dataset.roundPattern ?? '',
+      roundCatalog: (canvas.dataset.roundCatalog ?? '').split('|').filter(Boolean),
       obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean),
       terrainBiomes: (canvas.dataset.terrainBiomes ?? '').split('|').filter(Boolean)
     };
   });
 }
+
+test('endless runner: defines twelve difficulty tiers and cycles mastery patterns forever', () => {
+  expect(RUNNER_MAX_DIFFICULTY_TIER).toBe(12);
+  expect(RUNNER_ROUND_PROFILES).toHaveLength(12);
+  expect(RUNNER_ROUND_PROFILES.map((profile) => profile.id)).toEqual([
+    'basics',
+    'terrain-breaks',
+    'creature-rush',
+    'moving-platforms',
+    'air-lane',
+    'double-jump',
+    'moving-gauntlet',
+    'high-road',
+    'air-crossfire',
+    'double-jump-rush',
+    'precision-mix',
+    'marathon'
+  ]);
+  expect(runnerRoundCatalog().split('|')).toHaveLength(13);
+  expect(runnerRoundProfile(99).tier).toBe(12);
+
+  expect(selectSpecialPattern(4, 0, 0.99)).toBe('moving-platform');
+  expect(selectSpecialPattern(5, 0, 0.99)).toBe('jump-lane-creature');
+  expect(selectSpecialPattern(6, 0, 0.99)).toBe('double-jump-stack');
+  expect([13, 14, 15, 16].map(guaranteedSpecialForRound)).toEqual([
+    'moving-platform',
+    'jump-lane-creature',
+    'double-jump-stack',
+    'moving-platform'
+  ]);
+
+  const singleJumpApex = (760 ** 2) / (2 * 2200);
+  const doubleJumpReach = singleJumpApex + (690 ** 2) / (2 * 2200);
+  expect(DOUBLE_JUMP_STACK_HEIGHT).toBeGreaterThan(singleJumpApex);
+  expect(DOUBLE_JUMP_STACK_HEIGHT).toBeLessThan(doubleJumpReach);
+
+  const runningTopOffset = 42;
+  const creatureTopOffset = JUMP_LANE_CREATURE_BOTTOM_OFFSET + JUMP_LANE_CREATURE_HEIGHT;
+  expect(runningTopOffset).toBeLessThan(JUMP_LANE_CREATURE_BOTTOM_OFFSET);
+  expect(singleJumpApex).toBeGreaterThan(JUMP_LANE_CREATURE_BOTTOM_OFFSET);
+  expect(singleJumpApex).toBeLessThan(creatureTopOffset);
+
+  const movingRound4 = movingPlatformSpec(4);
+  const movingRound12 = movingPlatformSpec(12);
+  expect(movingRound4).toEqual({
+    width: 122,
+    motionAmplitude: 16,
+    motionSpeed: 1.1,
+    pitPadding: 6
+  });
+  expect(movingRound12.width).toBeGreaterThan(movingRound4.width);
+  expect(movingRound12.motionAmplitude).toBeGreaterThan(movingRound4.motionAmplitude);
+  expect(movingRound12.motionSpeed).toBeGreaterThan(movingRound4.motionSpeed);
+  expect(doubleJumpStackWidth(6)).toBe(70);
+  expect(doubleJumpStackWidth(99)).toBe(74);
+});
 
 test('endless runner: selects one of two character animation sets and reflects every action state', async ({ page }) => {
   test.setTimeout(40_000);
@@ -2356,6 +2458,9 @@ test('endless runner: selects one of two character animation sets and reflects e
   expect(playerBounds?.height).toBeGreaterThanOrEqual(92);
   const initialScene = await readRunnerState(page);
   expect(initialScene.groundRatio).toBe(0.82);
+  expect(initialScene.maxDifficultyTier).toBe(12);
+  expect(initialScene.roundPattern).toBe('basics');
+  expect(initialScene.roundCatalog).toEqual(runnerRoundCatalog().split('|'));
   expect(initialScene.obstacleCatalog).toEqual([
     'stump',
     'thorn-patch',

@@ -11,6 +11,19 @@ import {
 } from './character-assets';
 import { OBSTACLE_ASSET_URLS, type ObstacleVisual } from './obstacle-assets';
 import { TERRAIN_ASSET_URLS } from './terrain-assets';
+import {
+  DOUBLE_JUMP_STACK_HEIGHT,
+  JUMP_LANE_CREATURE_BOTTOM_OFFSET,
+  JUMP_LANE_CREATURE_HEIGHT,
+  RUNNER_MAX_DIFFICULTY_TIER,
+  RUNNER_ROUND_DURATION_S,
+  doubleJumpStackWidth,
+  movingPlatformSpec,
+  runnerRoundCatalog,
+  runnerRoundProfile,
+  selectSpecialPattern,
+  type RunnerSpecialPattern
+} from './difficulty';
 
 const GAME_SLUG = 'endless-runner';
 
@@ -28,21 +41,12 @@ const SLIDE_EXIT_MS = 180;
 const SWIPE_MIN_DISTANCE = 30;
 const MAX_JUMPS = 2;
 const SECOND_JUMP_VELOCITY = -690;
-const ROUND_DURATION_S = 15;
-const MAX_DIFFICULTY_TIER = 6;
 const BASE_SPEED = 245; // px/s
-const ROUND_SPEED_STEP = 28;
 const ROUND_SPEED_RAMP = 1.4;
 const PX_PER_METER = 50;
 const COIN_SCORE = 10;
-const OBSTACLE_MIN_GAP_START = 440;
-const OBSTACLE_MIN_GAP_STEP = 34;
-const OBSTACLE_MIN_GAP_FLOOR = 270;
-const COIN_INTERVAL_START_S = 1.35;
-const COIN_INTERVAL_STEP_S = 0.07;
-const COIN_INTERVAL_FLOOR_S = 0.9;
 const COIN_HAZARD_CLEARANCE = 180;
-const MAX_CREATURE_APPROACH_SPEED = 102;
+const MAX_CREATURE_APPROACH_SPEED = 128;
 const TERRAIN_BIOME_SPAN = 560;
 const PIT_MIN_WIDTH = 70;
 const PIT_MAX_WIDTH = 110;
@@ -52,6 +56,7 @@ const CHARACTER_STORAGE_KEY = 'rhh_endless-runner_character';
 type Phase = 'idle' | 'playing' | 'falling' | 'ended';
 type PlayerState = 'running' | 'jumping' | 'landing' | 'sliding' | 'falling';
 type ObstacleType = 'low' | 'high' | 'pit';
+type ObstaclePattern = 'standard' | 'platform-gap' | RunnerSpecialPattern;
 type CoinSafeAction = 'run' | 'jump' | 'slide';
 type TerrainBiome = 'meadow' | 'wildflowers' | 'rocky';
 
@@ -64,6 +69,9 @@ interface Obstacle {
   visual: ObstacleVisual;
   phase: number;
   approachSpeed: number;
+  pattern: ObstaclePattern;
+  motionAmplitude: number;
+  motionSpeed: number;
 }
 
 interface Coin {
@@ -133,7 +141,7 @@ app.innerHTML = `
       <div class="overlay" id="start-overlay">
         <div class="overlay-card">
           <h2>안엘런</h2>
-          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>초원·꽃밭·바위 지형과 공중 발판이 이어지고, 줄을 타고 내려온 뱀은 슬라이드로 피합니다. 코인은 장애물과 떨어진 안전한 길에 등장합니다. 코인 +10점, 달린 거리 1m = 1점.</p>
+          <p>탭하면 점프, 한 번 더 탭하면 2단 점프! 아래로 스와이프하면 슬라이드합니다.<br>4라운드부터 움직이는 발판, 5라운드부터 점프 높이의 비행몹, 6라운드부터 2단 점프 바위탑이 등장합니다. 12단계 이후에도 마스터 라운드가 계속됩니다. 코인 +10점, 달린 거리 1m = 1점.</p>
           <fieldset class="character-picker">
             <legend>달릴 캐릭터 선택</legend>
             <div class="character-picker-grid" role="group" aria-label="달릴 캐릭터 선택">
@@ -250,6 +258,7 @@ let coins: Coin[] = [];
 let standingPlatform: Obstacle | null = null;
 let distanceSinceSpawn = 0;
 let distanceSinceCoin = 0;
+let roundSpawnIndex = 0;
 
 let lastFrameAt = 0;
 let rafId: number | null = null;
@@ -322,27 +331,22 @@ function resizeCanvas() {
 
 // ── Helpers ───────────────────────────────────
 function currentMinGap(): number {
-  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
-  return Math.max(
-    OBSTACLE_MIN_GAP_FLOOR,
-    OBSTACLE_MIN_GAP_START - (tier - 1) * OBSTACLE_MIN_GAP_STEP
-  );
+  return runnerRoundProfile(roundNumber).minGap;
 }
 
 function currentCoinInterval(): number {
-  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
-  return Math.max(
-    COIN_INTERVAL_FLOOR_S,
-    COIN_INTERVAL_START_S - (tier - 1) * COIN_INTERVAL_STEP_S
-  );
+  return runnerRoundProfile(roundNumber).coinInterval;
 }
 
 function speedForCurrentRound(): number {
-  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
-  const secondsIntoRound = tier === MAX_DIFFICULTY_TIER
-    ? Math.min(ROUND_DURATION_S, Math.max(0, elapsedS - (tier - 1) * ROUND_DURATION_S))
-    : elapsedS % ROUND_DURATION_S;
-  return BASE_SPEED + (tier - 1) * ROUND_SPEED_STEP + secondsIntoRound * ROUND_SPEED_RAMP;
+  const profile = runnerRoundProfile(roundNumber);
+  const secondsIntoRound = roundNumber >= RUNNER_MAX_DIFFICULTY_TIER
+    ? Math.min(
+      RUNNER_ROUND_DURATION_S,
+      Math.max(0, elapsedS - (RUNNER_MAX_DIFFICULTY_TIER - 1) * RUNNER_ROUND_DURATION_S)
+    )
+    : elapsedS % RUNNER_ROUND_DURATION_S;
+  return profile.baseSpeed + secondsIntoRound * ROUND_SPEED_RAMP;
 }
 
 function playerHeight(): number {
@@ -663,10 +667,21 @@ function isLandingPlatform(o: Obstacle): boolean {
  */
 function obstacleGeometry(o: Obstacle): { top: number; height: number } {
   if (o.type === 'low') {
+    if (o.pattern === 'double-jump-stack') {
+      return { top: groundY - DOUBLE_JUMP_STACK_HEIGHT, height: DOUBLE_JUMP_STACK_HEIGHT };
+    }
     const height = o.visual === 'thorn-patch' ? 24 : o.visual === 'mossy-rock' ? 32 : 36;
     return { top: groundY - height, height };
   }
   if (o.type === 'high') {
+    if (o.pattern === 'jump-lane-creature') {
+      const bob = Math.sin(elapsedS * 5.2 + o.phase) * 4;
+      const bottom = groundY - JUMP_LANE_CREATURE_BOTTOM_OFFSET + bob;
+      return {
+        top: bottom - JUMP_LANE_CREATURE_HEIGHT,
+        height: JUMP_LANE_CREATURE_HEIGHT
+      };
+    }
     if (o.visual === 'honeybee' || o.visual === 'bluebird') {
       const bob = Math.sin(elapsedS * 4.4 + o.phase) * 3;
       return { top: groundY - 64 + bob, height: 30 };
@@ -676,7 +691,10 @@ function obstacleGeometry(o: Obstacle): { top: number; height: number } {
     }
     const bottom = groundY - highObstacleClearance() - 2;
     const height = 56;
-    return { top: bottom - height, height };
+    const motionOffset = o.pattern === 'moving-platform'
+      ? Math.sin(elapsedS * o.motionSpeed + o.phase) * o.motionAmplitude
+      : 0;
+    return { top: bottom - height + motionOffset, height };
   }
   return { top: groundY, height: stageHeight - groundY };
 }
@@ -698,8 +716,12 @@ function highVisualForTier(tier: number): ObstacleVisual {
 }
 
 function creatureApproachSpeed(visual: ObstacleVisual, tier: number): number {
-  if (visual === 'honeybee') return 52 + Math.min(MAX_DIFFICULTY_TIER, tier) * 4;
-  if (visual === 'bluebird') return 72 + Math.min(MAX_DIFFICULTY_TIER, tier) * 5;
+  if (visual === 'honeybee') {
+    return Math.min(MAX_CREATURE_APPROACH_SPEED, 52 + tier * 4);
+  }
+  if (visual === 'bluebird') {
+    return Math.min(MAX_CREATURE_APPROACH_SPEED, 72 + tier * 5);
+  }
   return 0;
 }
 
@@ -712,71 +734,156 @@ function canSpawnObstacleAt(x: number): boolean {
   });
 }
 
+function pushLandingPlatformWithGap(
+  spawned: Obstacle[],
+  platform: Obstacle,
+  pitPadding = 9
+) {
+  spawned.push(platform);
+  spawned.push({
+    type: 'pit',
+    visual: 'thorn-patch',
+    phase: platform.phase,
+    x: platform.x - pitPadding,
+    width: platform.width + pitPadding * 2,
+    approachSpeed: 0,
+    pattern: 'platform-gap',
+    motionAmplitude: 0,
+    motionSpeed: 0
+  });
+}
+
+function spawnSpecialObstacle(
+  pattern: RunnerSpecialPattern,
+  tier: number,
+  spawnX: number,
+  spawned: Obstacle[]
+) {
+  const phase = Math.random() * Math.PI * 2;
+  if (pattern === 'moving-platform') {
+    const spec = movingPlatformSpec(tier);
+    const platform: Obstacle = {
+      type: 'high',
+      visual: 'floating-grass-platform',
+      phase,
+      x: spawnX,
+      width: spec.width,
+      approachSpeed: 0,
+      pattern,
+      motionAmplitude: spec.motionAmplitude,
+      motionSpeed: spec.motionSpeed
+    };
+    pushLandingPlatformWithGap(spawned, platform, spec.pitPadding);
+    return;
+  }
+
+  if (pattern === 'jump-lane-creature') {
+    const visual: ObstacleVisual = tier >= 8 || Math.random() > 0.48
+      ? 'bluebird'
+      : 'honeybee';
+    spawned.push({
+      type: 'high',
+      visual,
+      phase,
+      x: spawnX,
+      width: visual === 'bluebird' ? 46 : 42,
+      approachSpeed: Math.min(
+        MAX_CREATURE_APPROACH_SPEED,
+        creatureApproachSpeed(visual, tier) + 10
+      ),
+      pattern,
+      motionAmplitude: 0,
+      motionSpeed: 0
+    });
+    return;
+  }
+
+  spawned.push({
+    type: 'low',
+    visual: 'mossy-rock',
+    phase,
+    x: spawnX,
+    width: doubleJumpStackWidth(tier),
+    approachSpeed: 0,
+    pattern,
+    motionAmplitude: 0,
+    motionSpeed: 0
+  });
+}
+
 function spawnObstacle(): boolean {
   const spawnX = stageWidth + 20;
   if (!canSpawnObstacleAt(spawnX)) return false;
 
-  const roll = Math.random();
-  const tier = Math.min(MAX_DIFFICULTY_TIER, roundNumber);
-  const pitChance = tier === 1 ? 0 : Math.min(0.3, (tier - 1) * 0.075);
-  const highChance = Math.min(0.4, 0.32 + (tier - 1) * 0.015);
-  const lowChance = 1 - highChance - pitChance;
+  const profile = runnerRoundProfile(roundNumber);
+  const tier = profile.tier;
   const spawned: Obstacle[] = [];
+  const specialPattern = selectSpecialPattern(roundNumber, roundSpawnIndex, Math.random());
 
-  if (roll < lowChance) {
-    const visual = lowVisualForTier(tier);
-    const baseWidth = visual === 'thorn-patch' ? 54 : visual === 'mossy-rock' ? 46 : 42;
-    spawned.push({
-      type: 'low',
-      visual,
-      phase: Math.random() * Math.PI * 2,
-      x: spawnX,
-      width: baseWidth + Math.min(6, tier * 2),
-      approachSpeed: 0
-    });
-  } else if (roll < lowChance + highChance) {
-    const visual = highVisualForTier(tier);
-    const baseWidth = visual === 'floating-grass-platform'
-      ? 96
-      : visual === 'hanging-vine-snake'
-        ? 48
-        : visual === 'bluebird'
-          ? 42
-          : 38;
-    const platform: Obstacle = {
-      type: 'high',
-      visual,
-      phase: Math.random() * Math.PI * 2,
-      x: spawnX,
-      width: baseWidth + Math.min(8, tier * 2),
-      approachSpeed: creatureApproachSpeed(visual, tier)
-    };
-    spawned.push(platform);
-    if (isLandingPlatform(platform)) {
-      // 공중 지형은 선택 장식이 아니라 실제 착지 구간이다. 발판 바로 아래 지면을 같은
-      // 폭의 구덩이로 비워 점프로 올라타야만 안전하게 통과할 수 있게 한다.
+  if (specialPattern) {
+    spawnSpecialObstacle(specialPattern, tier, spawnX, spawned);
+  } else {
+    const roll = Math.random();
+    const lowChance = 1 - profile.highChance - profile.pitChance;
+    if (roll < lowChance) {
+      const visual = lowVisualForTier(tier);
+      const baseWidth = visual === 'thorn-patch' ? 54 : visual === 'mossy-rock' ? 46 : 42;
+      spawned.push({
+        type: 'low',
+        visual,
+        phase: Math.random() * Math.PI * 2,
+        x: spawnX,
+        width: baseWidth + Math.min(6, tier * 2),
+        approachSpeed: 0,
+        pattern: 'standard',
+        motionAmplitude: 0,
+        motionSpeed: 0
+      });
+    } else if (roll < lowChance + profile.highChance) {
+      const visual = highVisualForTier(tier);
+      const baseWidth = visual === 'floating-grass-platform'
+        ? 96
+        : visual === 'hanging-vine-snake'
+          ? 48
+          : visual === 'bluebird'
+            ? 42
+            : 38;
+      const platform: Obstacle = {
+        type: 'high',
+        visual,
+        phase: Math.random() * Math.PI * 2,
+        x: spawnX,
+        width: baseWidth + Math.min(8, tier * 2),
+        approachSpeed: creatureApproachSpeed(visual, tier),
+        pattern: 'standard',
+        motionAmplitude: 0,
+        motionSpeed: 0
+      };
+      if (isLandingPlatform(platform)) {
+        // 공중 지형은 선택 장식이 아니라 실제 착지 구간이다. 발판 바로 아래 지면을 같은
+        // 폭의 구덩이로 비워 점프로 올라타야만 안전하게 통과할 수 있게 한다.
+        pushLandingPlatformWithGap(spawned, platform);
+      } else {
+        spawned.push(platform);
+      }
+    } else {
+      const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
       spawned.push({
         type: 'pit',
         visual: 'thorn-patch',
-        phase: platform.phase,
-        x: platform.x - 9,
-        width: platform.width + 18,
-        approachSpeed: 0
+        phase: Math.random() * Math.PI * 2,
+        x: spawnX,
+        width,
+        approachSpeed: 0,
+        pattern: 'standard',
+        motionAmplitude: 0,
+        motionSpeed: 0
       });
     }
-  } else {
-    const width = PIT_MIN_WIDTH + Math.random() * (PIT_MAX_WIDTH - PIT_MIN_WIDTH);
-    spawned.push({
-      type: 'pit',
-      visual: 'thorn-patch',
-      phase: Math.random() * Math.PI * 2,
-      x: spawnX,
-      width,
-      approachSpeed: 0
-    });
   }
 
   obstacles.push(...spawned);
+  roundSpawnIndex += 1;
   return true;
 }
 
@@ -905,7 +1012,21 @@ function updateHudNumbers() {
 function updateTestAttrs() {
   const jumpFrameIndex = currentJumpFrameIndex();
   canvas.dataset.obstacles = obstacles
-    .map((o) => `${o.type}:${Math.round(o.x)}:${Math.round(o.width)}:${o.visual}:${o.approachSpeed}`)
+    .map((o) => {
+      const geometry = obstacleGeometry(o);
+      return [
+        o.type,
+        Math.round(o.x),
+        Math.round(o.width),
+        o.visual,
+        o.approachSpeed,
+        o.pattern,
+        o.motionAmplitude,
+        o.motionSpeed,
+        Math.round(geometry.top),
+        Math.round(geometry.height)
+      ].join(':');
+    })
     .join('|');
   canvas.dataset.playerY = String(Math.round(playerY));
   canvas.dataset.playerVy = String(Math.round(playerVy));
@@ -921,6 +1042,9 @@ function updateTestAttrs() {
   canvas.dataset.jumpsUsed = String(jumpsUsed);
   canvas.dataset.speed = String(Math.round(speed));
   canvas.dataset.groundRatio = GROUND_Y_RATIO.toFixed(2);
+  canvas.dataset.maxDifficultyTier = String(RUNNER_MAX_DIFFICULTY_TIER);
+  canvas.dataset.roundPattern = runnerRoundProfile(roundNumber).id;
+  canvas.dataset.roundCatalog = runnerRoundCatalog();
   canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
   canvas.dataset.terrainBiomes = TERRAIN_BIOMES.join('|');
   canvas.dataset.standingPlatform = standingPlatform?.visual ?? 'none';
@@ -961,6 +1085,7 @@ function startGame() {
   standingPlatform = null;
   distanceSinceSpawn = 0;
   distanceSinceCoin = 0;
+  roundSpawnIndex = 0;
 
   startOverlay.classList.add('hidden');
   resultOverlay.classList.add('hidden');
@@ -1044,7 +1169,11 @@ function updatePhysics(dt: number, now: number) {
 
 function updateWorld(dt: number) {
   elapsedS += dt;
-  roundNumber = Math.min(MAX_DIFFICULTY_TIER, Math.floor(elapsedS / ROUND_DURATION_S) + 1);
+  const nextRound = Math.floor(elapsedS / RUNNER_ROUND_DURATION_S) + 1;
+  if (nextRound !== roundNumber) {
+    roundNumber = nextRound;
+    roundSpawnIndex = 0;
+  }
   speed = speedForCurrentRound();
   const travel = speed * dt;
   distancePx += travel;
@@ -1111,7 +1240,10 @@ function resolvePlatformLanding(previousPlayerY: number, wasJumping: boolean) {
     .sort((a, b) => obstacleGeometry(a).top - obstacleGeometry(b).top)
     .find((platform) => {
       const top = obstacleGeometry(platform).top;
-      return previousPlayerY <= top + 3 && playerY >= top;
+      // 움직이는 발판은 프레임 사이에도 착지면이 변하므로 모바일의 낮은 프레임률에서
+      // 판정이 빠지는 일이 없도록 상하 방향 모두 여유를 둔다.
+      const tolerance = platform.pattern === 'moving-platform' ? 12 : 3;
+      return previousPlayerY <= top + tolerance && playerY >= top - tolerance;
     });
   if (!landingPlatform) return;
 
@@ -1433,6 +1565,29 @@ function drawObstacleSprite(
 }
 
 function drawLowObstacle(o: Obstacle, top: number, height: number) {
+  if (o.pattern === 'double-jump-stack') {
+    const rockHeight = 76;
+    const rockWidth = o.width + 20;
+    const verticalStep = 49;
+    const bottomCenterY = groundY - 30;
+    const drawn = [0, 1, 2].every((index) => drawObstacleSprite(
+      'mossy-rock',
+      o.x + o.width / 2 + (index === 1 ? 5 : index === 2 ? -4 : 0),
+      bottomCenterY - index * verticalStep,
+      rockWidth - index * 3,
+      rockHeight
+    ));
+    if (drawn) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 239, 145, 0.9)';
+      ctx.font = '900 13px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('×2', o.x + o.width / 2, top - 7);
+      ctx.restore();
+      return;
+    }
+  }
+
   const visualHeight = o.visual === 'thorn-patch' ? 58 : o.visual === 'mossy-rock' ? 64 : 72;
   const visualWidth = o.width + (o.visual === 'thorn-patch' ? 28 : 22);
   const visibleBaselineRatio = 236 / 256;
@@ -1446,6 +1601,29 @@ function drawLowObstacle(o: Obstacle, top: number, height: number) {
   ctx.strokeStyle = '#5d3a42';
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawMovingPlatformGuide(o: Obstacle, centerX: number, centerY: number) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 236, 126, 0.72)';
+  ctx.fillStyle = 'rgba(255, 244, 174, 0.92)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 5]);
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY - o.motionAmplitude - 18);
+  ctx.lineTo(centerX, centerY + o.motionAmplitude + 18);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (const direction of [-1, 1]) {
+    const arrowY = centerY + direction * (o.motionAmplitude + 13);
+    ctx.beginPath();
+    ctx.moveTo(centerX, arrowY + direction * 5);
+    ctx.lineTo(centerX - 5, arrowY - direction * 2);
+    ctx.lineTo(centerX + 5, arrowY - direction * 2);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1475,6 +1653,9 @@ function drawHighObstacle(o: Obstacle, top: number, height: number) {
   const centerX = o.x + o.width / 2;
   const centerY = top + height / 2;
   if (o.visual === 'floating-grass-platform') {
+    if (o.pattern === 'moving-platform') {
+      drawMovingPlatformGuide(o, centerX, centerY);
+    }
     if (drawObstacleSprite(o.visual, centerX, centerY, o.width + 32, 112)) return;
   } else if (o.visual === 'hanging-vine-snake') {
     const sway = Math.sin(elapsedS * 2.4 + o.phase) * 3;
