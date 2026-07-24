@@ -28,6 +28,7 @@ IAN_RUN_CHARACTER_ID = "checkered-vest-boy-soft-3d-toy"
 IAN_RUN_HEAD_X_SPREAD_MAX = 9.0
 IAN_RUN_HEAD_Y_SPREAD_MAX = 8.0
 IAN_RUN_VISIBLE_TOP_SPREAD_MAX = 9
+IAN_RUN_AIRBORNE_FRAME_NUMBERS = (4, 8)
 ACTION_DURATIONS = {
     "run": [80, 80, 80, 80, 80, 80, 80, 80],
     "jump": [70, 70, 80, 90, 100, 90, 90, 100],
@@ -191,12 +192,14 @@ def verify_ian_run_head_stability(frames: list[Image.Image], errors: list[str]) 
         return
     centers: list[tuple[float, float]] = []
     visible_tops: list[int] = []
+    visible_bottoms: list[int] = []
     for frame_index, frame in enumerate(frames, start=1):
         bounds = visible_bounds(frame)
         if bounds is None:
             error(errors, f"{IAN_RUN_CHARACTER_ID}/run frame {frame_index}: empty silhouette")
             return
         visible_tops.append(bounds[1])
+        visible_bottoms.append(bounds[3])
         hair_pixels: list[tuple[int, int]] = []
         for y in range(25, 125):
             for x in range(35, 220):
@@ -244,6 +247,14 @@ def verify_ian_run_head_stability(frames: list[Image.Image], errors: list[str]) 
             f"{IAN_RUN_CHARACTER_ID}/run: visible top spread "
             f"{visible_top_spread}px exceeds {IAN_RUN_VISIBLE_TOP_SPREAD_MAX}px",
         )
+    for frame_number in IAN_RUN_AIRBORNE_FRAME_NUMBERS:
+        bottom = visible_bottoms[frame_number - 1]
+        if not PIVOT[1] - 14 <= bottom <= PIVOT[1] - 3:
+            error(
+                errors,
+                f"{IAN_RUN_CHARACTER_ID}/run frame {frame_number}: airborne feet must clear "
+                f"the baseline by 3-14px, found bottom {bottom}",
+            )
 
 
 def connected_component_stats(
@@ -320,7 +331,13 @@ def verify_single_subject_component(
         )
 
 
-def load_frame(path: Path, context: str, errors: list[str]) -> Image.Image | None:
+def load_frame(
+    path: Path,
+    context: str,
+    errors: list[str],
+    *,
+    expected_baseline: int | None = PIVOT[1],
+) -> Image.Image | None:
     if not path.is_file():
         error(errors, f"{context}: missing {path.relative_to(REPO_ROOT)}")
         return None
@@ -338,8 +355,11 @@ def load_frame(path: Path, context: str, errors: list[str]) -> Image.Image | Non
     if bounds is None:
         error(errors, f"{context}: no visible subject")
         return frame
-    if abs(bounds[3] - PIVOT[1]) > 2:
-        error(errors, f"{context}: visible baseline {bounds[3]} does not match pivot {PIVOT[1]}")
+    if expected_baseline is not None and abs(bounds[3] - expected_baseline) > 2:
+        error(
+            errors,
+            f"{context}: visible baseline {bounds[3]} does not match pivot {expected_baseline}",
+        )
     alpha = frame.getchannel("A")
     if any(alpha.getpixel(point) > 16 for point in ((0, 0), (255, 0), (0, 255), (255, 255))):
         error(errors, f"{context}: canvas corners must be transparent")
@@ -693,7 +713,19 @@ def verify_characters(
                 if path is None:
                     continue
                 expected_frames.add(path)
-                loaded = load_frame(path, f"{context} frame {index}", errors)
+                expected_baseline = (
+                    None
+                    if character_id == IAN_RUN_CHARACTER_ID
+                    and action == "run"
+                    and index in IAN_RUN_AIRBORNE_FRAME_NUMBERS
+                    else PIVOT[1]
+                )
+                loaded = load_frame(
+                    path,
+                    f"{context} frame {index}",
+                    errors,
+                    expected_baseline=expected_baseline,
+                )
                 if loaded is not None:
                     frames.append(loaded)
             loaded_actions[action] = frames

@@ -4,8 +4,9 @@
 Each character has two 4x4 sheets.  The first contains RUN and JUMP (two rows
 per action), and the second contains SLIDE and FALL.  The script removes the
 chroma background, extracts and normalizes all 32 genuinely authored poses,
-and encodes them directly.  It never creates motion by translating, rotating,
-scaling, mirroring, or duplicating a source pose.
+and encodes them directly.  It never creates motion by tweening, rotating,
+mirroring, or duplicating a source pose; normalization only aligns authored
+poses to their runtime pivot and action-specific visual anchor.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ import tempfile
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
 
 from PIL import Image
 
@@ -52,6 +54,9 @@ SHEET_GROUPS = {
 DESIGN_SOURCE_DIR = Path("output/imagegen/endless-runner-characters-2026-07-15")
 FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-24")
 ASSET_DIR = Path("endless-runner/assets/characters")
+IAN_RUN_CHARACTER_ID = "checkered-vest-boy-soft-3d-toy"
+IAN_RUN_SUPPORT_FRAME_INDEXES = (0, 1, 2, 4, 5, 6)
+IAN_RUN_AIRBORNE_FRAME_INDEXES = (3, 7)
 
 
 @dataclass(frozen=True)
@@ -386,6 +391,54 @@ def normalize_frames(frames: dict[str, list[Image.Image]]) -> dict[str, list[Ima
     return normalized
 
 
+def ian_head_anchor(frame: Image.Image) -> tuple[float, float]:
+    hair_pixels: list[tuple[int, int]] = []
+    for y in range(25, 125):
+        for x in range(35, 220):
+            red, green, blue, alpha = frame.getpixel((x, y))
+            if (
+                alpha > 128
+                and red < 95
+                and green < 75
+                and blue < 65
+                and red > green * 0.9
+            ):
+                hair_pixels.append((x, y))
+    if len(hair_pixels) < 500:
+        raise RuntimeError(
+            f"Cannot locate Ian's stable hair/head anchor ({len(hair_pixels)} pixels)"
+        )
+    return (
+        sum(x for x, _ in hair_pixels) / len(hair_pixels),
+        sum(y for _, y in hair_pixels) / len(hair_pixels),
+    )
+
+
+def stabilize_ian_run_frames(frames: list[Image.Image]) -> list[Image.Image]:
+    """Lock Ian's upper body while allowing the two airborne poses to clear the floor."""
+
+    if len(frames) != FRAME_COUNT:
+        raise RuntimeError(f"Ian run requires {FRAME_COUNT} frames, found {len(frames)}")
+    anchors = [ian_head_anchor(frame) for frame in frames]
+    target_x = median(anchor[0] for anchor in anchors)
+    target_y = median(anchors[index][1] for index in IAN_RUN_SUPPORT_FRAME_INDEXES)
+    stabilized: list[Image.Image] = []
+
+    for index, (frame, (head_x, head_y)) in enumerate(zip(frames, anchors)):
+        offset_x = round(target_x - head_x)
+        offset_y = (
+            round(target_y - head_y)
+            if index in IAN_RUN_AIRBORNE_FRAME_INDEXES
+            else 0
+        )
+        canvas = Image.new("RGBA", CANVAS_SIZE, (0, 0, 0, 0))
+        canvas.alpha_composite(frame, (offset_x, offset_y))
+        if canvas.getchannel("A").getbbox() is None:
+            raise RuntimeError(f"Ian run frame {index + 1} became empty while stabilizing")
+        stabilized.append(canvas)
+    return stabilized
+
+
 def validate_distinct_frames(frames: dict[str, list[Image.Image]], character_id: str) -> None:
     for action, action_frames in frames.items():
         digests = {hashlib.sha256(frame.tobytes()).hexdigest() for frame in action_frames}
@@ -587,6 +640,8 @@ def build_single_action(repo_root: Path, character_id: str, action: str) -> None
                     entry["sha256"] = hashlib.sha256(staged_sheet.read_bytes()).hexdigest()
 
         normalized = normalize_frames(extracted)
+        if character_id == IAN_RUN_CHARACTER_ID:
+            normalized["run"] = stabilize_ian_run_frames(normalized["run"])
         validate_distinct_frames(normalized, character_id)
         action_frames = normalized[action]
         character_dir = staging_path / character_id
@@ -708,6 +763,8 @@ def build(repo_root: Path) -> None:
                         )
 
                     normalized = normalize_frames(extracted)
+                    if character_id == IAN_RUN_CHARACTER_ID:
+                        normalized["run"] = stabilize_ian_run_frames(normalized["run"])
                     validate_distinct_frames(normalized, character_id)
                     character_dir = staging_path / character_id
                     frames_dir = character_dir / "frames"
