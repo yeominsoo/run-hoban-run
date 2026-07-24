@@ -25,8 +25,9 @@ FRAME_COUNT = 8
 ACTIONS = ("run", "jump", "slide", "fall")
 METHOD = "eight model-generated chronological poses from approved identity references; no transform tween"
 IAN_RUN_CHARACTER_ID = "checkered-vest-boy-soft-3d-toy"
-IAN_RUN_HEAD_X_SPREAD_MAX = 12.0
-IAN_RUN_HEAD_Y_SPREAD_MAX = 22.5
+IAN_RUN_HEAD_X_SPREAD_MAX = 9.0
+IAN_RUN_HEAD_Y_SPREAD_MAX = 8.0
+IAN_RUN_VISIBLE_TOP_SPREAD_MAX = 9
 ACTION_DURATIONS = {
     "run": [80, 80, 80, 80, 80, 80, 80, 80],
     "jump": [70, 70, 80, 90, 100, 90, 90, 100],
@@ -184,12 +185,18 @@ def visible_bounds(image: Image.Image) -> tuple[int, int, int, int] | None:
 
 
 def verify_ian_run_head_stability(frames: list[Image.Image], errors: list[str]) -> None:
-    """Keep Ian's head anchored while allowing the smaller vertical run-cycle bob."""
+    """Keep Ian's upper body anchored with only a subtle run-cycle bob."""
 
     if len(frames) != FRAME_COUNT:
         return
     centers: list[tuple[float, float]] = []
+    visible_tops: list[int] = []
     for frame_index, frame in enumerate(frames, start=1):
+        bounds = visible_bounds(frame)
+        if bounds is None:
+            error(errors, f"{IAN_RUN_CHARACTER_ID}/run frame {frame_index}: empty silhouette")
+            return
+        visible_tops.append(bounds[1])
         hair_pixels: list[tuple[int, int]] = []
         for y in range(25, 125):
             for x in range(35, 220):
@@ -218,6 +225,7 @@ def verify_ian_run_head_stability(frames: list[Image.Image], errors: list[str]) 
 
     horizontal_spread = max(x for x, _ in centers) - min(x for x, _ in centers)
     vertical_spread = max(y for _, y in centers) - min(y for _, y in centers)
+    visible_top_spread = max(visible_tops) - min(visible_tops)
     if horizontal_spread > IAN_RUN_HEAD_X_SPREAD_MAX:
         error(
             errors,
@@ -229,6 +237,12 @@ def verify_ian_run_head_stability(frames: list[Image.Image], errors: list[str]) 
             errors,
             f"{IAN_RUN_CHARACTER_ID}/run: head vertical spread "
             f"{vertical_spread:.1f}px exceeds {IAN_RUN_HEAD_Y_SPREAD_MAX:.1f}px",
+        )
+    if visible_top_spread > IAN_RUN_VISIBLE_TOP_SPREAD_MAX:
+        error(
+            errors,
+            f"{IAN_RUN_CHARACTER_ID}/run: visible top spread "
+            f"{visible_top_spread}px exceeds {IAN_RUN_VISIBLE_TOP_SPREAD_MAX}px",
         )
 
 

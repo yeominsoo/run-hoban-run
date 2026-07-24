@@ -76,12 +76,16 @@ short dark bowl cut with blunt fringe, rounded cheeks, small nose and broad toot
 - 전체 계약과 경로: `endless-runner/assets/characters/manifest.json`
 - 이미지 생성 최종 입력: `output/imagegen/endless-runner-characters-2026-07-15/`,
   `output/imagegen/endless-runner-8frame-2026-07-15/`,
-  `output/imagegen/endless-runner-8frame-2026-07-21/`
+  `output/imagegen/endless-runner-8frame-2026-07-21/`,
+  `output/imagegen/endless-runner-8frame-2026-07-24/`
 
 생성·검증 명령은 다음과 같다.
 
 ```bash
 python3 tools/build_endless_runner_character_assets.py
+python3 tools/build_endless_runner_character_assets.py \
+  --only-character checkered-vest-boy-soft-3d-toy \
+  --only-action run
 python3 tools/verify_endless_runner_character_assets.py
 npm run build
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:<PORT> npx playwright test tests/render.spec.ts --grep "endless runner"
@@ -173,3 +177,36 @@ npm run test:render
   `endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-run.gif`
 - 변경 범위: 이안이 달리기 원화·8개 투명 프레임·대표 PNG·GIF만 교체하고 점프·슬라이드·
   넘어짐 프레임과 게임 물리·판정·타이밍은 유지
+
+## 2026-07-24 이안이 달리기 상하 흔들림 안정화
+
+2026-07-23 교체본의 좌우 흔들림은 줄었지만, 실제 플레이에서 머리와 몸통이 프레임마다
+위아래로 크게 이동해 통통 튀는 느낌이 남았다. 달리기 8프레임의 상체 높이와 카메라를 다시
+고정하고 팔·다리만 달리기 순서에 맞게 크게 교차하도록 이미지를 재제작했다.
+
+| 측정 항목 | 2026-07-23 교체본 | 2026-07-24 안정화본 |
+|---|---:|---:|
+| 전체 실루엣 상단 편차 | 23px | 7px |
+| 전체 실루엣 높이 편차 | 23px | 7px |
+| 머리 수평 중심 편차 | 9.7px | 7.5px |
+| 머리 수직 중심 편차 | 20.1px | 5.5px |
+
+- 생성 방식: Codex 내장 `image_gen` 사용, CLI/API 폴백 미사용
+- 프롬프트 핵심: 승인된 이안이의 얼굴·보울컷·체크 조끼·체형·화풍을 유지하고, 카메라와
+  머리·어깨·몸통 높이를 8칸 모두 고정하되 팔·다리와 발 접지 순서만 명확하게 변화
+- 생성 최종본:
+  `output/imagegen/endless-runner-8frame-2026-07-24/checkered-vest-boy-soft-3d-toy-run-jump-8frame-sheet.png`
+- 생성 최종본 SHA-256:
+  `b294ef8392eca10af0bb4b4198244d5c3bae3ec096f85f242ec3b6d1113ae3c0`
+- 프로젝트 원화 SHA-256:
+  `a19d99c98c3d46715732e15fa2717c58dcb9643cc650547cb138701e2aadd472`
+- 런타임 결과:
+  `endless-runner/assets/characters/checkered-vest-boy-soft-3d-toy/checkered-vest-boy-soft-3d-toy-run.gif`
+- 재발 방지: 머리 수평 중심 9px, 수직 중심 8px, 실루엣 상단 9px 상한을 정적 검사에 추가
+- 변경 범위: `--only-character`와 `--only-action` 부분 빌드로 이안이 `run`만 다시 만들고,
+  점프·슬라이드·넘어짐 및 다른 캐릭터 에셋은 바이트 단위로 보존
+- 정적 자산 검증: PASS — 디자인 6장, 프레임 시트 18장, PNG 288장, 액션 GIF 36개,
+  슬라이드 단계 GIF 27개
+- `npm run build`: PASS — Vite 7.3.6, 222 modules transformed
+- 안엘런 Playwright: PASS — 13/13, 캐릭터 선택·액션 동기화·연속 입력·안전 코인·발판·
+  장애물·모바일 리사이즈·충돌·2단 점프 회귀 확인

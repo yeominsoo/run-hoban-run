@@ -50,7 +50,7 @@ SHEET_GROUPS = {
     "slide-fall": ("slide", "fall"),
 }
 DESIGN_SOURCE_DIR = Path("output/imagegen/endless-runner-characters-2026-07-15")
-FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-21")
+FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-24")
 ASSET_DIR = Path("endless-runner/assets/characters")
 
 
@@ -144,7 +144,19 @@ def parse_args() -> argparse.Namespace:
         default=Path(__file__).resolve().parents[1],
         help="run-hoban-run repository root",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--only-character",
+        help="Rebuild only this character ID while preserving every other runtime asset byte-for-byte.",
+    )
+    parser.add_argument(
+        "--only-action",
+        choices=ACTIONS,
+        help="Rebuild only this action; requires --only-character.",
+    )
+    arguments = parser.parse_args()
+    if bool(arguments.only_character) != bool(arguments.only_action):
+        parser.error("--only-character and --only-action must be used together")
+    return arguments
 
 
 def chroma_helper_path() -> Path:
@@ -227,7 +239,10 @@ def find_foreground_components(sheet: Image.Image) -> list[ForegroundComponent]:
                         visited[neighbor] = 1
                         queue.append(neighbor)
 
-        if len(pixels) < 32:
+        # Chroma removal can leave a tiny isolated antialiasing speck.  A real
+        # authored pose is tens of thousands of pixels, so exclude 32px noise
+        # from the grid assignment as well as anything smaller.
+        if len(pixels) <= 32:
             continue
         components.append(
             ForegroundComponent(
@@ -488,6 +503,130 @@ def match_project_ownership(tree_root: Path, project_root: Path) -> None:
         os.chown(path, project_stat.st_uid, project_stat.st_gid)
 
 
+def build_single_action(repo_root: Path, character_id: str, action: str) -> None:
+    """Rebuild one runtime action without re-encoding unrelated approved assets."""
+
+    selected = next(
+        (
+            (style, character)
+            for style in STYLES
+            for character in CHARACTERS
+            if f"{character.key}-{style.key}" == character_id
+        ),
+        None,
+    )
+    if selected is None:
+        valid_ids = sorted(
+            f"{character.key}-{style.key}"
+            for style in STYLES
+            for character in CHARACTERS
+        )
+        raise ValueError(f"Unknown character ID {character_id!r}; expected one of {valid_ids}")
+
+    asset_root = repo_root / ASSET_DIR
+    frame_sheet_root = repo_root / FRAME_SHEET_DIR
+    manifest_path = asset_root / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Missing current asset manifest: {manifest_path}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["generatedOn"] = "2026-07-24"
+    staging_path = Path(tempfile.mkdtemp(prefix=".characters-staging-", dir=asset_root.parent))
+    try:
+        shutil.copytree(asset_root, staging_path, dirs_exist_ok=True)
+        extracted: dict[str, list[Image.Image]] = {}
+
+        with tempfile.TemporaryDirectory(prefix="endless-runner-chroma-") as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            for group, group_actions in SHEET_GROUPS.items():
+                sheet_name = f"{character_id}-{group}-8frame-sheet.png"
+                fallback = asset_root / "frame-sheets" / sheet_name
+                generated = frame_sheet_root / sheet_name
+                updates_group = action in group_actions
+                source = (
+                    select_input(generated, fallback, f"{character_id} {group} frame sheet")
+                    if updates_group
+                    else fallback
+                )
+                staged_sheet = staging_path / "frame-sheets" / sheet_name
+                if updates_group:
+                    shutil.copyfile(source, staged_sheet)
+
+                transparent_sheet = temporary_root / sheet_name
+                remove_chroma_key(staged_sheet if updates_group else source, transparent_sheet)
+                with Image.open(transparent_sheet) as opened:
+                    transparent_rgba = opened.convert("RGBA")
+                    if updates_group and source == generated:
+                        canonical_sheet = Image.new(
+                            "RGBA",
+                            transparent_rgba.size,
+                            (0, 255, 0, 255),
+                        )
+                        canonical_sheet.alpha_composite(transparent_rgba)
+                        canonical_sheet.convert("RGB").save(
+                            staged_sheet,
+                            format="PNG",
+                            optimize=True,
+                        )
+                    extracted.update(extract_sheet_frames(transparent_rgba, group))
+
+                if updates_group:
+                    relative = (ASSET_DIR / "frame-sheets" / sheet_name).as_posix()
+                    entry = next(
+                        (
+                            candidate
+                            for candidate in manifest["frameSheets"]
+                            if candidate.get("characterId") == character_id
+                            and candidate.get("group") == group
+                        ),
+                        None,
+                    )
+                    if entry is None:
+                        raise RuntimeError(f"Manifest is missing frame sheet {character_id}/{group}")
+                    entry["path"] = relative
+                    entry["sha256"] = hashlib.sha256(staged_sheet.read_bytes()).hexdigest()
+
+        normalized = normalize_frames(extracted)
+        validate_distinct_frames(normalized, character_id)
+        action_frames = normalized[action]
+        character_dir = staging_path / character_id
+        frames_dir = character_dir / "frames"
+        for frame_index, frame in enumerate(action_frames, start=1):
+            filename = f"{character_id}-{action}-{frame_index:02d}.png"
+            frame.save(frames_dir / filename, format="PNG", optimize=True)
+
+        preview_name = f"{character_id}-{action}.png"
+        gif_name = f"{character_id}-{action}.gif"
+        action_frames[0].save(character_dir / preview_name, format="PNG", optimize=True)
+        save_gif(
+            action_frames,
+            ACTION_DURATIONS[action],
+            character_dir / gif_name,
+            loop=action in LOOPING_ACTIONS,
+        )
+        if action == "slide":
+            for clip_name, spec in SLIDE_CLIPS.items():
+                indexes = spec["frame_indexes"]
+                save_gif(
+                    [action_frames[index] for index in indexes],
+                    spec["durations"],
+                    character_dir / f"{character_id}-slide-{clip_name}.gif",
+                    loop=bool(spec["loop"]),
+                )
+
+        (staging_path / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        match_project_ownership(staging_path, repo_root)
+        replace_asset_root(staging_path, asset_root)
+    finally:
+        if staging_path.exists():
+            shutil.rmtree(staging_path)
+
+    print(f"Built {character_id}/{action} while preserving unrelated runtime assets")
+
+
 def build(repo_root: Path) -> None:
     asset_root = repo_root / ASSET_DIR
     asset_parent = asset_root.parent
@@ -496,7 +635,7 @@ def build(repo_root: Path) -> None:
 
     manifest: dict[str, object] = {
         "version": 4,
-        "generatedOn": "2026-07-21",
+        "generatedOn": "2026-07-24",
         "canvas": {"width": CANVAS_SIZE[0], "height": CANVAS_SIZE[1], "pivot": list(PIVOT)},
         "frameCountPerAction": FRAME_COUNT,
         "method": METHOD,
@@ -662,4 +801,11 @@ def build(repo_root: Path) -> None:
 
 if __name__ == "__main__":
     arguments = parse_args()
-    build(arguments.repo_root.resolve())
+    if arguments.only_character:
+        build_single_action(
+            arguments.repo_root.resolve(),
+            arguments.only_character,
+            arguments.only_action,
+        )
+    else:
+        build(arguments.repo_root.resolve())
