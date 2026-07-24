@@ -1,3 +1,6 @@
+import runtimeMetricsJson from '../../../endless-runner/assets/characters/runtime-metrics.json';
+import type { RunnerPixelBounds } from './collision';
+
 export type RunnerAction = 'run' | 'jump' | 'slide' | 'fall';
 export type RunnerSlidePhase = 'enter' | 'hold' | 'exit';
 
@@ -7,6 +10,31 @@ interface RunnerActionAsset {
   frames?: string[];
 }
 
+export interface RunnerActionRuntimeMetrics {
+  frameBounds: RunnerPixelBounds[];
+  unionBounds: RunnerPixelBounds;
+  meanHeightPx: number;
+}
+
+interface RunnerCharacterRuntimeMetrics {
+  visualScale: number;
+  actions: Record<RunnerAction, RunnerActionRuntimeMetrics>;
+}
+
+interface RunnerRuntimeMetrics {
+  version: number;
+  canvas: {
+    width: number;
+    height: number;
+    pivot: [number, number];
+  };
+  alphaThreshold: number;
+  referenceRunHeightPx: number;
+  characters: Record<string, RunnerCharacterRuntimeMetrics>;
+}
+
+export const RUNNER_RUNTIME_METRICS = runtimeMetricsJson as unknown as RunnerRuntimeMetrics;
+
 export interface RunnerCharacter {
   id: string;
   label: string;
@@ -14,6 +42,8 @@ export interface RunnerCharacter {
   style: 'flat-sticker' | 'storybook-paper' | 'soft-3d-toy';
   identity: 'girl' | 'boy';
   preview: string;
+  visualScale: number;
+  runtimeMetrics: RunnerCharacterRuntimeMetrics;
   actions: Record<RunnerAction, RunnerActionAsset>;
   slideClips: Record<RunnerSlidePhase, string>;
 }
@@ -68,7 +98,20 @@ function character(
       assetUrl(id, `slide-${phase}`, 'gif')
     ])
   ) as Record<RunnerSlidePhase, string>;
-  return { id, label, shortLabel, style, identity, preview: actions.run.still, actions, slideClips };
+  const runtimeMetrics = RUNNER_RUNTIME_METRICS.characters[id];
+  if (!runtimeMetrics) throw new Error(`Missing endless-runner runtime metrics: ${id}`);
+  return {
+    id,
+    label,
+    shortLabel,
+    style,
+    identity,
+    preview: actions.run.still,
+    visualScale: runtimeMetrics.visualScale,
+    runtimeMetrics,
+    actions,
+    slideClips
+  };
 }
 
 export const RUNNER_CHARACTERS: RunnerCharacter[] = [

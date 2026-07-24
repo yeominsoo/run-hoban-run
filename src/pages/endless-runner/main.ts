@@ -4,11 +4,19 @@ import { setupRankingUI, resetRankingSubmission } from '../../shared/leaderboard
 import {
   DEFAULT_RUNNER_CHARACTER_ID,
   RUNNER_CHARACTERS,
+  RUNNER_RUNTIME_METRICS,
   findRunnerCharacter,
   type RunnerAction,
   type RunnerCharacter,
   type RunnerSlidePhase
 } from './character-assets';
+import {
+  circleOverlapsWorldRect,
+  pixelBoundsToWorldRect,
+  unionPixelBounds,
+  type RunnerPixelBounds,
+  type RunnerWorldRect
+} from './collision';
 import { OBSTACLE_ASSET_URLS, type ObstacleVisual } from './obstacle-assets';
 import { TERRAIN_ASSET_URLS } from './terrain-assets';
 import {
@@ -48,6 +56,7 @@ const BASE_SPEED = 245; // px/s
 const ROUND_SPEED_RAMP = 1.4;
 const PX_PER_METER = 50;
 const COIN_SCORE = 10;
+const COIN_PICKUP_RADIUS = 11;
 const COIN_HAZARD_CLEARANCE = 180;
 const MAX_CREATURE_APPROACH_SPEED = 128;
 const TERRAIN_BIOME_SPAN = 560;
@@ -55,6 +64,11 @@ const PIT_MIN_WIDTH = 70;
 const PIT_MAX_WIDTH = 110;
 const FALL_ANIMATION_MS = 1100;
 const CHARACTER_STORAGE_KEY = 'rhh_endless-runner_character';
+const SLIDE_METRIC_FRAME_INDEXES: Record<RunnerSlidePhase, readonly number[]> = {
+  enter: [0, 1],
+  hold: [2, 3, 4, 5],
+  exit: [6, 7]
+};
 
 type Phase = 'idle' | 'playing' | 'falling' | 'ended';
 type PlayerState = 'running' | 'jumping' | 'landing' | 'sliding' | 'falling';
@@ -363,6 +377,44 @@ function playerHeight(): number {
   return playerState === 'sliding' ? SLIDE_HEIGHT : PLAYER_HEIGHT;
 }
 
+function playerVisualBaseSize(): number {
+  if (window.innerWidth <= 480) return 92;
+  return Math.min(112, Math.max(92, window.innerWidth * 0.1));
+}
+
+function playerVisualSize(): number {
+  return playerVisualBaseSize() * selectedCharacter.visualScale;
+}
+
+function currentPlayerPixelBounds(): RunnerPixelBounds {
+  const action = PLAYER_ACTIONS[playerState];
+  const metrics = selectedCharacter.runtimeMetrics.actions[action];
+  const jumpFrameIndex = currentJumpFrameIndex();
+  if (action === 'jump' && jumpFrameIndex !== null) {
+    return metrics.frameBounds[jumpFrameIndex] ?? metrics.unionBounds;
+  }
+  if (action === 'slide' && slidePhase) {
+    return unionPixelBounds(
+      SLIDE_METRIC_FRAME_INDEXES[slidePhase].map((index) => metrics.frameBounds[index])
+    );
+  }
+  return metrics.unionBounds;
+}
+
+function playerPickupRect(): RunnerWorldRect {
+  const { width, height, pivot } = RUNNER_RUNTIME_METRICS.canvas;
+  return pixelBoundsToWorldRect(
+    currentPlayerPixelBounds(),
+    playerX,
+    playerY,
+    playerVisualSize(),
+    width,
+    height,
+    pivot[0],
+    pivot[1]
+  );
+}
+
 function characterVisualAssets(character: RunnerCharacter): string[] {
   return [...new Set([
     character.actions.run.animation,
@@ -632,8 +684,11 @@ function syncPlayerVisual(forceRestart = false) {
   }
 
   for (const layer of [playerImage, playerImageBuffer]) {
+    const visualSize = playerVisualSize();
     layer.style.left = `${playerX}px`;
     layer.style.top = `${playerY}px`;
+    layer.style.width = `${visualSize}px`;
+    layer.style.height = `${visualSize}px`;
   }
   canvas.dataset.character = selectedCharacter.id;
   canvas.dataset.action = action;
@@ -1208,6 +1263,22 @@ function updateTestAttrs() {
   canvas.dataset.obstacleCatalog = Object.keys(OBSTACLE_ASSET_URLS).join('|');
   canvas.dataset.terrainBiomes = TERRAIN_BIOMES.join('|');
   canvas.dataset.standingPlatform = standingPlatform?.visual ?? 'none';
+  const pickupRect = playerPickupRect();
+  canvas.dataset.playerPickupBox = [
+    Math.round(pickupRect.left),
+    Math.round(pickupRect.top),
+    Math.round(pickupRect.width),
+    Math.round(pickupRect.height)
+  ].join(':');
+  canvas.dataset.playerHazardBox = [
+    Math.round(playerX - PLAYER_WIDTH / 2),
+    Math.round(playerTopY()),
+    PLAYER_WIDTH,
+    playerHeight()
+  ].join(':');
+  canvas.dataset.playerVisualSize = playerVisualSize().toFixed(3);
+  canvas.dataset.playerVisualScale = selectedCharacter.visualScale.toFixed(6);
+  canvas.dataset.referenceRunHeight = RUNNER_RUNTIME_METRICS.referenceRunHeightPx.toFixed(3);
   const terrainTexture = preloadedVisuals.get(TERRAIN_ASSET_URLS.meadowGround);
   canvas.dataset.terrainTextureReady = String(
     Boolean(terrainTexture?.complete && terrainTexture.naturalWidth > 0)
@@ -1442,10 +1513,10 @@ function checkCollisions(): boolean {
     }
   }
 
+  const pickupRect = playerPickupRect();
   for (const c of coins) {
     if (c.collected) continue;
-    const dist = Math.hypot(playerX - c.x, (pTop + pHeight / 2) - coinY(c));
-    if (dist < 24) {
+    if (circleOverlapsWorldRect(c.x, coinY(c), COIN_PICKUP_RADIUS, pickupRect)) {
       c.collected = true;
       coinsCollected += 1;
     }
@@ -1909,7 +1980,8 @@ function drawCoin(c: Coin, now: number) {
 }
 
 function drawPlayer(now: number) {
-  // 물리 충돌 상자는 PLAYER_WIDTH/PLAYER_HEIGHT로 유지하고, 시각 요소만 DOM GIF로 교체한다.
+  // 장애물 판정은 두 캐릭터가 같은 공통 박스를 사용한다. 코인 획득만 현재 자세의
+  // 실제 알파 픽셀 경계를 사용해 머리·팔·다리에 닿는 장면과 판정이 일치한다.
   syncPlayerVisual();
   void now;
 }

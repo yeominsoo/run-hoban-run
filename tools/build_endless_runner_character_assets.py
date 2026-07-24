@@ -54,6 +54,12 @@ SHEET_GROUPS = {
 DESIGN_SOURCE_DIR = Path("output/imagegen/endless-runner-characters-2026-07-15")
 FRAME_SHEET_DIR = Path("output/imagegen/endless-runner-8frame-2026-07-24")
 ASSET_DIR = Path("endless-runner/assets/characters")
+RUNTIME_METRICS_FILENAME = "runtime-metrics.json"
+RUNTIME_CHARACTER_IDS = (
+    "pink-glasses-girl-soft-3d-toy",
+    "checkered-vest-boy-soft-3d-toy",
+)
+RUNTIME_ALPHA_THRESHOLD = 96
 IAN_RUN_CHARACTER_ID = "checkered-vest-boy-soft-3d-toy"
 IAN_RUN_SUPPORT_FRAME_INDEXES = (0, 1, 2, 4, 5, 6)
 IAN_RUN_AIRBORNE_CLEARANCE = {3: 8, 7: 3}
@@ -491,6 +497,71 @@ def validate_distinct_frames(frames: dict[str, list[Image.Image]], character_id:
             raise RuntimeError(f"{character_id}/{action} contains duplicate rendered frames")
 
 
+def runtime_frame_bounds(frame: Image.Image) -> tuple[int, int, int, int]:
+    bounds = frame.getchannel("A").point(
+        lambda alpha: 255 if alpha >= RUNTIME_ALPHA_THRESHOLD else 0
+    ).getbbox()
+    if bounds is None:
+        raise RuntimeError("Runtime character frame has no visible subject")
+    return bounds
+
+
+def write_runtime_metrics(asset_root: Path) -> None:
+    """Record pixel-accurate pickup bounds and a fair visual scale for playable characters."""
+
+    characters: dict[str, object] = {}
+    run_mean_heights: dict[str, float] = {}
+    for character_id in RUNTIME_CHARACTER_IDS:
+        frames_dir = asset_root / character_id / "frames"
+        actions: dict[str, object] = {}
+        for action in ACTIONS:
+            frame_bounds: list[tuple[int, int, int, int]] = []
+            for frame_index in range(1, FRAME_COUNT + 1):
+                frame_path = frames_dir / f"{character_id}-{action}-{frame_index:02d}.png"
+                with Image.open(frame_path) as opened:
+                    frame_bounds.append(runtime_frame_bounds(opened.convert("RGBA")))
+            union_bounds = (
+                min(bounds[0] for bounds in frame_bounds),
+                min(bounds[1] for bounds in frame_bounds),
+                max(bounds[2] for bounds in frame_bounds),
+                max(bounds[3] for bounds in frame_bounds),
+            )
+            mean_height = sum(bounds[3] - bounds[1] for bounds in frame_bounds) / FRAME_COUNT
+            actions[action] = {
+                "frameBounds": [list(bounds) for bounds in frame_bounds],
+                "unionBounds": list(union_bounds),
+                "meanHeightPx": round(mean_height, 3),
+            }
+            if action == "run":
+                run_mean_heights[character_id] = mean_height
+        characters[character_id] = {"actions": actions}
+
+    reference_run_height = max(run_mean_heights.values())
+    for character_id, character_entry in characters.items():
+        if not isinstance(character_entry, dict):
+            raise RuntimeError(f"Invalid runtime metrics entry for {character_id}")
+        character_entry["visualScale"] = round(
+            reference_run_height / run_mean_heights[character_id],
+            6,
+        )
+
+    metrics = {
+        "version": 1,
+        "canvas": {
+            "width": CANVAS_SIZE[0],
+            "height": CANVAS_SIZE[1],
+            "pivot": list(PIVOT),
+        },
+        "alphaThreshold": RUNTIME_ALPHA_THRESHOLD,
+        "referenceRunHeightPx": round(reference_run_height, 3),
+        "characters": characters,
+    }
+    (asset_root / RUNTIME_METRICS_FILENAME).write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def gif_palette_frame(image: Image.Image) -> Image.Image:
     rgb = image.convert("RGB")
     palette = rgb.quantize(colors=255, method=Image.Quantize.MEDIANCUT)
@@ -714,6 +785,7 @@ def build_single_action(repo_root: Path, character_id: str, action: str) -> None
                     loop=bool(spec["loop"]),
                 )
 
+        write_runtime_metrics(staging_path)
         (staging_path / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -885,6 +957,7 @@ def build(repo_root: Path) -> None:
                         }
                     )
 
+        write_runtime_metrics(staging_path)
         (staging_path / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",

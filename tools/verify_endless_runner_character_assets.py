@@ -17,8 +17,10 @@ from PIL import Image, ImageChops, ImageSequence
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSET_ROOT = REPO_ROOT / "endless-runner/assets/characters"
 MANIFEST_PATH = ASSET_ROOT / "manifest.json"
+RUNTIME_METRICS_PATH = ASSET_ROOT / "runtime-metrics.json"
 
 MANIFEST_VERSION = 4
+RUNTIME_METRICS_VERSION = 1
 CANVAS_SIZE = (256, 256)
 PIVOT = (128, 232)
 FRAME_COUNT = 8
@@ -29,6 +31,10 @@ IAN_RUN_HEAD_X_SPREAD_MAX = 9.0
 IAN_RUN_HEAD_Y_SPREAD_MAX = 8.0
 IAN_RUN_VISIBLE_TOP_SPREAD_MAX = 9
 IAN_RUN_AIRBORNE_FRAME_NUMBERS = (4, 8)
+RUNTIME_CHARACTER_IDS = (
+    "pink-glasses-girl-soft-3d-toy",
+    "checkered-vest-boy-soft-3d-toy",
+)
 ACTION_DURATIONS = {
     "run": [80, 80, 80, 80, 80, 80, 80, 80],
     "jump": [70, 70, 80, 90, 100, 90, 90, 100],
@@ -784,6 +790,104 @@ def verify_characters(
             verify_ian_run_head_stability(loaded_actions.get("run", []), errors)
 
 
+def verify_runtime_metrics(errors: list[str]) -> None:
+    if not RUNTIME_METRICS_PATH.is_file():
+        error(errors, "runtime-metrics.json is missing")
+        return
+    try:
+        metrics = json.loads(RUNTIME_METRICS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        error(errors, f"runtime-metrics.json cannot be read: {exc}")
+        return
+    if not isinstance(metrics, dict):
+        error(errors, "runtime metrics root must be an object")
+        return
+    if metrics.get("version") != RUNTIME_METRICS_VERSION:
+        error(errors, f"runtime metrics version must be {RUNTIME_METRICS_VERSION}")
+    if metrics.get("canvas") != {"width": 256, "height": 256, "pivot": [128, 232]}:
+        error(errors, "runtime metrics canvas/pivot contract is wrong")
+    if metrics.get("alphaThreshold") != 96:
+        error(errors, "runtime metrics alpha threshold must be 96")
+
+    characters = metrics.get("characters")
+    if not isinstance(characters, dict) or set(characters) != set(RUNTIME_CHARACTER_IDS):
+        found = sorted(characters) if isinstance(characters, dict) else []
+        error(errors, f"runtime metric characters must be {sorted(RUNTIME_CHARACTER_IDS)}, found {found}")
+        return
+
+    run_mean_heights: dict[str, float] = {}
+    visual_scales: dict[str, float] = {}
+    for character_id in RUNTIME_CHARACTER_IDS:
+        character_entry = characters.get(character_id)
+        if not isinstance(character_entry, dict):
+            error(errors, f"runtime metrics {character_id}: entry must be an object")
+            continue
+        visual_scale = character_entry.get("visualScale")
+        if not isinstance(visual_scale, (int, float)) or visual_scale <= 0:
+            error(errors, f"runtime metrics {character_id}: visualScale must be positive")
+            continue
+        visual_scales[character_id] = float(visual_scale)
+        actions = character_entry.get("actions")
+        if not isinstance(actions, dict) or set(actions) != set(ACTIONS):
+            error(errors, f"runtime metrics {character_id}: action set is wrong")
+            continue
+
+        for action in ACTIONS:
+            action_entry = actions.get(action)
+            if not isinstance(action_entry, dict):
+                error(errors, f"runtime metrics {character_id}/{action}: entry must be an object")
+                continue
+            actual_bounds: list[list[int]] = []
+            for frame_index in range(1, FRAME_COUNT + 1):
+                path = (
+                    ASSET_ROOT
+                    / character_id
+                    / "frames"
+                    / f"{character_id}-{action}-{frame_index:02d}.png"
+                )
+                try:
+                    with Image.open(path) as opened:
+                        bounds = visible_bounds(opened.convert("RGBA"))
+                except OSError as exc:
+                    error(errors, f"runtime metrics {character_id}/{action}: cannot read {path.name}: {exc}")
+                    continue
+                if bounds is None:
+                    error(errors, f"runtime metrics {character_id}/{action}: {path.name} is empty")
+                    continue
+                actual_bounds.append(list(bounds))
+            if len(actual_bounds) != FRAME_COUNT:
+                continue
+            if action_entry.get("frameBounds") != actual_bounds:
+                error(errors, f"runtime metrics {character_id}/{action}: frameBounds are stale")
+            union_bounds = [
+                min(bounds[0] for bounds in actual_bounds),
+                min(bounds[1] for bounds in actual_bounds),
+                max(bounds[2] for bounds in actual_bounds),
+                max(bounds[3] for bounds in actual_bounds),
+            ]
+            if action_entry.get("unionBounds") != union_bounds:
+                error(errors, f"runtime metrics {character_id}/{action}: unionBounds are stale")
+            mean_height = sum(bounds[3] - bounds[1] for bounds in actual_bounds) / FRAME_COUNT
+            recorded_mean = action_entry.get("meanHeightPx")
+            if not isinstance(recorded_mean, (int, float)) or abs(float(recorded_mean) - mean_height) > 0.001:
+                error(errors, f"runtime metrics {character_id}/{action}: meanHeightPx is stale")
+            if action == "run":
+                run_mean_heights[character_id] = mean_height
+
+    if len(run_mean_heights) != len(RUNTIME_CHARACTER_IDS):
+        return
+    expected_reference = max(run_mean_heights.values())
+    recorded_reference = metrics.get("referenceRunHeightPx")
+    if not isinstance(recorded_reference, (int, float)) or abs(float(recorded_reference) - expected_reference) > 0.001:
+        error(errors, "runtime metrics referenceRunHeightPx is stale")
+    normalized_heights = [
+        run_mean_heights[character_id] * visual_scales.get(character_id, 0)
+        for character_id in RUNTIME_CHARACTER_IDS
+    ]
+    if max(normalized_heights) - min(normalized_heights) > 0.001:
+        error(errors, f"runtime character heights are not normalized: {normalized_heights}")
+
+
 def verify_inventory(
     expected_sources: set[Path],
     expected_sheets: set[Path],
@@ -822,7 +926,12 @@ def verify_inventory(
             error(errors, f"inventory: missing {label} files: {', '.join(sorted(path.name for path in missing))}")
     if any(path.name.startswith("floral-hat-boy-") for path in ASSET_ROOT.iterdir()):
         error(errors, "inventory: obsolete floral-hat-boy asset directory remains")
-    expected_top_level = set(CHARACTERS) | {"sources", "frame-sheets", "manifest.json"}
+    expected_top_level = set(CHARACTERS) | {
+        "sources",
+        "frame-sheets",
+        "manifest.json",
+        "runtime-metrics.json",
+    }
     actual_top_level = {path.name for path in ASSET_ROOT.iterdir()}
     if actual_top_level != expected_top_level:
         error(
@@ -873,6 +982,7 @@ def main() -> int:
         expected_gifs,
         errors,
     )
+    verify_runtime_metrics(errors)
     verify_inventory(
         expected_sources,
         expected_sheets,

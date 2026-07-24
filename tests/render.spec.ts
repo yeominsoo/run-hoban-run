@@ -1,5 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import runnerRuntimeMetrics from '../endless-runner/assets/characters/runtime-metrics.json' with { type: 'json' };
+import { circleOverlapsWorldRect } from '../src/pages/endless-runner/collision';
 import {
   DOUBLE_JUMP_STACK_HEIGHT,
   JUMP_LANE_CREATURE_BOTTOM_OFFSET,
@@ -2217,6 +2219,13 @@ interface RunnerCoinPath {
   groundOffset: number;
 }
 
+interface RunnerCollisionBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 interface RunnerState {
   phase: string | undefined;
   playerX: number;
@@ -2244,11 +2253,20 @@ interface RunnerState {
   roundCatalog: string[];
   obstacleCatalog: string[];
   terrainBiomes: string[];
+  pickupBox: RunnerCollisionBox;
+  hazardBox: RunnerCollisionBox;
+  visualSize: number;
+  visualScale: number;
+  referenceRunHeight: number;
 }
 
 async function readRunnerState(page: Page): Promise<RunnerState> {
   return page.locator('#er-canvas').evaluate((el) => {
     const canvas = el as HTMLElement;
+    const readCollisionBox = (value: string | undefined) => {
+      const [left, top, width, height] = (value ?? '').split(':').map(Number);
+      return { left, top, width, height };
+    };
     const obstacles = (canvas.dataset.obstacles ?? '')
       .split('|')
       .filter(Boolean)
@@ -2317,7 +2335,12 @@ async function readRunnerState(page: Page): Promise<RunnerState> {
       roundHint: canvas.dataset.roundHint ?? '',
       roundCatalog: (canvas.dataset.roundCatalog ?? '').split('|').filter(Boolean),
       obstacleCatalog: (canvas.dataset.obstacleCatalog ?? '').split('|').filter(Boolean),
-      terrainBiomes: (canvas.dataset.terrainBiomes ?? '').split('|').filter(Boolean)
+      terrainBiomes: (canvas.dataset.terrainBiomes ?? '').split('|').filter(Boolean),
+      pickupBox: readCollisionBox(canvas.dataset.playerPickupBox),
+      hazardBox: readCollisionBox(canvas.dataset.playerHazardBox),
+      visualSize: Number(canvas.dataset.playerVisualSize ?? 0),
+      visualScale: Number(canvas.dataset.playerVisualScale ?? 0),
+      referenceRunHeight: Number(canvas.dataset.referenceRunHeight ?? 0)
     };
   });
 }
@@ -2434,6 +2457,48 @@ test('endless runner: mobile round banner shows only the round number without co
     path: 'test-results/endless-runner-mobile-round-banner.png',
     fullPage: true
   });
+});
+
+test('endless runner: pixel pickup boxes cover head contact while both characters keep equal difficulty', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const characterIds = [
+    'pink-glasses-girl-soft-3d-toy',
+    'checkered-vest-boy-soft-3d-toy'
+  ] as const;
+  const states = new Map<(typeof characterIds)[number], RunnerState>();
+
+  for (const characterId of characterIds) {
+    await page.goto('/2an2el-runner/');
+    await page.evaluate((id) => {
+      localStorage.setItem('rhh_endless-runner_character', id);
+    }, characterId);
+    await page.reload();
+    await page.locator('#start-btn').click();
+    await expect(page.locator('#er-canvas')).toHaveAttribute('data-character', characterId);
+    states.set(characterId, await readRunnerState(page));
+  }
+
+  const el = states.get(characterIds[0])!;
+  const ian = states.get(characterIds[1])!;
+  const elMetrics = runnerRuntimeMetrics.characters[characterIds[0]];
+  const ianMetrics = runnerRuntimeMetrics.characters[characterIds[1]];
+  const elVisibleRunHeight = el.visualSize * elMetrics.actions.run.meanHeightPx / 256;
+  const ianVisibleRunHeight = ian.visualSize * ianMetrics.actions.run.meanHeightPx / 256;
+
+  expect(el.visualScale).toBe(1);
+  expect(ian.visualScale).toBeGreaterThan(1);
+  expect(Math.abs(elVisibleRunHeight - ianVisibleRunHeight)).toBeLessThan(0.01);
+  expect(Math.abs(el.pickupBox.height - ian.pickupBox.height)).toBeLessThanOrEqual(1);
+  expect(el.hazardBox).toEqual(ian.hazardBox);
+  expect(el.pickupBox.height).toBeGreaterThan(el.hazardBox.height + 20);
+  expect(ian.pickupBox.height).toBeGreaterThan(ian.hazardBox.height + 20);
+
+  for (const state of [el, ian]) {
+    const headTouchX = state.pickupBox.left + state.pickupBox.width / 2;
+    const headTouchY = state.pickupBox.top - 10;
+    expect(circleOverlapsWorldRect(headTouchX, headTouchY, 11, state.pickupBox)).toBe(true);
+    expect(circleOverlapsWorldRect(headTouchX, headTouchY, 11, state.hazardBox)).toBe(false);
+  }
 });
 
 test('endless runner: selects one of two character animation sets and reflects every action state', async ({ page }) => {
