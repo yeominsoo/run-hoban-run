@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 import { resolveRps } from './starting-order.mjs';
 
 const ROOM_CODE_LENGTH = 6;
@@ -90,10 +88,8 @@ function countDiscs(board) {
  *   decideTimer: Timeout | null,
  * }
  */
-export function registerReversiServer() {
-  const rooms = new Map();
+export function registerReversiServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('reversi');
 
   function recordResult(room, winnerToken) {
@@ -135,15 +131,15 @@ export function registerReversiServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.turnTimer) { clearTimeout(room.turnTimer); room.turnTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
-    if (room.decideTimer) { clearTimeout(room.decideTimer); room.decideTimer = null; }
+    if (room.turnTimer) { timers.clear(room.turnTimer); room.turnTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
+    if (room.decideTimer) { timers.clear(room.decideTimer); room.decideTimer = null; }
   }
 
   // ── 게임 진행 ────────────────────────────────────────────────────
@@ -152,7 +148,7 @@ export function registerReversiServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startDeciding(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   // ── 선공(흑) 결정전: 가위바위보 단판, 비기면 즉시 재도전 ──────────
@@ -173,8 +169,8 @@ export function registerReversiServer() {
   function armDecideTimer(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
-    if (room.decideTimer) clearTimeout(room.decideTimer);
-    room.decideTimer = setTimeout(() => decideAutoTimeout(roomCode), DECIDE_TIMEOUT_MS);
+    if (room.decideTimer) timers.clear(room.decideTimer);
+    room.decideTimer = timers.timeout('onArmDecideTimer', [roomCode], DECIDE_TIMEOUT_MS);
   }
 
   function decideAutoTimeout(roomCode) {
@@ -201,7 +197,7 @@ export function registerReversiServer() {
   function resolveDeciding(roomCode) {
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'deciding') return;
-    if (room.decideTimer) { clearTimeout(room.decideTimer); room.decideTimer = null; }
+    if (room.decideTimer) { timers.clear(room.decideTimer); room.decideTimer = null; }
 
     const [p1, p2] = room.players;
     const choiceA = room.decidingChoices[p1.token];
@@ -211,9 +207,7 @@ export function registerReversiServer() {
     if (result === null) {
       broadcast(room, { type: 'decide_tie', choiceA, choiceB });
       room.decidingChoices = {};
-      setTimeout(() => {
-        if (rooms.get(roomCode)?.phase === 'deciding') armDecideTimer(roomCode);
-      }, DECIDE_TIE_PAUSE_MS);
+      timers.timeout('onResolveDeciding', [roomCode], DECIDE_TIE_PAUSE_MS);
       return;
     }
 
@@ -226,7 +220,7 @@ export function registerReversiServer() {
       winnerToken: winner.token,
       winnerName: winner.name,
     });
-    setTimeout(() => startMatch(roomCode), DECIDE_REVEAL_MS);
+    timers.timeout('onResolveDeciding2', [roomCode], DECIDE_REVEAL_MS);
   }
 
   function startMatch(roomCode) {
@@ -256,8 +250,8 @@ export function registerReversiServer() {
   function armTurnTimer(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
-    if (room.turnTimer) clearTimeout(room.turnTimer);
-    room.turnTimer = setTimeout(() => autoPlay(roomCode), TURN_TIMEOUT_MS);
+    if (room.turnTimer) timers.clear(room.turnTimer);
+    room.turnTimer = timers.timeout('onArmTurnTimer', [roomCode], TURN_TIMEOUT_MS);
   }
 
   function autoPlay(roomCode) {
@@ -296,7 +290,7 @@ export function registerReversiServer() {
   function advanceTurn(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
-    if (room.turnTimer) { clearTimeout(room.turnTimer); room.turnTimer = null; }
+    if (room.turnTimer) { timers.clear(room.turnTimer); room.turnTimer = null; }
 
     const next = opponentOf(room.turn);
     const nextMoves = legalMoves(room.board, next);
@@ -370,7 +364,7 @@ export function registerReversiServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -515,6 +509,21 @@ export function registerReversiServer() {
     });
   });
 
-  console.log('[reversi-server] registered ws path: /reversi');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startDeciding(roomCode); }
+
+  function onArmDecideTimer(roomCode) { decideAutoTimeout(roomCode); }
+
+  function onResolveDeciding(roomCode) {
+        if (rooms.get(roomCode)?.phase === 'deciding') armDecideTimer(roomCode);
+      }
+
+  function onResolveDeciding2(roomCode) { startMatch(roomCode); }
+
+  function onArmTurnTimer(roomCode) { autoPlay(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onArmDecideTimer, onResolveDeciding, onResolveDeciding2, onArmTurnTimer, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

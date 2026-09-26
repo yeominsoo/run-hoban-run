@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MAX_CHAT_LEN = 120;
@@ -26,10 +24,8 @@ const MIN_PAINT_INTERVAL_MS = 20; // 매크로 연타 방지용 최소 간격(�
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerTerritoryClashServer() {
-  const rooms = new Map();
+export function registerTerritoryClashServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('territory-clash');
 
   function recordResult(room, winnerToken) {
@@ -70,14 +66,14 @@ export function registerTerritoryClashServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.matchTimer) { clearTimeout(room.matchTimer); room.matchTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.matchTimer) { timers.clear(room.matchTimer); room.matchTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   function scoreOf(room, token) {
@@ -102,7 +98,7 @@ export function registerTerritoryClashServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startMatch(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startMatch(roomCode) {
@@ -125,7 +121,7 @@ export function registerTerritoryClashServer() {
       rightName: room.players[1]?.name ?? '?',
     });
 
-    room.matchTimer = setTimeout(() => endMatch(roomCode), MATCH_MS);
+    room.matchTimer = timers.timeout('onStartMatch', [roomCode], MATCH_MS);
   }
 
   function endMatch(roomCode) {
@@ -182,7 +178,7 @@ export function registerTerritoryClashServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -334,6 +330,13 @@ export function registerTerritoryClashServer() {
     });
   });
 
-  console.log('[territory-clash-server] registered ws path: /territory-clash');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startMatch(roomCode); }
+
+  function onStartMatch(roomCode) { endMatch(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onStartMatch, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

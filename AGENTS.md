@@ -22,15 +22,16 @@ src/
   shared/          # 페이지 간 공용 유틸 (시드 RNG, 참가자 파싱 등)
 public/assets/     # 브라우저에 직접 제공되는 GLB 등 정적 파일
 race/, team/, dice/, rps/, liar/, mafia/, halligalli/  # 각 게임의 index.html (Vite 멀티페이지 입력)
-ws-server/         # 가위바위보(/rps, 1v1/배틀로얄/토너먼트) + 라이어게임(/liar) + 마피아게임(/mafia) + 할리갈리(/halligalli) WebSocket 서버 (Node, 별도 배포 필요)
+ws-server/         # 가위바위보(/rps, 1v1/배틀로얄/토너먼트) + 라이어게임(/liar) + 마피아게임(/mafia) + 할리갈리(/halligalli) WebSocket 서버 (Cloudflare Workers + SQLite Durable Objects, Node 로컬 실행도 지원)
 tests/             # Playwright 룰/렌더 검증
 docs/              # 기획 및 설계 문서
 ```
 
-`race`, `team`, `dice`는 정적 파일만으로 동작하지만 `rps`, `liar`, `mafia`, `halligalli`는 항상 켜져 있는
-WebSocket 서버(`ws-server/`, 같은 Node 프로세스가 `/rps`·`/liar`·`/mafia`·`/halligalli` 네 경로를
-함께 서비스)가 필요하다. **`ws-server/README.md`가 실제 배포 상태(WAS 구조, 재배포 절차, 프로토콜)의
-단일 진실 공급원이다 — 이 네 경로나 WAS를 건드리기 전에 반드시 먼저 읽을 것.** 이 저장소는 여러
+`race`, `team`, `dice`는 정적 파일만으로 동작하지만 멀티 게임 18종은 WebSocket 백엔드가 필요하다.
+프로덕션은 Cloudflare Workers Free + SQLite Durable Objects이며, `ws-server/server.mjs`는
+로컬/롤백용 Node 실행을 지원한다. **`ws-server/README.md`가 실제 배포 상태(Cloudflare와 기존
+WAS 구조, 재배포 절차, 프로토콜)의 단일 진실 공급원이다 — 서버 경로나 WAS를 건드리기 전에
+반드시 먼저 읽을 것.** 이 저장소는 여러
 세션이 `/rps`를 동시에 작업한 적이 있으니, 작업 전 `git fetch && git log origin/master --oneline
 -10`으로 다른 세션의 커밋이 없는지 확인하는 습관을 들일 것.
 

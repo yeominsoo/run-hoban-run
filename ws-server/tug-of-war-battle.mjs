@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MAX_CHAT_LEN = 120;
@@ -25,10 +23,8 @@ const MATCH_MS = 30000;      // 30초 안에 승부가 안 나면 더 많이 당
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerTugOfWarBattleServer() {
-  const rooms = new Map();
+export function registerTugOfWarBattleServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('tug-of-war-battle');
 
   function recordResult(room, winnerToken) {
@@ -69,14 +65,14 @@ export function registerTugOfWarBattleServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.matchTimer) { clearTimeout(room.matchTimer); room.matchTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.matchTimer) { timers.clear(room.matchTimer); room.matchTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 게임 진행 ────────────────────────────────────────────────────
@@ -85,7 +81,7 @@ export function registerTugOfWarBattleServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startMatch(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startMatch(roomCode) {
@@ -107,7 +103,7 @@ export function registerTugOfWarBattleServer() {
       rightName: room.players[1]?.name ?? '?',
     });
 
-    room.matchTimer = setTimeout(() => timeUpEndMatch(roomCode), MATCH_MS);
+    room.matchTimer = timers.timeout('onStartMatch', [roomCode], MATCH_MS);
   }
 
   function timeUpEndMatch(roomCode) {
@@ -166,7 +162,7 @@ export function registerTugOfWarBattleServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -307,6 +303,13 @@ export function registerTugOfWarBattleServer() {
     });
   });
 
-  console.log('[tug-of-war-battle-server] registered ws path: /tug-of-war-battle');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startMatch(roomCode); }
+
+  function onStartMatch(roomCode) { timeUpEndMatch(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onStartMatch, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

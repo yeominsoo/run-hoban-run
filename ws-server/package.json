@@ -6,9 +6,17 @@
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test --test-concurrency=1 *.test.mjs"
+    "test": "node --test --test-concurrency=1 *.test.mjs",
+    "dev:cloudflare": "wrangler dev",
+    "build:cloudflare": "wrangler deploy --dry-run --outdir .wrangler/build",
+    "deploy:cloudflare": "wrangler deploy",
+    "test:cloudflare": "node --test --test-concurrency=1 cloudflare/*.test.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "miniflare": "5.20260925.0-alpha",
+    "wrangler": "4.141.0"
   }
 }

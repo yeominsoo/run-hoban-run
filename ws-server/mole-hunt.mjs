@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 2;
@@ -30,10 +28,8 @@ const VISIBLE_MS = 850;         // 두더지가 맞지 않고 버티는 최대 �
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerMoleHuntServer() {
-  const rooms = new Map();
+export function registerMoleHuntServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('mole-hunt');
 
   /** 라운드 종료 시점 최고점수를 기록한 전원을 승, 나머지를 패로 반영한다(전원 0점이면 기록하지 않음). */
@@ -81,16 +77,16 @@ export function registerMoleHuntServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.activeMole?.hideTimer) clearTimeout(room.activeMole.hideTimer);
+    if (room.activeMole?.hideTimer) timers.clear(room.activeMole.hideTimer);
     room.activeMole = null;
-    if (room.spawnTimer) { clearTimeout(room.spawnTimer); room.spawnTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.spawnTimer) { timers.clear(room.spawnTimer); room.spawnTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -126,7 +122,7 @@ export function registerMoleHuntServer() {
     room.phase = 'countdown';
     for (const p of room.players) p.score = 0;
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startRound(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startRound(roomCode) {
@@ -144,10 +140,10 @@ export function registerMoleHuntServer() {
     if (!room || room.phase !== 'playing') return;
     const delay = Math.max(minDelay, MIN_SPAWN_DELAY_MS + Math.random() * (MAX_SPAWN_DELAY_MS - MIN_SPAWN_DELAY_MS));
     if (Date.now() + delay >= room.roundEndsAt) {
-      room.spawnTimer = setTimeout(() => endRound(roomCode), Math.max(0, room.roundEndsAt - Date.now()));
+      room.spawnTimer = timers.timeout('onScheduleNextSpawn', [roomCode], Math.max(0, room.roundEndsAt - Date.now()));
       return;
     }
-    room.spawnTimer = setTimeout(() => spawnMole(roomCode), delay);
+    room.spawnTimer = timers.timeout('onScheduleNextSpawn2', [roomCode], delay);
   }
 
   function spawnMole(roomCode) {
@@ -159,7 +155,7 @@ export function registerMoleHuntServer() {
     if (HOLE_COUNT > 1 && hole === prevHole) hole = (hole + 1 + Math.floor(Math.random() * (HOLE_COUNT - 1))) % HOLE_COUNT;
     room.lastHole = hole;
 
-    const hideTimer = setTimeout(() => resolveMole(roomCode, moleId, null), VISIBLE_MS);
+    const hideTimer = timers.timeout('onSpawnMole', [roomCode, moleId], VISIBLE_MS);
     room.activeMole = { moleId, hole, hideTimer, resolved: false };
     broadcast(room, { type: 'mole_spawn', moleId, hole, visibleMs: VISIBLE_MS });
   }
@@ -169,7 +165,7 @@ export function registerMoleHuntServer() {
     if (!room || !room.activeMole || room.activeMole.moleId !== moleId || room.activeMole.resolved) return;
     const hole = room.activeMole.hole;
     room.activeMole.resolved = true;
-    clearTimeout(room.activeMole.hideTimer);
+    timers.clear(room.activeMole.hideTimer);
     room.activeMole = null;
 
     if (hitToken) {
@@ -246,7 +242,7 @@ export function registerMoleHuntServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -415,6 +411,17 @@ export function registerMoleHuntServer() {
     });
   });
 
-  console.log('[mole-hunt-server] registered ws path: /mole-hunt');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startRound(roomCode); }
+
+  function onScheduleNextSpawn(roomCode) { endRound(roomCode); }
+
+  function onScheduleNextSpawn2(roomCode) { spawnMole(roomCode); }
+
+  function onSpawnMole(roomCode, moleId) { resolveMole(roomCode, moleId, null); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onScheduleNextSpawn, onScheduleNextSpawn2, onSpawnMole, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

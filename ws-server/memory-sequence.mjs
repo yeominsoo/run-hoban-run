@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 2;
@@ -39,10 +37,8 @@ const ROUND_ADVANCE_DELAY_MS = 2600; // 라운드 결과를 보여준 뒤 다음
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerMemorySequenceServer() {
-  const rooms = new Map();
+export function registerMemorySequenceServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('memory-sequence');
 
   function recordResult(room, winnerTokens) {
@@ -82,17 +78,17 @@ export function registerMemorySequenceServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    for (const t of room.revealTimers) clearTimeout(t);
+    for (const t of room.revealTimers) timers.clear(t);
     room.revealTimers = [];
-    if (room.inputTimer) { clearTimeout(room.inputTimer); room.inputTimer = null; }
-    if (room.nextRoundTimer) { clearTimeout(room.nextRoundTimer); room.nextRoundTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.inputTimer) { timers.clear(room.inputTimer); room.inputTimer = null; }
+    if (room.nextRoundTimer) { timers.clear(room.nextRoundTimer); room.nextRoundTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -125,7 +121,7 @@ export function registerMemorySequenceServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startGame(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startGame(roomCode) {
@@ -165,12 +161,12 @@ export function registerMemorySequenceServer() {
 
     room.sequence.forEach((tile, i) => {
       const delay = REVEAL_LEAD_MS + i * (TILE_ON_MS + TILE_GAP_MS);
-      const timer = setTimeout(() => broadcast(room, { type: 'tile_reveal', index: i, tile }), delay);
+      const timer = timers.timeout('onStartRound', [room, i, tile], delay);
       room.revealTimers.push(timer);
     });
 
     const revealTotalMs = REVEAL_LEAD_MS + room.sequence.length * (TILE_ON_MS + TILE_GAP_MS);
-    const doneTimer = setTimeout(() => beginInputPhase(roomCode), revealTotalMs);
+    const doneTimer = timers.timeout('onStartRound2', [roomCode], revealTotalMs);
     room.revealTimers.push(doneTimer);
   }
 
@@ -180,14 +176,14 @@ export function registerMemorySequenceServer() {
     room.phase = 'input';
     const inputTimeoutMs = room.sequence.length * INPUT_PER_TILE_MS + INPUT_BUFFER_MS;
     broadcast(room, { type: 'reveal_done', inputTimeoutMs });
-    room.inputTimer = setTimeout(() => resolveRoundTimeout(roomCode), inputTimeoutMs);
+    room.inputTimer = timers.timeout('onBeginInputPhase', [roomCode], inputTimeoutMs);
   }
 
   function checkRoundDone(roomCode) {
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'input') return;
     if (room.cleared.size + room.failed.size >= room.alive.size) {
-      if (room.inputTimer) { clearTimeout(room.inputTimer); room.inputTimer = null; }
+      if (room.inputTimer) { timers.clear(room.inputTimer); room.inputTimer = null; }
       resolveRound(roomCode);
     }
   }
@@ -229,7 +225,7 @@ export function registerMemorySequenceServer() {
     } else if (room.alive.size === 1) {
       endGame(roomCode, [...room.alive]);
     } else {
-      room.nextRoundTimer = setTimeout(() => startRound(roomCode), ROUND_ADVANCE_DELAY_MS);
+      room.nextRoundTimer = timers.timeout('onResolveRound', [roomCode], ROUND_ADVANCE_DELAY_MS);
     }
   }
 
@@ -286,7 +282,7 @@ export function registerMemorySequenceServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -480,6 +476,19 @@ export function registerMemorySequenceServer() {
     });
   });
 
-  console.log('[memory-sequence-server] registered ws path: /memory-sequence');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startGame(roomCode); }
+
+  function onStartRound(room, i, tile) { broadcast(room, { type: 'tile_reveal', index: i, tile }); }
+
+  function onStartRound2(roomCode) { beginInputPhase(roomCode); }
+
+  function onBeginInputPhase(roomCode) { resolveRoundTimeout(roomCode); }
+
+  function onResolveRound(roomCode) { startRound(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onStartRound, onStartRound2, onBeginInputPhase, onResolveRound, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

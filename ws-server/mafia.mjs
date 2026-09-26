@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 4;
@@ -57,10 +55,8 @@ function assignRoles(tokens) {
  *   deathsThisRound: [{token, name}],        // 방금 밤에 죽은 사람 (낮 시작 메시지용)
  * }
  */
-export function registerMafiaServer() {
-  const rooms = new Map();
+export function registerMafiaServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('mafia');
 
   function send(ws, payload) {
@@ -94,13 +90,13 @@ export function registerMafiaServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearPhaseTimer(room) {
-    if (room.phaseTimer) { clearTimeout(room.phaseTimer); room.phaseTimer = null; }
+    if (room.phaseTimer) { timers.clear(room.phaseTimer); room.phaseTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -175,7 +171,7 @@ export function registerMafiaServer() {
       send(p.ws, { type: 'night_start', round: room.round, alive, timeLimit: NIGHT_TIME_MS, yourActionRequired: isActor });
     }
 
-    room.phaseTimer = setTimeout(() => resolveNight(roomCode), NIGHT_TIME_MS);
+    room.phaseTimer = timers.timeout('onStartNight', [roomCode], NIGHT_TIME_MS);
   }
 
   function checkNightReady(roomCode) {
@@ -248,7 +244,7 @@ export function registerMafiaServer() {
     for (const p of room.players) {
       if (p.ws) send(p.ws, { type: 'day_start', round: room.round, alive, deaths: room.deathsThisRound, timeLimit: DAY_TIME_MS });
     }
-    room.phaseTimer = setTimeout(() => resolveDayVote(roomCode, true), DAY_TIME_MS);
+    room.phaseTimer = timers.timeout('onStartDay', [roomCode], DAY_TIME_MS);
   }
 
   function checkDayVoteReady(roomCode) {
@@ -308,7 +304,7 @@ export function registerMafiaServer() {
       for (const p of room.players) {
         if (p.ws) send(p.ws, { type: 'day_revote_start', tiedCandidates, tally });
       }
-      room.phaseTimer = setTimeout(() => resolveDayVote(roomCode, true), REVOTE_TIME_MS);
+      room.phaseTimer = timers.timeout('onResolveDayVote', [roomCode], REVOTE_TIME_MS);
       return;
     }
 
@@ -408,7 +404,7 @@ export function registerMafiaServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -633,6 +629,15 @@ export function registerMafiaServer() {
     });
   });
 
-  console.log('[mafia-server] registered ws path: /mafia');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartNight(roomCode) { resolveNight(roomCode); }
+
+  function onStartDay(roomCode) { resolveDayVote(roomCode, true); }
+
+  function onResolveDayVote(roomCode) { resolveDayVote(roomCode, true); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartNight, onStartDay, onResolveDayVote, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

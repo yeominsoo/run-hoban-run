@@ -1,56 +1,67 @@
-# WebSocket Server (RPS + 라이어게임 + 마피아게임 + 할리갈리 + 윷놀이 + 전략윷놀이)
+# 실시간 게임 서버 — Cloudflare Workers + Durable Objects
 
-가위바위보 대결(`/rps`)·라이어게임(`/liar`)·마피아게임(`/mafia`)·할리갈리(`/halligalli`)·
-윷놀이(`/yutnori`)·전략윷놀이(`/strategy-yutnori`)가 함께 쓰는 실시간 서버. 이 저장소의 나머지
-게임(레이스/주사위/팀배분)과 달리 정적 파일만으로는 동작하지 않고, 항상 켜져 있는 Node 프로세스
-+ WAS 배포가 필요하다. 여섯 게임 모두 **같은 Node 프로세스, 같은 컨테이너, 같은 포트/TLS/도메인**을
-공유하고, 서로 다른 WebSocket 경로(`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`,
-`/strategy-yutnori`)와 완전히 독립된 room 상태(`server.mjs` vs `liar.mjs` vs `mafia.mjs` vs
-`halligalli.mjs` vs `yutnori.mjs`+`yutnori-rules.mjs`+`yutnori-board.mjs` vs
-`strategy-yutnori.mjs`+`strategy-yutnori-rules.mjs`, 보드 그래프 `yutnori-board.mjs`는 두 윷놀이가
-공유)로만 나뉜다 — 새 게임을 추가할 때마다 서버/포트/인증서를 새로 만들 필요 없이 이 패턴을
-반복하면 된다.
+2026-09-27부터 프로덕션 백엔드는 **Cloudflare Workers Free + SQLite Durable Objects**를 사용한다.
+프론트엔드는 Firebase Hosting(`hoban-lakepark-ab19`)이다. 미니 PC의 기존 Node/Docker 서버와
+데이터 볼륨은 롤백용으로 남겨 두었다. 새 배포에 유료 Workers 플랜이나 Containers는 사용하지 않는다.
 
-⚠️ **이 파일은 실제 배포 상태를 반영하는 단일 진실 공급원(source of truth)이다.** 다른 세션/환경에서
-`/rps`, `/liar`, `/mafia`, `/halligalli`, `/yutnori`, `/strategy-yutnori`나 WAS를 건드리기 전에
-반드시 이 파일을 먼저 읽을 것. 이
-저장소는 **동시에 여러 Claude Code 세션이 `/rps`를 병렬로 작업한 적이 있다** (2026-07-02~03에 두
-세션이 서로 다른 방향으로 완전히 다시 작성해서 나중에 사용자가 한쪽을 골라야 했음). 작업 전에 항상:
+**이 문서는 실제 배포 구조와 재배포 절차의 단일 진실 공급원이다.** 서버/게임 통신을 수정하기 전에
+먼저 읽고, `git fetch origin`과 `git log origin/master --oneline -10`으로 다른 세션의 변경을 확인한다.
+
+## 프로덕션 주소와 구조
+
+- 사이트: https://hoban-lakepark-ab19.web.app
+- 백엔드: https://toris-arcade-games.line-nori-yeominsoo.workers.dev
+- WebSocket: `wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/{game}`
+- 헬스체크: `/healthz`, 가위바위보 랭킹: `/ranking`, 기타 멀티 랭킹: `/ranking/{game}`
+- 싱글 점수 API: `/ranking/score/{game}` (GET/POST)
+
+`cloudflare/games.mjs`가 지원 경로 목록이다. 멀티 18종:
+`rps`, `liar`, `mafia`, `halligalli`, `yutnori`, `strategy-yutnori`, `mole-hunt`,
+`memory-sequence`, `updown-number`, `multiplication-sprint`, `odd-even-math`,
+`color-instruction`, `sum-ten-puzzle`, `tug-of-war-battle`, `territory-clash`,
+`light-guess`, `reversi`, `gomoku`. 싱글 10종의 점수 저장도 같은 Worker가 담당한다.
+
+브라우저 → Worker 경로 라우팅 → 게임별 SQLite Durable Object(`GameService`).
+한 게임의 여러 방을 같은 Object에서 처리하며, 게임 간 상태는 분리한다. 기존 메시지 프로토콜은
+유지한다. `cloudflare/worker.mjs`가 WebSocket Hibernation, 방/비공개 상태 저장, 랭킹, 타이머를
+관리하고, 각 게임 모듈은 Node와 Cloudflare 양쪽에서 같은 규칙을 실행한다.
+
+상태와 타이머를 저장한 뒤 클라이언트에 결과를 전송한다. 긴 대기는 Durable Object alarm으로
+재개하며, 2초 이하의 짧은 연출은 런타임 타이머와 alarm 복구를 함께 사용한다. 랭킹 주간 경계는
+기존 Node 컨테이너와 같은 UTC 기준이다. 아래 게임 설명의 `ranking-*.json` 파일명은 **기존
+Node 저장 형식**이며, 현재 프로덕션에서는 같은 데이터를 SQLite Object 저장소에 보관한다.
+
+접속 후 1분간 입장하지 않은 소켓과 참가자 동작이 30분간 없는 방은 정리한다. 재접속 유예는
+기존 게임 정책(진행 중 45초, 대기실 5분)을 유지한다. 게임별 동시 연결 256개/방 64개,
+메시지 4KB/소켓당 초당 60개 제한이 있다. 계정의 무료 사용량은 다른 앱들과 공유한다.
+
+## Cloudflare 배포
+
+루트의 gitignored `.env`에 `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`을 설정한다.
+토큰은 서버 배포 전용이며 `VITE_` 변수나 프론트엔드에 넣지 않는다. 여러 앱에 하나의 권한 있는
+토큰을 사용할 수 있지만, 계정/배포 담당자를 분리할 때는 별도 토큰을 발급할 수 있다.
 
 ```bash
-git fetch origin && git log origin/master --oneline -10
+npm ci --prefix ws-server
+npm --prefix ws-server test
+npm --prefix ws-server run build:cloudflare
+npm --prefix ws-server run test:cloudflare
+node --env-file=.env ws-server/node_modules/wrangler/bin/wrangler.js deploy --config ws-server/wrangler.jsonc
+node ws-server/cloudflare/smoke.mjs https://toris-arcade-games.line-nori-yeominsoo.workers.dev
 ```
 
-로 CI의 `deploy(firebase): ... [skip ci]` 봇 커밋 말고 다른 사람의 실제 기능 커밋이 없는지 먼저 확인한다.
+`wrangler.jsonc`의 `new_sqlite_classes` 마이그레이션을 유지한다. 배포 후 기존 Object를 삭제하거나
+이름을 바꾸면 데이터와 재접속 경로가 바뀐다. GHCR 이미지 빌드 워크플로는 Node 대안용이며,
+Cloudflare 백엔드를 자동 배포하지 않는다. 새 게임을 추가할 때는 registry와 프론트엔드의
+`.env.production`, Firebase 배포 Job의 URL을 함께 추가한다.
 
-## 아키텍처 한눈에 보기
+랭킹 이전은 `cloudflare/migrate-rankings.mjs`를 사용했다. 임시 `MIGRATION_TOKEN`을 설정한
+동안에만 `/__migration/ranking...` 요청을 허용하며, 기존 랭킹이 있으면 덮어쓰기를 거부한다.
+이전 완료 후 임시 secret을 삭제해야 한다. 백업/검증 기록은
+[`../docs/cloudflare-migration-2026-09-27.md`](../docs/cloudflare-migration-2026-09-27.md)에 있다.
 
-```
-사용자 브라우저
-   │  https://hoban-lakepark-ab19.web.app/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}/   (Firebase Hosting, 정적 프론트엔드)
-   │  wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}   (VITE_RPS_WS_URL / VITE_LIAR_WS_URL / VITE_MAFIA_WS_URL / VITE_HALLIGALLI_WS_URL / VITE_YUTNORI_WS_URL / VITE_STRATEGY_YUTNORI_WS_URL로 빌드 시점에 주입됨)
-   ▼
-공유기 (58.228.188.17, WAN) ── 포트 30080 포워딩 ──▶ WAS 내부(192.168.75.194)
-   ▼
-rps-tls 컨테이너 (nginx, --network host, 30080에서 TLS 종료, Let's Encrypt 정식 인증서)
-   │  proxy_pass http://127.0.0.1:30081/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori,healthz,ranking}
-   ▼
-rps-server 컨테이너 (Node, 8787→30081 포워딩)
-   │  server.mjs가 /rps를 직접, import한 liar.mjs가 /liar를, mafia.mjs가 /mafia를,
-   │  halligalli.mjs가 /halligalli를, yutnori.mjs가 /yutnori를, strategy-yutnori.mjs가 /strategy-yutnori를
-   │  같은 httpServer의 noServer 모드 WebSocketServer 6개로 서비스 (수동 upgrade 라우팅)
-   │  랭킹은 파일 기반: /app/data/{ranking,ranking-*,score-ranking-*}.json (named volume rps-server-data)
-   │  방 상태는 인메모리이며 방이 끝나면 소멸
-```
-
-WAS 자체는 공인 IP를 가진 공유기 뒤의 홈서버이고, k8s(ArgoCD가 다른 앱들 관리) +
-독립 Docker 컨테이너가 같이 떠 있다. `run-hoban-run` 프론트엔드 자체는 k8s에도 배포되지만
-그건 ClusterIP뿐이라 외부에 안 열려있고, **실제 서비스되는 프론트엔드는 Firebase Hosting**이다.
-`/rps`의 백엔드만 이 WAS에서 plain `docker run`으로 직접 운영 중이며, k8s로 배포하려던 시도는
-있었지만(`ws-deployment.yaml`/`ws-service.yaml`) 되돌려졌다 — **지금은 k8s로 관리되지 않는다.**
-`.github/workflows/build-ws-server.yml`이 `ws-server/**` 변경 시 GHCR에 이미지를 자동으로
-빌드·푸시하긴 하지만, 그 이미지를 실제로 당겨서 배포하는 자동화는 없다 — 아래 "배포/재배포 절차"를
-수동으로 실행해야 반영된다.
+Cloudflare 로컬 개발은 `cd ws-server && npm run dev:cloudflare -- --port 8787`로 실행한다.
+아래 Node 실행은 같은 게임 로직을 확인하는 대안이다.
 
 ## 로컬 실행 (테스트용)
 
@@ -512,7 +523,9 @@ nginx의 기존 `/ranking` prefix 프록시를 그대로 사용하므로 별도 
   `점수·거리·코인`을 표시한다. 업데이트 전 기록처럼 상세 필드가 없는 JSON도 그대로 읽으며,
   같은 닉네임·같은 점수라면 상세 필드가 있는 기록을 우선해 점진적으로 보강한다.
 
-## WAS(58.228.188.17) 배포 상태 — 완료, `docker run` 두 개로 운영
+## 기존 WAS — 롤백용 Node/Docker 서버 (프로덕션 연결 전환 완료)
+
+아래는 이전 서버의 복구 절차다. 현재 게임 백엔드 배포에는 위 Cloudflare 절차를 사용한다.
 
 두 컨테이너 모두 `--restart unless-stopped`로 상시 운영 중:
 
@@ -582,24 +595,18 @@ docker run --rm \
 ```
 DuckDNS 네임서버가 가끔 SERVFAIL을 내는데, 몇 번 재시도하면 보통 성공한다.
 
-### 프론트엔드 재배포 (FE 변경 시, 또는 WS URL이 바뀌었을 때)
+## 프론트엔드 재배포
 
 ```bash
-VITE_RPS_WS_URL="wss://toris-arcade.duckdns.org:30080/rps" \
-VITE_LIAR_WS_URL="wss://toris-arcade.duckdns.org:30080/liar" \
-VITE_MAFIA_WS_URL="wss://toris-arcade.duckdns.org:30080/mafia" \
-VITE_HALLIGALLI_WS_URL="wss://toris-arcade.duckdns.org:30080/halligalli" \
-VITE_YUTNORI_WS_URL="wss://toris-arcade.duckdns.org:30080/yutnori" \
-VITE_STRATEGY_YUTNORI_WS_URL="wss://toris-arcade.duckdns.org:30080/strategy-yutnori" \
+npm ci
 npm run build
-npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19
+npx firebase-tools@15.18.0 deploy --only hosting --project hoban-lakepark-ab19
 ```
 
-`VITE_RPS_WS_URL`/`VITE_LIAR_WS_URL`/`VITE_MAFIA_WS_URL`/`VITE_HALLIGALLI_WS_URL`/`VITE_YUTNORI_WS_URL`/`VITE_STRATEGY_YUTNORI_WS_URL`
-전부 `.env`(gitignore됨)에도 저장돼 있지 않다 — **빌드할 때마다 명시적으로 지정해야 한다.** 안 하면
-각각 `ws://<hostname>:8787/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}`로 조용히 fallback해서 프로덕션에서
-연결이 깨진다. (참고: `deploy/k8s/base/firebase-deploy-job.yaml`에는 ArgoCD가 자동 배포할 때 쓰는
-값이 이미 들어있지만, 로컬에서 수동으로 `firebase deploy`할 때는 별개로 챙겨야 한다.)
+공개 접속 주소 19개(멀티 18개 + 점수 API)는 `.env.production`에 저장되어 자동으로 빌드에
+적용된다. ArgoCD용 `deploy/k8s/base/firebase-deploy-job.yaml`에도 같은 Cloudflare 주소가
+들어 있다. 명시적인 프로세스 환경변수는 `.env.production`보다 우선하므로, 이전 DuckDNS 주소가
+셸에 남아 있지 않은지 확인한다. 로컬 `npm run dev`는 기본 `ws://<hostname>:8787/{game}`를 쓴다.
 
 ## 검증 방법
 
@@ -637,5 +644,5 @@ npx firebase-tools deploy --only hosting --project hoban-lakepark-ab19
   않는지 확인한다.
 - 인증서 신뢰 여부: `rejectUnauthorized`를 끄지 않은 기본 WebSocket 클라이언트, 그리고
   Playwright에서 `ignoreHTTPSErrors` 옵션 없이 접속 — 둘 다 정상 연결되면 브라우저도 경고 없이 신뢰한다는 뜻.
-- 항상 실제 WAS(`wss://toris-arcade.duckdns.org:30080/{rps,liar,mafia,halligalli,yutnori,strategy-yutnori}`)까지
+- 항상 실제 Cloudflare 백엔드(`wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/{game}`)까지
   왕복하는 e2e로 마무리 확인하고, Firebase에 배포된 실제 프로덕션 페이지에서도 한 번 더 확인한다.

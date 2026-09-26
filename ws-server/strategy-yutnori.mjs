@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 import { resolveRps, rollDiceOff } from './starting-order.mjs';
 import {
   createStrategyYutGame,
@@ -42,9 +40,7 @@ const REACTIONS = {
  *   roundTimer, moveTimer: Timeout | null,
  * }
  */
-export function registerStrategyYutnoriServer() {
-  const rooms = new Map();
-  const wsIdentity = new Map();
+export function registerStrategyYutnoriServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   const ranking = createRankingStore('strategy-yutnori');
 
   /** 승자가 정해진 순간 방에 남아있던 전원의 승/패를 기록한다(개인전, 팀 무관). */
@@ -90,20 +86,20 @@ export function registerStrategyYutnoriServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimer(room) {
-    if (room.roundTimer) { clearTimeout(room.roundTimer); room.roundTimer = null; }
+    if (room.roundTimer) { timers.clear(room.roundTimer); room.roundTimer = null; }
   }
   function clearMoveTimer(room) {
-    if (room.moveTimer) { clearTimeout(room.moveTimer); room.moveTimer = null; }
+    if (room.moveTimer) { timers.clear(room.moveTimer); room.moveTimer = null; }
   }
   function clearAllGameTimers(room) { clearRoundTimer(room); clearMoveTimer(room); }
   function clearDecideTimer(room) {
-    if (room.decideTimer) { clearTimeout(room.decideTimer); room.decideTimer = null; }
+    if (room.decideTimer) { timers.clear(room.decideTimer); room.decideTimer = null; }
   }
 
   function broadcastLobbyUpdate(room, roomCode) {
@@ -176,38 +172,13 @@ export function registerStrategyYutnoriServer() {
   function armFaceTimer(roomCode, room) {
     clearRoundTimer(room);
     if (room.game.phase !== 'collecting') return;
-    room.roundTimer = setTimeout(() => {
-      const game = room.game;
-      if (!game || game.phase !== 'collecting') return;
-      let autoSubmitted = null;
-      const missingTokens = game.tokens.filter(token => !game.faces[token]);
-      for (const token of missingTokens) {
-        autoSubmitted = submitFace(game, token, 'front');
-      }
-      armMoveOrRoundTimer(roomCode, room);
-      broadcastGameUpdate(room, autoSubmitted ? { kind: 'round_resolved', throw: autoSubmitted, timedOut: true } : null);
-    }, FACE_TIMEOUT_MS);
+    room.roundTimer = timers.timeout('onArmFaceTimer', [room, roomCode], FACE_TIMEOUT_MS);
   }
 
   function armMoveTimer(roomCode, room) {
     clearMoveTimer(room);
     if (room.game.phase !== 'moving') return;
-    room.moveTimer = setTimeout(() => {
-      const game = room.game;
-      if (!game || game.phase !== 'moving') return;
-      const token = currentMover(game);
-      if (!token) return;
-      const req = getAutoMoveRequest(game, token);
-      if (!req) {
-        armMoveOrRoundTimer(roomCode, room);
-        broadcastGameUpdate(room, { kind: 'auto_no_move', token, name: nameOf(room, token), timedOut: true });
-        return;
-      }
-      let outcome;
-      try { outcome = submitMove(game, token, req); } catch { return; }
-      if (outcome.status !== 'applied') return;
-      handleMoveApplied(room, roomCode, { ...outcome, name: nameOf(room, token), timedOut: true });
-    }, MOVE_TIMEOUT_MS);
+    room.moveTimer = timers.timeout('onArmMoveTimer', [room, roomCode], MOVE_TIMEOUT_MS);
   }
 
   function armMoveOrRoundTimer(roomCode, room) {
@@ -245,7 +216,7 @@ export function registerStrategyYutnoriServer() {
 
     const maxRounds = Math.max(diceA.rounds.length, diceB.rounds.length);
     const diceAnimMs = maxRounds > 0 ? maxRounds * DICE_ROUND_ANIM_MS + 500 : 300;
-    room.decideTimer = setTimeout(() => armDecideRpsTimer(roomCode), diceAnimMs);
+    room.decideTimer = timers.timeout('onStartDeciding', [roomCode], diceAnimMs);
   }
 
   function armDecideRpsTimer(roomCode) {
@@ -258,7 +229,7 @@ export function registerStrategyYutnoriServer() {
       repBToken: room.decideRepB, repBName: nameOf(room, room.decideRepB),
     });
     clearDecideTimer(room);
-    room.decideTimer = setTimeout(() => decideAutoTimeout(roomCode), DECIDE_TIMEOUT_MS);
+    room.decideTimer = timers.timeout('onArmDecideRpsTimer', [roomCode], DECIDE_TIMEOUT_MS);
   }
 
   function decideAutoTimeout(roomCode) {
@@ -294,9 +265,7 @@ export function registerStrategyYutnoriServer() {
     if (result === null) {
       broadcast(room, { type: 'decide_tie', choiceA, choiceB });
       room.decidingChoices = {};
-      setTimeout(() => {
-        if (rooms.get(roomCode)?.phase === 'deciding') armDecideRpsTimer(roomCode);
-      }, DECIDE_TIE_PAUSE_MS);
+      timers.timeout('onResolveDeciding', [roomCode], DECIDE_TIE_PAUSE_MS);
       return;
     }
 
@@ -306,7 +275,7 @@ export function registerStrategyYutnoriServer() {
       choiceA, choiceB,
       winnerToken, winnerName: nameOf(room, winnerToken),
     });
-    setTimeout(() => startGame(roomCode, winnerToken), DECIDE_REVEAL_MS);
+    timers.timeout('onResolveDeciding2', [roomCode, winnerToken], DECIDE_REVEAL_MS);
   }
 
   function startGame(roomCode, startingToken) {
@@ -460,7 +429,7 @@ export function registerStrategyYutnoriServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -648,6 +617,48 @@ export function registerStrategyYutnoriServer() {
     });
   });
 
-  console.log('[strategy-yutnori-server] registered ws path: /strategy-yutnori');
-  return { wss, getRanking: ranking.getRanking };
+  function onArmFaceTimer(room, roomCode) {
+      const game = room.game;
+      if (!game || game.phase !== 'collecting') return;
+      let autoSubmitted = null;
+      const missingTokens = game.tokens.filter(token => !game.faces[token]);
+      for (const token of missingTokens) {
+        autoSubmitted = submitFace(game, token, 'front');
+      }
+      armMoveOrRoundTimer(roomCode, room);
+      broadcastGameUpdate(room, autoSubmitted ? { kind: 'round_resolved', throw: autoSubmitted, timedOut: true } : null);
+    }
+
+  function onArmMoveTimer(room, roomCode) {
+      const game = room.game;
+      if (!game || game.phase !== 'moving') return;
+      const token = currentMover(game);
+      if (!token) return;
+      const req = getAutoMoveRequest(game, token);
+      if (!req) {
+        armMoveOrRoundTimer(roomCode, room);
+        broadcastGameUpdate(room, { kind: 'auto_no_move', token, name: nameOf(room, token), timedOut: true });
+        return;
+      }
+      let outcome;
+      try { outcome = submitMove(game, token, req); } catch { return; }
+      if (outcome.status !== 'applied') return;
+      handleMoveApplied(room, roomCode, { ...outcome, name: nameOf(room, token), timedOut: true });
+    }
+
+  function onStartDeciding(roomCode) { armDecideRpsTimer(roomCode); }
+
+  function onArmDecideRpsTimer(roomCode) { decideAutoTimeout(roomCode); }
+
+  function onResolveDeciding(roomCode) {
+        if (rooms.get(roomCode)?.phase === 'deciding') armDecideRpsTimer(roomCode);
+      }
+
+  function onResolveDeciding2(roomCode, winnerToken) { startGame(roomCode, winnerToken); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onArmFaceTimer, onArmMoveTimer, onStartDeciding, onArmDecideRpsTimer, onResolveDeciding, onResolveDeciding2, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

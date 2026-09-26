@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 2;
@@ -27,10 +25,8 @@ const ROUND_MS = 90000;           // 라운드 길이(90초, 원조의 120초와
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerSumTenPuzzleServer() {
-  const rooms = new Map();
+export function registerSumTenPuzzleServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('sum-ten-puzzle');
 
   function recordResult(room, winnerToken) {
@@ -70,14 +66,14 @@ export function registerSumTenPuzzleServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.roundTimer) { clearTimeout(room.roundTimer); room.roundTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.roundTimer) { timers.clear(room.roundTimer); room.roundTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -122,7 +118,7 @@ export function registerSumTenPuzzleServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startGame(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startGame(roomCode) {
@@ -149,7 +145,7 @@ export function registerSumTenPuzzleServer() {
       board: progressBoard(room),
     });
 
-    room.roundTimer = setTimeout(() => endRound(roomCode), ROUND_MS);
+    room.roundTimer = timers.timeout('onStartGame', [roomCode], ROUND_MS);
   }
 
   function endRound(roomCode) {
@@ -195,7 +191,7 @@ export function registerSumTenPuzzleServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -387,6 +383,13 @@ export function registerSumTenPuzzleServer() {
     });
   });
 
-  console.log('[sum-ten-puzzle-server] registered ws path: /sum-ten-puzzle');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startGame(roomCode); }
+
+  function onStartGame(roomCode) { endRound(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onStartGame, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

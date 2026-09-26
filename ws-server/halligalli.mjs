@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 2;
@@ -53,10 +51,8 @@ function buildDeck() {
  *   flipTimer: Timeout | null,
  * }
  */
-export function registerHalliGalliServer() {
-  const rooms = new Map();
+export function registerHalliGalliServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('halligalli');
 
   /** 승자가 정해진 순간 방에 남아있던 전원의 승/패를 기록한다. */
@@ -99,13 +95,13 @@ export function registerHalliGalliServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearFlipTimer(room) {
-    if (room.flipTimer) { clearTimeout(room.flipTimer); room.flipTimer = null; }
+    if (room.flipTimer) { timers.clear(room.flipTimer); room.flipTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -183,12 +179,7 @@ export function registerHalliGalliServer() {
 
   function armFlipTimer(room) {
     clearFlipTimer(room);
-    room.flipTimer = setTimeout(() => {
-      if (room.phase !== 'playing') return;
-      const skipped = room.turnOrder[room.turnIndex];
-      refreshCurrentFlipper(room, room.turnIndex + 1);
-      broadcastGameUpdate(room, { kind: 'turn_skipped', token: skipped, name: nameOf(room, skipped) });
-    }, FLIP_TIMEOUT_MS);
+    room.flipTimer = timers.timeout('onArmFlipTimer', [room], FLIP_TIMEOUT_MS);
   }
 
   // ── 게임 진행 ────────────────────────────────────────────────────
@@ -260,8 +251,8 @@ export function registerHalliGalliServer() {
       // 정답 처리 직후 RING_RESOLUTION_WINDOW_MS 동안은 늦게 도착한 다른 사람의 종치기가
       // (이미 비워진 보드를 보고) 억울하게 오답 벌칙을 받지 않도록 잠깐 잠근다.
       room.resolvingRing = true;
-      if (room.ringTimer) clearTimeout(room.ringTimer);
-      room.ringTimer = setTimeout(() => { room.resolvingRing = false; }, RING_RESOLUTION_WINDOW_MS);
+      if (room.ringTimer) timers.clear(room.ringTimer);
+      room.ringTimer = timers.timeout('onSubmitRing', [room], RING_RESOLUTION_WINDOW_MS);
 
       let cardsWon = 0;
       const winnerPile = room.piles.get(token);
@@ -373,7 +364,7 @@ export function registerHalliGalliServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -549,6 +540,18 @@ export function registerHalliGalliServer() {
     });
   });
 
-  console.log('[halligalli-server] registered ws path: /halligalli');
-  return { wss, getRanking: ranking.getRanking };
+  function onArmFlipTimer(room) {
+      if (room.phase !== 'playing') return;
+      const skipped = room.turnOrder[room.turnIndex];
+      refreshCurrentFlipper(room, room.turnIndex + 1);
+      broadcastGameUpdate(room, { kind: 'turn_skipped', token: skipped, name: nameOf(room, skipped) });
+    }
+
+  function onSubmitRing(room) { room.resolvingRing = false; }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onArmFlipTimer, onSubmitRing, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

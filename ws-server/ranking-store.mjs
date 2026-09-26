@@ -4,14 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const DATA_DIR = process.env.DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), 'data');
 
-export function isoWeekKey(date = new Date()) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-}
+export { isoWeekKey } from './ranking-data.mjs';
+import { createResultRanking } from './ranking-data.mjs';
 
 /**
  * 게임별 승/패 랭킹을 파일로 영속화하는 저장소. RPS의 기존 ranking.json 패턴(주 단위 키,
@@ -42,25 +36,5 @@ export function createRankingStore(gameKey) {
     }, 2000);
   }
 
-  /** 이번 주 기록에 한 플레이어의 승/패를 1회 반영한다. */
-  function recordResult(name, won) {
-    if (!name) return;
-    const week = isoWeekKey();
-    if (!data[week]) data[week] = {};
-    if (!data[week][name]) data[week][name] = { wins: 0, losses: 0 };
-    data[week][name][won ? 'wins' : 'losses'] += 1;
-    scheduleSave();
-  }
-
-  /** 주어진 ISO 주 키의 랭킹(승수 내림차순, 동률이면 패 적은 순)을 상위 50명까지 반환한다. */
-  function getRanking(week) {
-    const weekData = data[week] || {};
-    return Object.entries(weekData)
-      .map(([name, rec]) => ({ name, wins: rec.wins || 0, losses: rec.losses || 0 }))
-      .filter((e) => e.wins + e.losses > 0)
-      .sort((a, b) => b.wins - a.wins || a.losses - b.losses)
-      .slice(0, 50);
-  }
-
-  return { recordResult, getRanking };
+  return createResultRanking(data, scheduleSave);
 }

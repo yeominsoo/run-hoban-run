@@ -43,41 +43,41 @@ spec:
                   name: firebase-deploy-token
                   key: FIREBASE_TOKEN
             - name: VITE_RPS_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/rps"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/rps"
             - name: VITE_LIAR_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/liar"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/liar"
             - name: VITE_MAFIA_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/mafia"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/mafia"
             - name: VITE_HALLIGALLI_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/halligalli"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/halligalli"
             - name: VITE_YUTNORI_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/yutnori"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/yutnori"
             - name: VITE_STRATEGY_YUTNORI_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/strategy-yutnori"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/strategy-yutnori"
             - name: VITE_MOLE_HUNT_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/mole-hunt"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/mole-hunt"
             - name: VITE_MEMORY_SEQUENCE_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/memory-sequence"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/memory-sequence"
             - name: VITE_UPDOWN_NUMBER_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/updown-number"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/updown-number"
             - name: VITE_MULTIPLICATION_SPRINT_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/multiplication-sprint"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/multiplication-sprint"
             - name: VITE_ODD_EVEN_MATH_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/odd-even-math"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/odd-even-math"
             - name: VITE_COLOR_INSTRUCTION_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/color-instruction"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/color-instruction"
             - name: VITE_SUM_TEN_PUZZLE_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/sum-ten-puzzle"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/sum-ten-puzzle"
             - name: VITE_TUG_OF_WAR_BATTLE_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/tug-of-war-battle"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/tug-of-war-battle"
             - name: VITE_TERRITORY_CLASH_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/territory-clash"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/territory-clash"
             - name: VITE_LIGHT_GUESS_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/light-guess"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/light-guess"
             - name: VITE_REVERSI_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/reversi"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/reversi"
             - name: VITE_GOMOKU_WS_URL
-              value: "wss://toris-arcade.duckdns.org:30080/gomoku"
+              value: "wss://toris-arcade-games.line-nori-yeominsoo.workers.dev/gomoku"
           command:
             - /bin/bash
             - -lc

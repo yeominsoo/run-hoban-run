@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 2;
@@ -31,10 +29,8 @@ const ROUND_MS = 40000;             // 라운드 길이(약 16문제)
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerOddEvenMathServer() {
-  const rooms = new Map();
+export function registerOddEvenMathServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('odd-even-math');
 
   function recordResult(room, winnerToken) {
@@ -74,15 +70,15 @@ export function registerOddEvenMathServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.problemInterval) { clearInterval(room.problemInterval); room.problemInterval = null; }
-    if (room.roundTimer) { clearTimeout(room.roundTimer); room.roundTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.problemInterval) { timers.clear(room.problemInterval); room.problemInterval = null; }
+    if (room.roundTimer) { timers.clear(room.roundTimer); room.roundTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -117,7 +113,7 @@ export function registerOddEvenMathServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startGame(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startGame(roomCode) {
@@ -139,8 +135,8 @@ export function registerOddEvenMathServer() {
     broadcast(room, { type: 'round_start', durationMs: ROUND_MS, board: progressBoard(room) });
 
     nextProblem(roomCode);
-    room.problemInterval = setInterval(() => nextProblem(roomCode), PROBLEM_INTERVAL_MS);
-    room.roundTimer = setTimeout(() => endRound(roomCode), ROUND_MS);
+    room.problemInterval = timers.interval('onStartGame', [roomCode], PROBLEM_INTERVAL_MS);
+    room.roundTimer = timers.timeout('onStartGame2', [roomCode], ROUND_MS);
   }
 
   function nextProblem(roomCode) {
@@ -209,7 +205,7 @@ export function registerOddEvenMathServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -387,6 +383,15 @@ export function registerOddEvenMathServer() {
     });
   });
 
-  console.log('[odd-even-math-server] registered ws path: /odd-even-math');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startGame(roomCode); }
+
+  function onStartGame(roomCode) { nextProblem(roomCode); }
+
+  function onStartGame2(roomCode) { endRound(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onStartGame, onStartGame2, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }

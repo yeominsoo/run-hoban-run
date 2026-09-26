@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getReconnectGraceMs } from './reconnect-policy.mjs';
-import { WebSocketServer } from 'ws';
-import { createRankingStore } from './ranking-store.mjs';
 
 const ROOM_CODE_LENGTH = 6;
 const MIN_PLAYERS = 2;
@@ -32,10 +30,8 @@ const ROUND_ADVANCE_DELAY_MS = 2000; // 라운드 결과를 보여준 뒤 다음
  *   countdownTimer: Timeout | null,
  * }
  */
-export function registerLightGuessServer() {
-  const rooms = new Map();
+export function registerLightGuessServer({ WebSocketServer, createRankingStore, timers, rooms = new Map(), wsIdentity = new Map() }) {
   /** ws -> { roomCode, token } */
-  const wsIdentity = new Map();
   const ranking = createRankingStore('light-guess');
 
   function recordResult(room, winnerTokens) {
@@ -75,16 +71,16 @@ export function registerLightGuessServer() {
 
   function clearDisconnectTimer(room, token) {
     const t = room.disconnectTimers.get(token);
-    if (t) { clearTimeout(t); room.disconnectTimers.delete(token); }
+    if (t) { timers.clear(t); room.disconnectTimers.delete(token); }
   }
   function clearAllDisconnectTimers(room) {
     room.players.forEach(p => clearDisconnectTimer(room, p.token));
   }
   function clearRoundTimers(room) {
-    if (room.greenTimer) { clearTimeout(room.greenTimer); room.greenTimer = null; }
-    if (room.redTimer) { clearTimeout(room.redTimer); room.redTimer = null; }
-    if (room.nextRoundTimer) { clearTimeout(room.nextRoundTimer); room.nextRoundTimer = null; }
-    if (room.countdownTimer) { clearTimeout(room.countdownTimer); room.countdownTimer = null; }
+    if (room.greenTimer) { timers.clear(room.greenTimer); room.greenTimer = null; }
+    if (room.redTimer) { timers.clear(room.redTimer); room.redTimer = null; }
+    if (room.nextRoundTimer) { timers.clear(room.nextRoundTimer); room.nextRoundTimer = null; }
+    if (room.countdownTimer) { timers.clear(room.countdownTimer); room.countdownTimer = null; }
   }
 
   // ── 로비 브로드캐스트 ────────────────────────────────────────────
@@ -117,7 +113,7 @@ export function registerLightGuessServer() {
     if (!room) return;
     room.phase = 'countdown';
     broadcast(room, { type: 'game_starting', countdownMs: COUNTDOWN_MS });
-    room.countdownTimer = setTimeout(() => startGame(roomCode), COUNTDOWN_MS);
+    room.countdownTimer = timers.timeout('onStartCountdown', [roomCode], COUNTDOWN_MS);
   }
 
   function startGame(roomCode) {
@@ -143,7 +139,7 @@ export function registerLightGuessServer() {
 
     const greenMs = GREEN_MIN_MS + Math.floor(Math.random() * (GREEN_MAX_MS - GREEN_MIN_MS + 1));
     broadcast(room, { type: 'round_start', round: room.round, alive: aliveList(room), greenMs });
-    room.greenTimer = setTimeout(() => beginRed(roomCode), greenMs);
+    room.greenTimer = timers.timeout('onStartRound', [roomCode], greenMs);
   }
 
   function beginRed(roomCode) {
@@ -167,7 +163,7 @@ export function registerLightGuessServer() {
       finishOrAdvance(roomCode);
       return;
     }
-    room.redTimer = setTimeout(() => endRedPhase(roomCode), RED_MS);
+    room.redTimer = timers.timeout('onBeginRed', [roomCode], RED_MS);
   }
 
   function endRedPhase(roomCode) {
@@ -190,7 +186,7 @@ export function registerLightGuessServer() {
     } else if (room.alive.size === 1) {
       endGame(roomCode, [...room.alive]);
     } else {
-      room.nextRoundTimer = setTimeout(() => startRound(roomCode), ROUND_ADVANCE_DELAY_MS);
+      room.nextRoundTimer = timers.timeout('onFinishOrAdvance', [roomCode], ROUND_ADVANCE_DELAY_MS);
     }
   }
 
@@ -243,7 +239,7 @@ export function registerLightGuessServer() {
     const room = rooms.get(roomCode);
     if (!room) return;
     clearDisconnectTimer(room, token);
-    const timer = setTimeout(() => finalizeLeave(roomCode, token), getReconnectGraceMs(room));
+    const timer = timers.timeout('onScheduleDisconnectCleanup', [roomCode, token], getReconnectGraceMs(room));
     room.disconnectTimers.set(token, timer);
   }
 
@@ -375,7 +371,7 @@ export function registerLightGuessServer() {
           room.eliminatedAt.set(token, Date.now());
           broadcast(room, { type: 'caught_moving', token, name: nameOf(room, token), alive: aliveList(room) });
           if (room.alive.size <= 1) {
-            if (room.redTimer) { clearTimeout(room.redTimer); room.redTimer = null; }
+            if (room.redTimer) { timers.clear(room.redTimer); room.redTimer = null; }
             finishOrAdvance(roomCode);
           }
         }
@@ -424,6 +420,17 @@ export function registerLightGuessServer() {
     });
   });
 
-  console.log('[light-guess-server] registered ws path: /light-guess');
-  return { wss, getRanking: ranking.getRanking };
+  function onStartCountdown(roomCode) { startGame(roomCode); }
+
+  function onStartRound(roomCode) { beginRed(roomCode); }
+
+  function onBeginRed(roomCode) { endRedPhase(roomCode); }
+
+  function onFinishOrAdvance(roomCode) { startRound(roomCode); }
+
+  function onScheduleDisconnectCleanup(roomCode, token) { finalizeLeave(roomCode, token); }
+
+  timers.register({ onStartCountdown, onStartRound, onBeginRed, onFinishOrAdvance, onScheduleDisconnectCleanup });
+
+  return { wss, getRanking: ranking.getRanking, rooms, wsIdentity };
 }
